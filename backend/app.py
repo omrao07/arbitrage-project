@@ -21,14 +21,14 @@ capital = 100000  # starting capital in USD
 portfolio_value = capital
 risk_tolerance = 0.03
 
-# === TOGGLES ===
+
 ENABLE_ML = True
 ENABLE_EXECUTION = True
 ENABLE_CRYPTO = True
 ENABLE_VAR = True
 ENABLE_BETA = True
 
-# === DATA COLLECTION ===
+
 def get_stock_data(ticker):
     try:
         df = yf.download(ticker, period=f"{lookback_days}d", interval="1d", progress=False, auto_adjust=True)
@@ -50,7 +50,7 @@ def fetch_all_data():
         raise ValueError("❌ No valid stock data found. Exiting.")
     return pd.DataFrame(data).dropna()
 
-# === CORE STRATEGIES ===
+
 def check_cross_stock_arbitrage():
     df = fetch_all_data()
     trades = []
@@ -68,7 +68,7 @@ def check_statistical_arbitrage():
     corr_mean = returns.corr().mean().mean()
     return corr_mean
 
-# === ML MODEL FORECASTING ===
+
 def run_ml_models():
     if not ENABLE_ML:
         return []
@@ -92,7 +92,7 @@ def run_ml_models():
         results.append((name, score))
     return results
 
-# === RISK + VAR ===
+
 def calculate_var():
     if not ENABLE_VAR:
         return 0
@@ -101,7 +101,7 @@ def calculate_var():
     var = np.percentile(returns, 5)
     return var
 
-# === BETA CALC ===
+
 def calculate_beta():
     if not ENABLE_BETA:
         return 0
@@ -113,7 +113,7 @@ def calculate_beta():
     beta = np.cov(combined['portfolio'], combined['market'])[0][1] / combined['market'].var()
     return beta
 
-# === API ROUTES ===
+
 @app.route('/')
 def home():
     return render_template('index.html')
@@ -140,3 +140,29 @@ def run_engine():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
+from flask import Flask, send_from_directory
+import os
+
+app = Flask(__name__, static_folder="dist")
+
+@app.route("/")
+def index():
+    return send_from_directory(app.static_folder, "index.html")
+
+@app.route("/run")
+def run():
+    # Replace this with actual model logic later
+    return {
+        "ml_models": [["Linear Regression", 0.83], ["Random Forest", 0.91]],
+        "cross_arbitrage": [["BTC", "ETH", 2.3], ["AAPL", "MSFT", 1.9]],
+        "correlation": 0.78,
+        "value_at_risk": 0.023,
+        "beta": 1.12
+    }
+
+if __name__ == "__main__":
+    app.run(debug=True)
+
+
+
