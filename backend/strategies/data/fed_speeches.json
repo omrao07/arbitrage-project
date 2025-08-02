@@ -1,0 +1,58 @@
+[
+  {
+    "date": "2023-01-12",
+    "speaker": "Jerome Powell",
+    "title": "Maintaining Stability in a High Inflation Environment",
+    "content": "While inflation has moderated slightly, it remains well above our target. The Fed will continue raising interest rates until we see sustained evidence of disinflation. Labor market remains strong, but price stability is our primary concern.",
+    "sentiment": "hawkish"
+  },
+  {
+    "date": "2023-02-08",
+    "speaker": "Lael Brainard",
+    "title": "The Path Forward on Policy",
+    "content": "We expect the pace of rate hikes to slow as inflation expectations become more anchored. However, premature easing would be a mistake.",
+    "sentiment": "neutral-hawkish"
+  },
+  {
+    "date": "2023-03-10",
+    "speaker": "Jerome Powell",
+    "title": "FOMC Outlook and Forward Guidance",
+    "content": "The U.S. economy is resilient, but risks remain elevated. We are data-dependent and will adjust policy as necessary. Financial stability is also a priority.",
+    "sentiment": "neutral"
+  },
+  {
+    "date": "2023-04-05",
+    "speaker": "Neel Kashkari",
+    "title": "Balancing Inflation and Growth",
+    "content": "The risk of a recession is increasing, and while inflation remains high, aggressive tightening could undermine employment. A cautious approach is warranted.",
+    "sentiment": "dovish"
+  },
+  {
+    "date": "2023-05-18",
+    "speaker": "Christopher Waller",
+    "title": "Why Rates Might Stay Higher for Longer",
+    "content": "The economy has not cooled as expected, and inflation shows signs of persistence. Markets should prepare for elevated rates through 2024.",
+    "sentiment": "hawkish"
+  },
+  {
+    "date": "2023-06-23",
+    "speaker": "Jerome Powell",
+    "title": "Mid-Year Monetary Policy Update",
+    "content": "We are committed to achieving price stability. Further tightening is on the table, and the neutral rate may be higher than previously assumed.",
+    "sentiment": "hawkish"
+  },
+  {
+    "date": "2023-07-14",
+    "speaker": "Mary Daly",
+    "title": "Economic Inclusion and Policy Limits",
+    "content": "The full effects of past hikes are still working through the system. We are nearing a point of balance, but vigilance is key.",
+    "sentiment": "neutral"
+  },
+  {
+    "date": "2023-08-03",
+    "speaker": "Jerome Powell",
+    "title": "Policy Stance Post-Inflation Cooling",
+    "content": "Inflation has declined for three straight months, but we need more confidence before changing our stance. We're not declaring victory yet.",
+    "sentiment": "neutral-dovish"
+  }
+]
