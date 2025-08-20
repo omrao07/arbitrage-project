@@ -1,0 +1,66 @@
+# config/feeds/eu.yaml
+region: EU
+description: "Europe equities, ETFs, FX, and indexes feed configuration"
+enabled: true
+
+# Data source settings
+sources:
+  - name: euronext
+    type: websocket
+    provider: polygon   # Replace with your actual feed provider
+    symbols:
+      - AIR.PA     # Airbus
+      - OR.PA      # L'Oréal
+      - MC.PA      # LVMH
+      - ASML.AS    # ASML Holding
+    interval: tick
+    fields:
+      - price
+      - volume
+      - bid
+      - ask
+      - timestamp
+
+  - name: xetra
+    type: websocket
+    provider: alphavantage  # Replace with paid/free source
+    symbols:
+      - BMW.DE     # BMW
+      - SAP.DE     # SAP
+      - ALV.DE     # Allianz
+    interval: tick
+    fields:
+      - price
+      - volume
+      - bid
+      - ask
+      - timestamp
+
+# Redis pub/sub & stream mappings
+streams:
+  trades: trades.eu
+  orders: orders.eu
+channels:
+  ticks: ticks.eu
+
+# Strategy allocation
+strategies:
+  alpha:
+    - eu_mean_reversion
+    - eu_breakout
+  diversified:
+    - eu_macro
+    - eu_sector_rotation
+
+# Risk limits
+risk:
+  max_position_size: 500000     # in EUR equivalent
+  max_drawdown_pct: 5
+  max_open_positions: 20
+  stop_loss_pct: 2
+
+# Compliance flags
+compliance:
+  insider_trading_checks: true
+  restricted_list: []
+  market_hours_only: true

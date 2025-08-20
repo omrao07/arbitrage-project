@@ -1,0 +1,65 @@
+# config/feeds/jp.yaml
+region: JP
+description: "Japan equities, ETFs, FX, and indexes feed configuration"
+enabled: true
+
+# Data source settings
+sources:
+  - name: tyo
+    type: websocket
+    provider: polygon    # Replace with your live market data source
+    symbols:
+      - 7203.T    # Toyota Motor Corp
+      - 6758.T    # Sony Group Corp
+      - 9984.T    # SoftBank Group Corp
+      - 9432.T    # Nippon Telegraph and Telephone
+    interval: tick
+    fields:
+      - price
+      - volume
+      - bid
+      - ask
+      - timestamp
+
+  - name: osaka
+    type: websocket
+    provider: alphavantage   # Placeholder; replace with a Japanese derivatives feed if needed
+    symbols:
+      - 8035.T    # Tokyo Electron Ltd
+      - 6954.T    # Fanuc Corp
+    interval: tick
+    fields:
+      - price
+      - volume
+      - bid
+      - ask
+      - timestamp
+
+# Redis pub/sub & stream mappings
+streams:
+  trades: trades.jp
+  orders: orders.jp
+channels:
+  ticks: ticks.jp
+
+# Strategy allocation
+strategies:
+  alpha:
+    - jp_mean_reversion
+    - jp_breakout
+  diversified:
+    - jp_macro
+    - jp_sector_rotation
+
+# Risk limits
+risk:
+  max_position_size: 500000     # in JPY equivalent
+  max_drawdown_pct: 5
+  max_open_positions: 20
+  stop_loss_pct: 2
+
+# Compliance flags
+compliance:
+  insider_trading_checks: true
+  restricted_list: []
+  market_hours_only: true

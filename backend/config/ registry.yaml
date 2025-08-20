@@ -1,0 +1,36 @@
+# config/register.yaml
+description: "Registry of all market feeds and their configuration files"
+enabled: true
+
+feeds:
+  - name: United States
+    region: US
+    config_file: feeds/us.yaml
+    enabled: true
+
+  - name: Europe
+    region: EU
+    config_file: feeds/eu.yaml
+    enabled: true
+
+  - name: India
+    region: IN
+    config_file: feeds/in.yaml
+    enabled: true
+
+  - name: Japan
+    region: JP
+    config_file: feeds/jp.yaml
+    enabled: true
+
+  - name: China-Hong Kong
+    region: CNHK
+    config_file: feeds/cnhk.yaml
+    enabled: true
+
+# Loader settings
+loader:
+  scan_directory: feeds
+  hot_reload: true  # Reload config files if changed while running
+  validate_schemas: true
+  log_level: INFO

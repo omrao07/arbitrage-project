@@ -1,0 +1,31 @@
+# === Core scientific stack ===
+numpy
+pandas
+scipy
+matplotlib
+
+# === Modeling / statistics ===
+scikit-learn
+statsmodels
+
+# === Market data & APIs ===
+websockets
+requests
+httpx
+ccxt           # crypto exchanges (Binance, Bybit, Coinbase etc.)
+yfinance       # stock/ETF data
+
+# === Database & storage ===
+clickhouse-connect
+SQLAlchemy
+pyarrow
+
+# === Utilities ===
+python-dotenv   # for .env handling
+pytz            # timezone support
+loguru          # structured logging
+
+# === Optional (development / visualization) ===
+jupyter
+notebook
+tqdm            # progress bars

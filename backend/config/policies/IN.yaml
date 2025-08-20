@@ -1,0 +1,65 @@
+# config/feeds/in.yaml
+region: IN
+description: "India equities, ETFs, FX, and indexes feed configuration"
+enabled: true
+
+# Data source settings
+sources:
+  - name: nse
+    type: websocket
+    provider: kiteconnect   # Zerodha Kite API (paid); replace with free/alt if needed
+    symbols:
+      - RELIANCE.NS     # Reliance Industries
+      - TCS.NS          # Tata Consultancy Services
+      - HDFCBANK.NS     # HDFC Bank
+      - INFY.NS         # Infosys
+    interval: tick
+    fields:
+      - price
+      - volume
+      - bid
+      - ask
+      - timestamp
+
+  - name: bse
+    type: websocket
+    provider: upstox   # Upstox API (alternative to Zerodha)
+    symbols:
+      - 500325.BO      # Reliance Industries on BSE
+      - 532540.BO      # TCS on BSE
+    interval: tick
+    fields:
+      - price
+      - volume
+      - bid
+      - ask
+      - timestamp
+
+# Redis pub/sub & stream mappings
+streams:
+  trades: trades.in
+  orders: orders.in
+channels:
+  ticks: ticks.in
+
+# Strategy allocation
+strategies:
+  alpha:
+    - in_mean_reversion
+    - in_breakout
+  diversified:
+    - in_macro
+    - in_sector_rotation
+
+# Risk limits
+risk:
+  max_position_size: 400000     # in INR equivalent
+  max_drawdown_pct: 5
+  max_open_positions: 20
+  stop_loss_pct: 2
+
+# Compliance flags
+compliance:
+  insider_trading_checks: true
+  restricted_list: []
+  market_hours_only: true

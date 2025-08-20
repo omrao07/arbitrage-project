@@ -1,0 +1,66 @@
+# config/feeds/cnhk.yaml
+region: CNHK
+description: "China & Hong Kong equities, ETFs, and indexes feed configuration"
+enabled: true
+
+# Data source settings
+sources:
+  - name: hkex
+    type: websocket
+    provider: polygon   # Example provider; can be replaced with free/paid source
+    symbols:
+      - 0700.HK     # Tencent Holdings
+      - 9988.HK     # Alibaba Group
+      - 0005.HK     # HSBC Holdings
+      - 0939.HK     # China Construction Bank
+    interval: tick     # 'tick', '1m', '5m', '1d'
+    fields:
+      - price
+      - volume
+      - bid
+      - ask
+      - timestamp
+
+  - name: sse
+    type: websocket
+    provider: tushare  # Example for Shanghai Stock Exchange
+    symbols:
+      - 600519.SS   # Kweichow Moutai
+      - 601398.SS   # Industrial & Commercial Bank of China
+      - 600036.SS   # China Merchants Bank
+    interval: tick
+    fields:
+      - price
+      - volume
+      - bid
+      - ask
+      - timestamp
+
+# Redis pub/sub & stream mappings
+streams:
+  trades: trades.cnhk
+  orders: orders.cnhk
+channels:
+  ticks: ticks.cnhk
+
+# Strategy allocation
+strategies:
+  alpha:
+    - cn_mean_reversion
+    - cn_breakout
+  diversified:
+    - cn_macro
+    - cn_sector_rotation
+
+# Risk limits
+risk:
+  max_position_size: 500000      # in HKD/CNY equivalent
+  max_drawdown_pct: 5
+  max_open_positions: 20
+  stop_loss_pct: 2
+
+# Compliance flags
+compliance:
+  insider_trading_checks: true
+  restricted_list: []
+  market_hours_only: true

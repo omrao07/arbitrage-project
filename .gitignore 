@@ -1,0 +1,86 @@
+# =====================
+# Python
+# =====================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pkl
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# =====================
+# Environment & Secrets
+# =====================
+*.env
+.env.*
+secrets.json
+credentials.json
+
+# =====================
+# VSCode / IDE
+# =====================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# =====================
+# Logs & Debugging
+# =====================
+*.log
+*.out
+*.err
+logs/
+*.sqlite3
+
+# =====================
+# Cache & Data
+# =====================
+*.db
+*.sqlite
+*.parquet
+*.arrow
+*.feather
+*.h5
+.DS_Store
+
+# =====================
+# Notebooks
+# =====================
+.ipynb_checkpoints
+
+# =====================
+# Docker
+# =====================
+docker-compose.override.yml
+.docker/
+*.pid
+
+# =====================
+# Testing
+# =====================
+.coverage
+.pytest_cache/
+.tox/
+nosetests.xml
+coverage.xml
+htmlcov/
+
+# =====================
+# Frontend (if you have Node)
+# =====================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

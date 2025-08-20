@@ -1,0 +1,66 @@
+# config/feeds/us.yaml
+region: US
+description: "US equities, ETFs, FX, and indexes feed configuration"
+enabled: true
+
+# Data source settings
+sources:
+  - name: nyse
+    type: websocket
+    provider: polygon     # Replace with your actual data provider
+    symbols:
+      - AAPL      # Apple Inc.
+      - MSFT      # Microsoft Corp
+      - AMZN      # Amazon.com Inc.
+      - TSLA      # Tesla Inc.
+    interval: tick
+    fields:
+      - price
+      - volume
+      - bid
+      - ask
+      - timestamp
+
+  - name: nasdaq
+    type: websocket
+    provider: alpaca   # Can use Alpaca's free paper trading/live feed
+    symbols:
+      - NVDA      # NVIDIA Corp
+      - GOOGL     # Alphabet Inc. Class A
+      - META      # Meta Platforms Inc.
+    interval: tick
+    fields:
+      - price
+      - volume
+      - bid
+      - ask
+      - timestamp
+
+# Redis pub/sub & stream mappings
+streams:
+  trades: trades.us
+  orders: orders.us
+channels:
+  ticks: ticks.us
+
+# Strategy allocation
+strategies:
+  alpha:
+    - us_mean_reversion
+    - us_breakout
+  diversified:
+    - us_macro
+    - us_sector_rotation
+
+# Risk limits
+risk:
+  max_position_size: 1000000     # in USD
+  max_drawdown_pct: 5
+  max_open_positions: 20
+  stop_loss_pct: 2
+
+# Compliance flags
+compliance:
+  insider_trading_checks: true
+  restricted_list: []
+  market_hours_only: true
