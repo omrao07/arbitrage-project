@@ -1,0 +1,99 @@
+# config/rivals.yaml
+# -------------------------------------------------------------------
+# Competitive / Rivals Registry
+# Used by: backend/analytics/competitors.py,
+#          backend/sim/adversary.py,
+#          backend/sim/evolution.py
+#
+# Purpose:
+#   - Track rival hedge funds, prop shops, banks, and AI agents
+#   - Store their strategies, regions, AUM, risk appetite
+#   - Feed into simulations ("adversary mode") and scenario games
+# -------------------------------------------------------------------
+
+meta:
+  asof: "auto"
+  base_ccy: "USD"
+  description: "Registry of rival institutions, competitors, and AI agents."
+
+rivals:
+  - id: "HF_ALPHA"
+    name: "AlphaPoint Capital"
+    type: "hedge_fund"
+    region: "US"
+    aum_usd: 5_000_000_000
+    core_strategies: ["quant_equities", "stat_arb", "vol_arb"]
+    risk_appetite: "medium-high"
+    edge: "low-latency US equities, deep market microstructure expertise"
+    known_weakness: "limited emerging market exposure"
+    behavior_model:
+      aggression: 0.7
+      cooperation: 0.2
+      secrecy: 0.8
+  - id: "HF_BETA"
+    name: "BetaBridge Partners"
+    type: "hedge_fund"
+    region: "EU"
+    aum_usd: 12_000_000_000
+    core_strategies: ["macro", "fx_carry", "credit_relative"]
+    risk_appetite: "medium"
+    edge: "macro thesis-driven allocations, sovereign debt expertise"
+    known_weakness: "slow execution, weak tech infra"
+    behavior_model:
+      aggression: 0.5
+      cooperation: 0.3
+      secrecy: 0.6
+  - id: "BANK_X"
+    name: "GlobalBank Markets"
+    type: "bank"
+    region: "Global"
+    aum_usd: 50_000_000_000
+    core_strategies: ["flow_trading", "structured_products", "prime_brokerage"]
+    risk_appetite: "low-medium"
+    edge: "access to client flow, balance sheet firepower"
+    known_weakness: "bureaucratic risk governance, slower innovation"
+    behavior_model:
+      aggression: 0.4
+      cooperation: 0.6
+      secrecy: 0.7
+  - id: "CRYPTO_AI"
+    name: "ChainMind v3"
+    type: "ai_agent"
+    region: "Global"
+    aum_usd: 500_000_000
+    core_strategies: ["crypto_arbitrage", "cross_exchange_latency", "defi_yield"]
+    risk_appetite: "high"
+    edge: "always-on execution, multi-chain monitoring"
+    known_weakness: "vulnerable to regulatory halts and flash loan exploits"
+    behavior_model:
+      aggression: 0.9
+      cooperation: 0.1
+      secrecy: 0.9
+
+alliances:
+  # Potential alliances / adversary dynamics for simulations
+  - members: ["HF_ALPHA", "BANK_X"]
+    relationship: "prime_brokerage + liquidity support"
+    stability: 0.7
+  - members: ["HF_BETA", "CRYPTO_AI"]
+    relationship: "emerging markets + alt-data sharing"
+    stability: 0.5
+
+simulation:
+  default_behavior:
+    aggression: 0.5
+    cooperation: 0.3
+    secrecy: 0.6
+  stress_events:
+    - name: "Flash Crash 2025"
+      rival: "CRYPTO_AI"
+      action: "dump_liquidity"
+      severity: "high"
+    - name: "ECB Policy Shock"
+      rival: "HF_BETA"
+      action: "macro_rebalance"
+      severity: "medium"
+    - name: "US Tech Earnings Miss"
+      rival: "HF_ALPHA"
+      action: "stat_arb_unwind"
+      severity: "medium-high"

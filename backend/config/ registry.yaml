@@ -1,36 +1,135 @@
-# config/register.yaml
-description: "Registry of all market feeds and their configuration files"
-enabled: true
+# config/registry.yaml
+# -------------------------------------------------------------------
+# Master registry of system components.
+# This drives dynamic discovery/loading of:
+#   - strategies
+#   - adapters
+#   - brokers
+#   - data feeds
+#   - dashboards
+#   - analytics modules
+# -------------------------------------------------------------------
 
-feeds:
-  - name: United States
-    region: US
-    config_file: feeds/us.yaml
+strategies:
+  alpha:
+    - name: "mean_reversion"
+      path: "backend/engine/strategies/mean_reversion.py"
+      enabled: true
+      region: "US"
+      default_qty: 10
+    - name: "momentum"
+      path: "backend/engine/strategies/momentum.py"
+      enabled: false
+      region: "IN"
+      default_qty: 5
+    - name: "carry_trade"
+      path: "backend/engine/strategies/carry_trade.py"
+      enabled: true
+      region: "FX"
+      default_qty: 100000
+  diversified:
+    - name: "hrp_portfolio"
+      path: "backend/analytics/hrp.py"
+      enabled: true
+    - name: "esg_filter"
+      path: "backend/analytics/esg_filter.py"
+      enabled: false
+
+brokers:
+  zerodha:
+    module: "backend/brokers/zerodha_adapter.py"
+    paper: true
+    accounts:
+      default: "ZERODHA_PAPER_ACC"
+  ibkr:
+    module: "backend/brokers/ibkr_adapter.py"
+    paper: false
+    accounts:
+      main: "IBKR_ACC"
+  binance:
+    module: "backend/brokers/binance_adapter.py"
+    paper: true
+    accounts:
+      sim: "BINANCE_TESTNET"
+
+data_feeds:
+  equities_us:
+    module: "backend/data/yahoo_feed.py"
+    symbols: ["AAPL", "MSFT", "AMZN", "TSLA"]
+    refresh: "5s"
+  equities_in:
+    module: "backend/data/moneycontrol_feed.py"
+    symbols: ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS"]
+    refresh: "10s"
+  crypto:
+    module: "backend/data/binance_feed.py"
+    symbols: ["BTCUSDT", "ETHUSDT"]
+    refresh: "1s"
+
+dashboards:
+  pnl:
+    module: "backend/analytics/pnl_dashboard.py"
+    port: 8050
     enabled: true
-
-  - name: Europe
-    region: EU
-    config_file: feeds/eu.yaml
+  risk:
+    module: "backend/analytics/risk_dashboard.py"
+    port: 8051
     enabled: true
-
-  - name: India
-    region: IN
-    config_file: feeds/in.yaml
+  hedge:
+    module: "backend/analytics/hedge_dashboard.py"
+    port: 8052
     enabled: true
+  literacy:
+    module: "backend/analytics/literacy_dashboard.py"
+    port: 8053
+    enabled: false
 
-  - name: Japan
-    region: JP
-    config_file: feeds/jp.yaml
+analytics:
+  pnl_xray: "backend/analytics/pnl_xray.py"
+  pnl_attribution: "backend/analytics/pnl_attribution.py"
+  stress_attribution: "backend/analytics/stress_attribution.py"
+  regime_map: "backend/analytics/regime_map.py"
+  mood_index: "backend/analytics/mood_index.py"
+  contagion_graph: "backend/risk/contagion_graph.py"
+  contagion_viz: "backend/risk/contagion_viz.py"
+
+risk_models:
+  base:
+    - name: "risk_manager"
+      path: "backend/risk/risk_manager.py"
+    - name: "shock_models"
+      path: "backend/risk/shock_models.py"
+    - name: "bank_stress"
+      path: "backend/risk/bank_stress.py"
+    - name: "liquidity_spiral"
+      path: "backend/risk/liquidity_spiral.py"
+
+simulations:
+  crisis_theatre:
+    module: "backend/sim/crisis_theatre.py"
     enabled: true
+  policy_sim:
+    module: "backend/sim/policy_sim.py"
+    enabled: false
 
-  - name: China-Hong Kong
-    region: CNHK
-    config_file: feeds/cnhk.yaml
-    enabled: true
+adapters:
+  latency: "backend/adapters/latency_adapter.py"
+  liquidity: "backend/adapters/liquidity_adapter.py"
+  bank: "backend/adapters/bank_adapters.py"
+  sovereign: "backend/adapters/sovereign_adapter.py"
 
-# Loader settings
-loader:
-  scan_directory: feeds
-  hot_reload: true  # Reload config files if changed while running
-  validate_schemas: true
-  log_level: INFO
+config:
+  latency: "config/latency.yaml"
+  registry: "config/registry.yaml"
+  secrets: "config/secrets.yaml"
+
+# -------------------------------------------------------------------
+# Example loader usage in Python:
+# -------------------------------------------------------------------
+# import yaml
+# with open("config/registry.yaml") as f:
+#     REG = yaml.safe_load(f)
+# strat_cfgs = REG["strategies"]["alpha"]
+# for s in strat_cfgs:
+#     if s["enabled"]:
+#         load_strategy(s["path"], name=s["name"])

@@ -1,0 +1,296 @@
+# Dynamic Governor (adaptive policy engine)
+# Consumed by dynamic_governor.py / policy_sim.py / crisis_theatre.py
+
+meta:
+  version: 1.0
+  description: >
+    Adaptive central-bank style policy governor with feedback, state machine,
+    guardrails, and learning loops (bandits/RL). Designed to co-exist with
+    configs/governor.yaml (static baselines).
+
+runtime:
+  tick_cadence: "5m"                 # evaluation cadence
+  horizon_days: 60                   # forward-looking horizon for MPC/RL rollouts
+  timezone: "Asia/Kolkata"
+  persistence:
+    engine: redis
+    state_key: "gov:state"
+    ledger_stream: "gov:events"      # append-only audit of actions
+  inputs:                            # topics/streams this governor reads
+    macro_stream: "macro.nowcast"    # inflation, growth, unemployment
+    market_stream: "market.risk"     # equity drawdown, credit spreads, vol
+    bank_health: "bank.health"       # lcr, cet1, tier1
+    sovereign_risk: "sovereign.risk" # cds, curves
+    stress_signals: "stress.signals" # crisis detectors (contagion, liquidity spiral)
+
+governor_scope:
+  institutions:
+    - "Federal Reserve"
+    - "Reserve Bank of India"
+    - "ECB"
+  levers:
+    - rate_hike
+    - rate_cut
+    - qe
+    - liquidity_injection
+    - targeted_lending
+    - swap_lines
+    - macroprudential_controls
+    - fx_intervention
+  max_actions_per_tick: 2            # cap how many levers can flip in one evaluation
+
+# --------- STATE MACHINE ----------
+states:
+  - id: NORMAL
+    desc: Baseline; Taylor rule governs rates, data-dependent.
+  - id: WATCH
+    desc: Elevated risk; early signals flashing (spreads/vol/latency).
+  - id: STRESSED
+    desc: Funding stress or market dislocation; liquidity tools activate.
+  - id: CRISIS
+    desc: Systemic risk/contagion; aggressive coordinated policy.
+
+transitions:
+  - from: NORMAL
+    to: WATCH
+    if_any:
+      - equity_drawdown_pct_5d_gte: 8
+      - credit_spread_bps_gte: 150
+      - bank_lcr_p10_lte: 110
+  - from: WATCH
+    to: STRESSED
+    if_all:
+      - equity_drawdown_pct_5d_gte: 12
+      - bank_lcr_p10_lte: 100
+      - funding_cost_bps_gte: 150
+  - from: STRESSED
+    to: CRISIS
+    if_any:
+      - contagion_score_gte: 0.7
+      - deposit_outflow_pct_3d_gte: 10
+      - interbank_freeze_flag: true
+  - from: WATCH
+    to: NORMAL
+    if_all:
+      - equity_drawdown_pct_5d_lte: 5
+      - credit_spread_bps_lte: 80
+  - from: STRESSED
+    to: WATCH
+    if_all:
+      - bank_lcr_p10_gte: 105
+      - funding_cost_bps_lte: 80
+  - from: CRISIS
+    to: STRESSED
+    if_all:
+      - contagion_score_lte: 0.4
+      - deposit_outflow_pct_3d_lte: 4
+
+# --------- POLICY BLOCKS ----------
+controllers:
+  taylor_rule:
+    enabled: true
+    state_scope: [NORMAL, WATCH]
+    params:
+      neutral_rate: 0.02
+      weight_inflation: 1.5
+      weight_output: 0.5
+      clamp:
+        step_bps_max_per_tick: 50
+        policy_floor: -0.01
+        policy_ceiling: 0.15
+
+  pid_inflation:
+    enabled: true
+    state_scope: [WATCH, STRESSED]
+    # u_t = Kp*e + Ki*sum(e) + Kd*(e-e_prev)
+    target: 0.02
+    kp: 1.2
+    ki: 0.1
+    kd: 0.05
+    clamp:
+      step_bps_max_per_tick: 75
+
+  mpc_liquidity:
+    enabled: true
+    state_scope: [STRESSED, CRISIS]
+    objective: >
+      Minimize funding stress + drawdown subject to capital/liquidity constraints.
+    horizon_steps: 12           # with tick_cadence=5m → 1 hour
+    control_vars: [liquidity_injection, targeted_lending, qe]
+    constraints:
+      lcr_floor: 100
+      cet1_floor: 7.0
+      balance_sheet_limit_trn: 2.0
+    solver:
+      kind: shooting
+      max_iter: 50
+      tol: 1e-4
+
+# --------- ACTION RECIPES ----------
+actions:
+  rate_hike:
+    min_step_bps: 25
+    max_step_bps: 100
+    prefer_states: [NORMAL, WATCH]
+    cooldown_ticks: 2
+  rate_cut:
+    min_step_bps: 25
+    max_step_bps: 100
+    prefer_states: [STRESSED, CRISIS]
+    cooldown_ticks: 1
+  qe:
+    tranche_bn: [25, 50, 100]
+    asset_buckets: [sovereign, agency, ig_credit]
+    prefer_states: [STRESSED, CRISIS]
+    cooldown_ticks: 1
+  liquidity_injection:
+    size_bn: [10, 25, 50]
+    facilities: [repo_extended, standing_lending, discount_window]
+    prefer_states: [STRESSED, CRISIS]
+    cooldown_ticks: 1
+  targeted_lending:
+    size_bn: [5, 10, 20]
+    sectors: [sme, banks, utilities]
+    prefer_states: [STRESSED]
+    cooldown_ticks: 1
+  swap_lines:
+    counterparts: [ECB, BOJ, BOE]
+    size_bn: [10, 30, 60]
+    prefer_states: [CRISIS]
+    cooldown_ticks: 2
+  macroprudential_controls:
+    tools: [ltv_cap, ccar_buffer_up, countercyclical_buffer_up]
+    prefer_states: [WATCH, STRESSED]
+    cooldown_ticks: 6
+  fx_intervention:
+    corridors:
+      usd_inr: [80, 95]
+      eur_usd: [0.9, 1.2]
+    prefer_states: [WATCH, STRESSED]
+    cooldown_ticks: 1
+
+# --------- GUARDRAILS / SAFETY ---------
+guardrails:
+  action_budget_per_day:
+    rate_steps_bps_total_max: 150
+    qe_size_bn_total_max: 200
+    liquidity_injection_bn_total_max: 150
+  do_not_cross:
+    min_policy_rate: -0.01
+    max_policy_rate: 0.18
+    min_lcr: 95
+    min_cet1: 5.5
+  freeze_switch:
+    # emergency off-switch for automation
+    redis_key: "gov:freeze"
+    default: false
+
+# --------- LEARNING / EXPERIMENTATION ---------
+learning:
+  bandit:
+    enabled: true
+    family: thompson   # {thompson, ucb}
+    arms:
+      - "qe_25bn"
+      - "qe_50bn"
+      - "liq_25bn"
+      - "liq_50bn"
+      - "rate_cut_25bps"
+    reward_signal:      # higher is better
+      formula: |
+        - 0.6 * funding_stress_z
+        - 0.3 * equity_drawdown_z
+        - 0.1 * inflation_gap_abs
+    horizon_days: 10
+    epsilon_floor: 0.05
+
+  rl:
+    enabled: true
+    algo: sac            # {ppo, sac, dqn}
+    state_features:
+      - inflation
+      - output_gap
+      - equity_drawdown_pct_5d
+      - credit_spread_bps
+      - bank_lcr_p10
+      - contagion_score
+    action_space:
+      - rate_step_bps: [-100, 100]
+      - qe_tranche_bn: [0, 100]
+      - liquidity_injection_bn: [0, 50]
+    reward:
+      weights:
+        funding_stress: -0.6
+        drawdown: -0.3
+        inflation_gap_abs: -0.1
+      penalties:
+        guardrail_breach: -10.0
+    safety_layer:
+      clamp_to_guardrails: true
+      veto_if:
+        - lcr_after_action_lte: 95
+        - cet1_after_action_lte: 5.5
+
+# --------- CRISIS OVERRIDES / PLAYBOOKS ---------
+playbooks:
+  - name: Banking_Crisis_P0
+    activate_if:
+      any_of:
+        - bank_failures_week_gte: 3
+        - deposit_outflow_pct_3d_gte: 12
+    sequence:
+      - liquidity_injection: 50
+      - targeted_lending: 20
+      - rate_cut_bps: 50
+      - swap_lines: 30
+    notes: "Immediate stabilization sequence."
+
+  - name: Sovereign_Contagion_P0
+    activate_if:
+      any_of:
+        - sovereign_default_flag: true
+        - cds_spread_bps_gte: 600
+    sequence:
+      - qe: 50
+      - targeted_lending: 20
+      - fx_intervention: true
+    notes: "Backstop bond markets & limit spillovers."
+
+# --------- OBSERVABILITY / REPORTING ---------
+reporting:
+  emit_metrics: true
+  metrics:
+    - policy_rate_target
+    - action_taken
+    - state
+    - funding_stress
+    - drawdown
+    - inflation_gap
+    - qe_total_bn
+    - liquidity_total_bn
+  sinks:
+    - type: stream
+      name: "gov.metrics"
+    - type: file
+      path: "reports/dynamic_governor.json"
+  audit:
+    enabled: true
+    fields: [tick_ts, prev_state, next_state, rationale, constraints, chosen_actions]
+
+# --------- TEST HARNESS ---------
+tests:
+  scenarios:
+    - name: fast_risk_off
+      overrides:
+        equity_drawdown_pct_5d: 15
+        credit_spread_bps: 280
+        bank_lcr_p10: 98
+    - name: funding_freeze
+      overrides:
+        funding_cost_bps: 400
+        interbank_freeze_flag: true
+        deposit_outflow_pct_3d: 14
+  assertions:
+    - expect_state_in: [STRESSED, CRISIS]
+    - expect_action_any_of: [liquidity_injection, qe, rate_cut]
+    - forbid_guardrail_breach: true

@@ -1,0 +1,102 @@
+# config/bank_stress.yaml
+# -------------------------------------------------------------------
+# Stress testing configuration for banks / FIs.
+# Used by backend/risk/bank_stress.py and contagion_graph.py
+#
+# Units:
+#   equity, assets, liabilities → absolute currency units (e.g., millions)
+#   shocks → fractions or % (e.g., 0.20 = 20%)
+# -------------------------------------------------------------------
+
+defaults:
+  recovery_rate: 0.40       # fraction of exposure recovered on counterparty default
+  time_horizon_days: 30     # horizon for stress scenarios
+  contagion_rounds: 5       # how many propagation steps to simulate
+  liquidity_haircut: 0.30   # haircut on illiquid assets during fire sales
+
+banks:
+  - id: "HDFC"
+    name: "HDFC Bank"
+    equity: 50000
+    liquid_assets: 200000
+    illiquid_assets: 300000
+    liabilities: 430000
+    region: "IN"
+  - id: "ICICI"
+    name: "ICICI Bank"
+    equity: 45000
+    liquid_assets: 180000
+    illiquid_assets: 270000
+    liabilities: 405000
+    region: "IN"
+  - id: "SBI"
+    name: "State Bank of India"
+    equity: 70000
+    liquid_assets: 250000
+    illiquid_assets: 500000
+    liabilities: 710000
+    region: "IN"
+  - id: "CITI"
+    name: "Citibank"
+    equity: 60000
+    liquid_assets: 220000
+    illiquid_assets: 400000
+    liabilities: 620000
+    region: "US"
+
+exposures:
+  # lender → borrower exposures (in millions)
+  - lender: "HDFC"
+    borrower: "ICICI"
+    amount: 12000
+    recovery_rate: 0.40
+  - lender: "ICICI"
+    borrower: "SBI"
+    amount: 15000
+    recovery_rate: 0.35
+  - lender: "SBI"
+    borrower: "HDFC"
+    amount: 20000
+    recovery_rate: 0.50
+  - lender: "CITI"
+    borrower: "ICICI"
+    amount: 10000
+    recovery_rate: 0.40
+  - lender: "ICICI"
+    borrower: "CITI"
+    amount: 8000
+    recovery_rate: 0.30
+
+shocks:
+  equity:
+    mild: 0.10      # 10% equity hit
+    severe: 0.30    # 30% equity wipeout
+  liquidity:
+    mild: 0.15      # 15% withdrawal of liquid assets
+    severe: 0.40
+  credit_spread_bp:
+    mild: 50        # widen by 50 bps
+    severe: 200
+  default_events:
+    - bank_id: "ICICI"
+      prob: 0.05
+    - bank_id: "SBI"
+      prob: 0.02
+
+scenarios:
+  - name: "Mild Liquidity Stress"
+    shocks:
+      liquidity: "mild"
+  - name: "Severe Credit Shock"
+    shocks:
+      equity: "severe"
+      credit_spread_bp: "severe"
+  - name: "Counterparty Default ICICI"
+    shocks:
+      default_event: "ICICI"
+  - name: "Systemic Crisis"
+    shocks:
+      equity: "severe"
+      liquidity: "severe"
+      default_event: "SBI"
+      contagion_rounds: 10

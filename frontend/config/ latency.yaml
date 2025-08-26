@@ -1,0 +1,74 @@
+# Latency Configuration
+# Used by latency.py, router.py, and adapters to simulate / measure microstructure delays.
+
+meta:
+  version: 1.0
+  description: >
+    Models venue/network latency, order handling delays, and stress multipliers
+    for different asset classes and markets.
+
+venues:
+  - name: NYSE
+    region: US
+    base_latency_ms: 25
+    order_ack_ms: 5
+    order_types:
+      market: 2
+      limit: 3
+      stop: 4
+    burst_capacity: 2000   # orders/sec sustainable
+
+  - name: NASDAQ
+    region: US
+    base_latency_ms: 20
+    order_ack_ms: 4
+    order_types:
+      market: 1
+      limit: 2
+      stop: 3
+    burst_capacity: 2500
+
+  - name: NSE
+    region: IN
+    base_latency_ms: 35
+    order_ack_ms: 6
+    order_types:
+      market: 3
+      limit: 4
+      stop: 5
+    burst_capacity: 1500
+
+  - name: Binance
+    region: Global
+    base_latency_ms: 45
+    order_ack_ms: 8
+    order_types:
+      market: 5
+      limit: 7
+      stop: 10
+    burst_capacity: 5000
+
+stress_factors:
+  network_congestion: 1.5     # × latency under packet loss / bandwidth stress
+  exchange_throttle: 2.0      # × latency when hitting venue burst limits
+  high_volatility: 1.3        # × latency when order book depth collapses
+  ddos_event: 5.0             # × latency during cyber event simulation
+
+strategies_sensitivity:
+  - strategy: hrp_allocator
+    max_tolerable_latency_ms: 200
+    degrade_if_above_ms: 120
+  - strategy: pairs_arbitrage
+    max_tolerable_latency_ms: 80
+    degrade_if_above_ms: 40
+  - strategy: options_mm
+    max_tolerable_latency_ms: 50
+    degrade_if_above_ms: 20
+
+reporting:
+  metrics:
+    - avg_latency
+    - p95_latency
+    - p99_latency
+    - dropped_orders
+  output: "reports/latency_results.json"

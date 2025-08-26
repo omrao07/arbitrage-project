@@ -1,0 +1,132 @@
+# config/capital_stress.yaml
+# -------------------------------------------------------------------
+# Hedge Fund Capital Stress Test Config
+# Used by: backend/risk/risk_manager.py,
+#          backend/analytics/stress_attribution.py,
+#          backend/sim/policy_sim.py
+#
+# Units:
+#   currency → base_ccy (USD)
+#   percentages as fractions (0.15 = 15%)
+# -------------------------------------------------------------------
+
+meta:
+  base_ccy: "USD"
+  asof: "auto"        # runtime fills timestamp
+  description: "Firmwide capital & liquidity stress harness"
+
+capital_structure:
+  starting_equity: 10_000_000
+  liquidity_buffer_min: 0.15      # ≥15% NAV must be cash/treasuries
+  redemption_notice_days: 7
+  side_pocket_limit: 0.10
+
+leverage_policy:
+  gross_leverage_max: 3.0
+  net_leverage_max: 1.2
+  per_strategy:
+    alpha.meanrev: 1.0
+    alpha.momentum: 1.5
+    statarb.pairs: 1.8
+    hrp.portfolio: 0.8
+  margin_requirements:             # haircut/margin per asset class
+    equities_major: 0.15
+    equities_em: 0.25
+    futures_liquid: 0.10
+    futures_illiquid: 0.20
+    crypto: 0.35
+    rates_govt: 0.05
+    credit_ig: 0.10
+    credit_hy: 0.20
+
+risk_limits:
+  var:
+    method: "historical"          # ewma | parametric
+    horizon_days: 1
+    lookback_days: 750
+    conf: 0.99
+    firm_limit_pct_nav: 0.035
+    per_strategy_pct_nav:
+      alpha.meanrev: 0.008
+      alpha.momentum: 0.012
+      statarb.pairs: 0.010
+      hrp.portfolio: 0.006
+  expected_shortfall:
+    enabled: true
+    conf: 0.975
+    firm_limit_pct_nav: 0.045
+  drawdown_ladder:
+    - trigger: 0.05
+      actions: ["reduce_gross:0.2", "halt_new_risk:true"]
+    - trigger: 0.10
+      actions: ["reduce_gross:0.4", "cut_worst_5:true", "board_notify:true"]
+    - trigger: 0.15
+      actions: ["reduce_gross:0.6", "close_core:true", "investor_update:true"]
+    - trigger: 0.20
+      actions: ["risk_freeze:true", "cap_raise_plan:true", "gate_redemptions:true"]
+
+liquidity_limits:
+  horizon_days: 5
+  min_cash_pct_nav: 0.10
+  min_treasury_pct_nav: 0.05
+  max_illiquid_pct_nav: 0.20
+
+hedging_policy:
+  beta_neutral:
+    benchmark: "SPX"
+    tolerance_abs: 0.10
+    rebalance_triggers: ["dd_trigger", "vol_spike"]
+  tail_hedge:
+    enabled: true
+    triggers:
+      vix_z_above: 2.0
+      credit_spread_z_above: 1.5
+      mmi_below: -0.35
+    actions:
+      - "buy_put_spread:SPX,notional_pct_nav=0.5"
+      - "buy_gamma:front_month,notional_pct_nav=0.3"
+
+stress_grid:
+  rates_bps: [ +50, +100, +200, -50 ]
+  credit_spreads: [ +50, +150, +300 ]
+  equity_rets: [ -0.05, -0.10, -0.20, +0.05 ]
+  fx:
+    USDINR: [ +0.03, +0.07, -0.03 ]
+    EURUSD: [ -0.03, -0.07, +0.03 ]
+  commodities:
+    WTI: [ +0.10, +0.25, -0.10 ]
+    GOLD: [ +0.05, -0.05 ]
+
+scenarios:
+  - name: "Equity -10% / Rates +100bp"
+    shock:
+      equities: -0.10
+      rates_bps: +100
+      credit_spreads: +150
+      fx: { USDINR: +0.05 }
+  - name: "Stagflation Lite"
+    shock:
+      equities: -0.07
+      oil: +0.15
+      breakevens: +40
+      rates_bps: +80
+  - name: "Liquidity Crunch"
+    shock:
+      liquidity_sale_frac: 0.20
+      liquidity_gap_ret: -0.05
+  - name: "Crypto Spillover"
+    shock:
+      crypto: -0.25
+      equities: -0.06
+      credit_spreads: +75
+
+reporting:
+  publish_streams:
+    - "risk.var"
+    - "risk.es"
+    - "risk.dd"
+    - "risk.stress"
+  email_on:
+    var_breach: true
+    dd_trigger: true
+    liquidity_breach: true

@@ -1,0 +1,57 @@
+# backend/config/synthetic.yaml
+# Synthetic asset definitions for Hedge Fund X.
+# Each synthetic is a composite index built from real symbols, weights, and transforms.
+
+synthetics:
+  - id: "SYN.NDX-CNY-OILVOL"
+    name: "Nasdaq Tech x Yuan FX x Oil Vol"
+    description: >
+      Composite asset combining Nasdaq tech index (QQQ), USD/CNY FX rate,
+      and Brent oil volatility index. Used to capture tech sensitivity to
+      currency + commodity shocks.
+    components:
+      - symbol: "QQQ"
+        weight: 0.5
+      - symbol: "USDCNY=X"
+        weight: -0.3
+        transform: "log_return"     # optional: price | log_return | vol
+      - symbol: "OILVOL"
+        weight: 0.2
+    rebalance: "daily"              # daily | weekly | monthly
+    publish: true
+
+  - id: "SYN.CRYPTO-DEFI"
+    name: "Crypto DeFi Composite"
+    description: >
+      Equal-weight basket of DeFi tokens to create a synthetic DeFi index.
+    components:
+      - symbol: "UNI-USD"
+        weight: 0.25
+      - symbol: "AAVE-USD"
+        weight: 0.25
+      - symbol: "COMP-USD"
+        weight: 0.25
+      - symbol: "MKR-USD"
+        weight: 0.25
+    rebalance: "weekly"
+    publish: true
+
+  - id: "SYN.CARBON-ENERGY-SPREAD"
+    name: "Carbon vs Energy Spread"
+    description: >
+      Spread trade synthetic between EU carbon credits and Brent oil.
+    components:
+      - symbol: "EUA-FUT"
+        weight: 1.0
+      - symbol: "BRN=F"
+        weight: -1.0
+    rebalance: "monthly"
+    publish: false   # internal strategy signal only
+
+normalization:
+  signal_schema:
+    - name: "synthetic_id"
+    - name: "timestamp"
+    - name: "price"
+    - name: "components"
+    - name: "rebalance_rule"

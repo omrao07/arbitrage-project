@@ -1,0 +1,76 @@
+# Bank Stress Test Scenarios
+# Used by bank_stress.py and stress attribution modules
+
+defaults:
+  currency: USD
+  horizon_days: 30
+  confidence: 0.99
+  capital_buffer_pct: 12.5   # Basel III CET1 ratio
+  liquidity_ratio_min: 100   # LCR minimum requirement
+
+scenarios:
+  - name: Liquidity Crunch
+    description: >
+      Simulates a sudden withdrawal of wholesale funding,
+      interbank market freeze, and spike in repo rates.
+    shocks:
+      deposit_outflow_pct: 15       # % of deposits withdrawn in 7 days
+      interbank_rate_bps: 250       # increase in overnight funding cost
+      asset_haircuts:
+        sovereign_bonds: 5
+        corporate_bonds: 12
+        equities: 25
+      liquidity_buffer_draw_pct: 40
+    triggers:
+      breach_if_capital_below: 8.0
+      breach_if_lcr_below: 100
+
+  - name: Credit Shock
+    description: >
+      Wave of corporate defaults → NPL surge, credit spreads widen.
+    shocks:
+      npl_increase_pct: 8
+      corporate_spread_bps: 400
+      recovery_rate_drop_pct: 15
+      asset_haircuts:
+        loans: 20
+        corporate_bonds: 15
+    triggers:
+      breach_if_capital_below: 9.0
+
+  - name: Sovereign Default
+    description: >
+      Large sovereign default in portfolio triggers contagion.
+    shocks:
+      sovereign_default: true
+      haircut_on_sovereign_bonds_pct: 45
+      interbank_rate_bps: 150
+      fx_depreciation_pct: 20
+    triggers:
+      breach_if_capital_below: 6.0
+
+  - name: Global Financial Crisis Replay
+    description: >
+      Replay of 2008-type conditions: housing collapse, market-wide selloff,
+      liquidity spirals, correlated asset crashes.
+    shocks:
+      housing_price_drop_pct: 30
+      equity_market_drop_pct: 45
+      funding_cost_bps: 350
+      asset_haircuts:
+        mbs: 40
+        equities: 50
+        corporate_bonds: 20
+    triggers:
+      breach_if_capital_below: 5.0
+      breach_if_lcr_below: 90
+
+reporting:
+  metrics:
+    - capital_ratio
+    - liquidity_coverage_ratio
+    - net_stable_funding_ratio
+    - value_at_risk
+    - stressed_var
+    - pnl
+  output: "reports/bank_stress_results.json"

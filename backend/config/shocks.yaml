@@ -1,0 +1,188 @@
+# config/shocks.yaml
+# -------------------------------------------------------------------
+# Central catalog of shocks used by:
+#   - backend/analytics/stress_attribution.py
+#   - backend/risk/risk_manager.py
+#   - backend/sim/crisis_theatre.py
+#   - backend/sim/policy_sim.py
+#
+# Conventions:
+# - Returns are fractions (e.g., -0.07 = -7%).
+# - Rates, breakevens, spreads in basis points unless noted.
+# - You can combine multiple shocks; engine should sum/compose sensibly.
+# -------------------------------------------------------------------
+
+meta:
+  asof: "auto"
+  base_ccy: "USD"
+  description: "Reusable shock primitives & named scenarios."
+
+# === Primitive shock blocks (reusable) =======================================
+
+equity_factors:
+  broad:
+    SPX:   [-0.03, -0.05, -0.10, -0.20, +0.03]
+    NDX:   [-0.04, -0.08, -0.15, +0.05]
+    RTY:   [-0.05, -0.10, -0.18, +0.04]
+    EEM:   [-0.04, -0.08, -0.12, +0.03]
+    NIFTY: [-0.04, -0.07, -0.12, +0.04]
+  sectors:
+    TECH:  [-0.05, -0.10, -0.18, +0.05]
+    ENERGY:[-0.03, -0.06, -0.12, +0.04]
+    FIN:   [-0.04, -0.08, -0.15, +0.03]
+    HEALTH:[-0.03, -0.06, -0.10, +0.03]
+
+rates:
+  parallel_bp: [ +50, +100, +200, -50, -100 ]
+  steepener_bp: { "2y": +100, "10y": +50, "30y": +25 }
+  flattener_bp: { "2y": +25,  "10y": +75, "30y": +100 }
+  front_end_spike_bp: { "2y": +150, "5y": +120 }
+
+breakevens_bp:
+  mild:   +25
+  severe: +75
+
+credit_spreads_bp:
+  ig:   [ +25, +75, +150, +300 ]
+  hy:   [ +50, +150, +300, +600 ]
+
+fx_rets:
+  majors:
+    EURUSD: [ -0.03, -0.07, +0.03 ]
+    USDJPY: [ +0.03, +0.07, -0.03 ]
+    GBPUSD: [ -0.03, -0.06, +0.03 ]
+  em:
+    USDINR: [ +0.03, +0.07, -0.03 ]
+    USDCNH: [ +0.02, +0.05, -0.02 ]
+    USDBRL: [ +0.04, +0.08, -0.03 ]
+
+commodities_rets:
+  WTI:   [ +0.10, +0.25, -0.10 ]
+  BRENT: [ +0.10, +0.25, -0.10 ]
+  GOLD:  [ +0.05, -0.05 ]
+  COPPER:[ -0.05, -0.12, +0.05 ]
+
+crypto_rets:
+  BTC: [ -0.10, -0.20, -0.30, +0.10 ]
+  ETH: [ -0.12, -0.25, -0.35, +0.12 ]
+
+liquidity:
+  sale_frac:   [ 0.10, 0.20, 0.30 ]        # fraction of illiquid assets sold
+  gap_return:  [ -0.02, -0.05, -0.10 ]     # impact gap during fire sale
+  adv_drop:    [ 0.20, 0.40 ]              # % drop in ADV (exec liquidity)
+
+correlation:
+  regime:
+    jump_to_one: true         # set cross-asset rho → high during crisis
+    rho_floor: 0.60
+    sector_rho_floor: 0.75
+
+volatility:
+  vix_z: [ +1.5, +2.5, +3.5 ]  # VIX z-score jump proxies
+  realized_mult: [ 1.3, 1.6, 2.0 ]
+
+policy:
+  # Positive = easing; Negative = tightening (units: bp for rates, fraction for QE)
+  fed_funds_bp:   [ -25, -50, +50, +100 ]
+  qe_pct_nav:     [ +0.02, +0.05 ]     # size of balance sheet shock vs NAV proxy
+  tax_shock_ret:  [ -0.02, +0.02 ]     # earnings-level proxy
+
+news_sentiment:
+  # Feed into your mood_index/regime_map; negative pushes risk_off
+  headline_std:  [ -2.0, -3.5 ]   # std moves on NLP sentiment
+  article_std:   [ -1.5, -3.0 ]
+
+microstructure:
+  spread_bps_add: [ +2.0, +5.0, +10.0 ]
+  impact_mult:    [ 1.2, 1.5, 2.0 ]
+  outages:
+    venue: ["NSE","NASDAQ","BINANCE"]
+    minutes: [ 5, 15, 60 ]
+
+# === Named composite scenarios (pick-up-and-run) =============================
+
+scenarios:
+  - name: "Equity -10 / Rates +100 / IG +150"
+    shock:
+      equity: { factor: "SPX", ret: -0.10 }
+      rates_by_tenor_bp: { "2y": +80, "5y": +100, "10y": +100 }
+      credit_spread_bp: { "IG": +150 }
+      corr: { regime: "jump_to_one" }
+      vol:  { realized_mult: 1.6, vix_z: +2.5 }
+
+  - name: "Stagflation Lite"
+    shock:
+      equity: { factor: "SPX", ret: -0.07 }
+      breakevens_bp: +40
+      commodities: { WTI: +0.15, GOLD: +0.05 }
+      rates_by_tenor_bp: { "2y": +80, "10y": +40 }
+      credit_spread_bp: { "IG": +100, "HY": +200 }
+      news_sentiment: { headline_std: -2.0 }
+
+  - name: "EM FX Stress (India focus)"
+    shock:
+      equity: { factor: "NIFTY", ret: -0.09 }
+      fx: { USDINR: +0.07, USDCNH: +0.03 }
+      credit_spread_bp: { "IG": +75 }
+      liquidity: { adv_drop: 0.40, gap_return: -0.05 }
+      microstructure: { spread_bps_add: +6.0, impact_mult: 1.5 }
+
+  - name: "Crypto Spillover"
+    shock:
+      crypto: { BTC: -0.25, ETH: -0.35 }
+      equity: { factor: "NDX", ret: -0.06 }
+      credit_spread_bp: { "HY": +300 }
+      corr: { regime: "jump_to_one" }
+
+  - name: "Liquidity Crunch (sell 20% illiquid, -5% gap)"
+    shock:
+      liquidity: { sale_frac: 0.20, gap_return: -0.05 }
+      microstructure: { spread_bps_add: +10.0, impact_mult: 2.0 }
+
+  - name: "Policy Surprise — Tightening"
+    shock:
+      policy: { fed_funds_bp: +100 }
+      equity: { factor: "SPX", ret: -0.08 }
+      rates_parallel_bp: +100
+      credit_spread_bp: { "IG": +150 }
+
+  - name: "Goldilocks Relief"
+    shock:
+      equity: { factor: "SPX", ret: +0.05 }
+      rates_parallel_bp: -50
+      breakevens_bp: -25
+      credit_spread_bp: { "IG": -25 }
+      news_sentiment: { headline_std: +2.0 }
+
+# === Propagation and mapping hints ==========================================
+
+propagation:
+  # How shocks flow into pricing/greeks when not explicitly provided.
+  cross_greeks:
+    equity:
+      use_beta: true
+      beta_key: "beta"        # from risk model; fallback=1.0
+    credit:
+      dv01_fallback_usd_per_bp: 200.0
+    rates:
+      key_tenors: ["2y","5y","10y","30y"]
+  mapping:
+    # Map factor → symbols/universe tags for shorthand scenarios
+    factors:
+      SPX:   ["US_LARGE_CAP"]
+      NDX:   ["US_TECH_MEGA"]
+      NIFTY: ["IN_EQUITIES"]
+    sectors:
+      TECH:  ["AAPL","MSFT","NVDA","INFY.NS","TCS.NS"]
+      ENERGY:["XOM","CVX","ONGC.NS","RELIANCE.NS"]
+
+# === Engine hints (optional knobs your code can read) ========================
+
+engine_hints:
+  combine_mode: "additive"    # additive | multiplicative
+  priority: ["policy","rates","credit","equity","fx","commodities","crypto","liquidity","microstructure","correlation","volatility","news_sentiment"]
+  clamp:
+    equity_ret: [-0.35, +0.20]
+    fx_ret:     [-0.15, +0.15]
+    spread_bp:  [-200,  +1200]
+    vix_z:      [-4.0,  +6.0]

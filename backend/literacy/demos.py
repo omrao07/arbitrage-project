@@ -21,10 +21,10 @@ from typing import Optional, List
 from collections import deque
 
 # sentiment + news sources (use your existing modules)
-from backend.analytics.sentiment_ai import SentimentModel, sentiment_weight
+from backend.analytics.sentiment_ai import SentimentModel, sentiment_weight # type: ignore
 from backend.ingestion.news.news_base import NewsEvent
 from backend.ingestion.news.news_yahoo import YahooNews
-from backend.ingestion.news.news_moneycontrol import MoneycontrolNews
+from backend.ingestion.news.news_moneycontrol import MoneycontrolNews # type: ignore
 
 
 # ---------- Pretty printing helpers ----------

@@ -187,10 +187,8 @@ class ExampleBuyTheDip(Strategy):
         elif diff_bps >= self.bps:           # above avg by X bps -> sell
             self.order(sym, "sell")
 
-            class BaseStrategy:
-                
-  from typing import Any
 
+# ---------------- News handler base ----------------
 class BaseStrategy:
     def on_news(self, event: Any) -> None:
         """

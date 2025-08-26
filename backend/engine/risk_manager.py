@@ -73,27 +73,27 @@ def _json_get_float(s: str, key: str, default: float = 0.0) -> float:
 def _gross_usd() -> float:
     v = r.get("portfolio:gross_usd")
     if not v: return 0.0
-    return _json_get_float(v, "usd", 0.0)
+    return _json_get_float(v, "usd", 0.0) # type: ignore
 
 def _allocator_cap(strategy: str) -> float:
     v = r.hget("allocator:notional", strategy)
     if not v: return 0.0
     try:
-        return float(json.loads(v).get("usd", 0.0))
+        return float(json.loads(v).get("usd", 0.0)) # type: ignore
     except Exception:
         return 0.0
 
 def _used_by_strategy(strategy: str) -> float:
     v = r.hget("risk:used_by_strategy", strategy)
     try:
-        return float(v) if v else 0.0
+        return float(v) if v else 0.0 # type: ignore
     except Exception:
         return 0.0
 
 def _used_by_symbol(symbol: str) -> float:
     v = r.hget("risk:used_by_symbol", symbol)
     try:
-        return float(v) if v else 0.0
+        return float(v) if v else 0.0 # type: ignore
     except Exception:
         return 0.0
 
@@ -106,7 +106,7 @@ def _orders_per_min(strategy: str) -> int:
     now = _now_ms()
     window_ms = 60_000
     r.zremrangebyscore(key, 0, now - window_ms)
-    return r.zcard(key)
+    return r.zcard(key) # type: ignore
 
 def _touch_rate(strategy: str) -> None:
     key = f"risk:orders_rate:{strategy}"
@@ -115,11 +115,11 @@ def _touch_rate(strategy: str) -> None:
 
 def _daily_loss_total() -> float:
     v = r.get("pnl:day_total")
-    return _json_get_float(v, "total", 0.0) if v else 0.0
+    return _json_get_float(v, "total", 0.0) if v else 0.0 # type: ignore
 
 def _daily_loss_strategy(strategy: str) -> float:
     v = r.get(f"pnl:day_strategy:{strategy}")
-    return _json_get_float(v, "total", 0.0) if v else 0.0
+    return _json_get_float(v, "total", 0.0) if v else 0.0 # type: ignore
 
 def _disabled(reason_key: str) -> bool:
     v = r.get(reason_key)

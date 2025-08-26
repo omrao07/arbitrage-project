@@ -1,0 +1,94 @@
+# backend/config/rbi.yaml
+# Reserve Bank of India (RBI) data ingestion + mapping
+
+sources:
+  policy_rates:
+    enabled: true
+    url: "https://rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx"   # Official press releases
+    scrape: true
+    fields:
+      - "repo_rate"
+      - "reverse_repo_rate"
+      - "mclr"
+    update_interval_days: 7
+
+  liquidity_operations:
+    enabled: true
+    url: "https://rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx"
+    scrape: true
+    fields:
+      - "OMO_purchases"
+      - "OMO_sales"
+      - "net_liquidity_injection"
+    update_interval_days: 7
+
+  fx_reserves:
+    enabled: true
+    url: "https://rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx"
+    scrape: true
+    fields:
+      - "forex_reserves_usd_bn"
+      - "gold_reserves_usd_bn"
+    update_interval_days: 7
+
+  inflation:
+    enabled: false   # typically pulled from MOSPI, toggle if integrated here
+    url: "https://rbi.org.in/"
+    scrape: true
+    fields:
+      - "cpi_yoy"
+      - "wpi_yoy"
+    update_interval_days: 30
+
+  speeches:
+    enabled: true
+    url: "https://rbi.org.in/Scripts/BS_Speeches.aspx"
+    scrape: true
+    fields:
+      - "governor_speech"
+      - "deputy_governor_speech"
+    update_interval_days: 30
+
+  bulletins:
+    enabled: true
+    url: "https://rbi.org.in/Scripts/BS_ViewBulletin.aspx"
+    scrape: true
+    fields:
+      - "monthly_bulletin"
+      - "state_of_economy"
+    update_interval_days: 30
+
+normalization:
+  signal_schema:
+    - name: "repo_rate"
+      alias: "RBI.repo"
+      unit: "%"
+    - name: "reverse_repo_rate"
+      alias: "RBI.reverse_repo"
+      unit: "%"
+    - name: "mclr"
+      alias: "RBI.mclr"
+      unit: "%"
+    - name: "forex_reserves_usd_bn"
+      alias: "RBI.fx_reserves"
+      unit: "USD bn"
+    - name: "gold_reserves_usd_bn"
+      alias: "RBI.gold_reserves"
+      unit: "USD bn"
+    - name: "cpi_yoy"
+      alias: "IN.cpi_yoy"
+      unit: "%"
+    - name: "wpi_yoy"
+      alias: "IN.wpi_yoy"
+      unit: "%"
+
+publish:
+  stream: "STREAM_RBI"
+  bus_key_prefix: "rbi."
+  output_scale: native
+
+update_policy:
+  # cron-style: every Friday 20:00 IST
+  cron: "0 20 * * FRI"
+  tz: "Asia/Kolkata"
+  grace_sec: 600

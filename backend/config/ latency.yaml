@@ -1,0 +1,88 @@
+# config/latency.yaml
+# -------------------------------------------------------------------
+# Latency profiles for venues, brokers, and adapters.
+# Used by backend/execution/latency_adapter.py
+#
+# Units are milliseconds unless specified otherwise.
+# -------------------------------------------------------------------
+
+defaults:
+  tick_to_book:   5       # ms: market data tick → local book update
+  order_send:     20      # ms: OMS → broker gateway
+  broker_ack:     10      # ms: broker ack to client
+  venue_roundtrip: 50     # ms: client → venue → client roundtrip
+  jitter_ms:      5       # ± random jitter
+  loss_prob:      0.001   # probability of message drop (sim only)
+
+venues:
+  NSE:
+    tick_to_book: 8
+    order_send: 25
+    broker_ack: 12
+    venue_roundtrip: 60
+    jitter_ms: 6
+  BSE:
+    tick_to_book: 10
+    order_send: 30
+    broker_ack: 15
+    venue_roundtrip: 70
+    jitter_ms: 8
+  NASDAQ:
+    tick_to_book: 3
+    order_send: 12
+    broker_ack: 5
+    venue_roundtrip: 35
+    jitter_ms: 3
+  NYSE:
+    tick_to_book: 4
+    order_send: 15
+    broker_ack: 6
+    venue_roundtrip: 40
+    jitter_ms: 4
+  BINANCE:
+    tick_to_book: 2
+    order_send: 10
+    broker_ack: 4
+    venue_roundtrip: 25
+    jitter_ms: 2
+
+brokers:
+  zerodha:
+    adapter: "zerodha"
+    base_latency: 40
+    jitter_ms: 5
+  ibkr:
+    adapter: "ibkr"
+    base_latency: 35
+    jitter_ms: 4
+  paper:
+    adapter: "paper"
+    base_latency: 10
+    jitter_ms: 1
+
+paths:
+  # Specific path overrides (adapter → venue)
+  - adapter: "ibkr"
+    venue: "NASDAQ"
+    order_send: 18
+    venue_roundtrip: 45
+  - adapter: "zerodha"
+    venue: "NSE"
+    order_send: 28
+    venue_roundtrip: 65
+  - adapter: "binance"
+    venue: "BINANCE"
+    order_send: 12
+    venue_roundtrip: 30
+
+simulation:
+  # Additional knobs for stress testing
+  random_seed: 42
+  burst_mode:
+    enabled: true
+    spike_ms: 200
+    prob: 0.01   # probability of spike per message
+  outage:
+    enabled: false
+    duration_ms: 5000
+    prob: 0.0001

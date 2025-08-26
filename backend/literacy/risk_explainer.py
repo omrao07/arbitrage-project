@@ -120,7 +120,7 @@ def explain(
 
     # Leverage inference if not provided
     if leverage is None and exposures and isinstance(exposures.get("gross"), (int, float)):
-        leverage = float(exposures["gross"])
+        leverage = float(exposures["gross"]) # type: ignore
     lev = float(leverage or 1.0)
 
     # Concentration check (region + sector)

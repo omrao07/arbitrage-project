@@ -1,0 +1,36 @@
+{
+  "name": "flash_crash",
+  "description": "Sudden intraday equity crash, extreme but short-lived risk spike, rapid rebound.",
+  "overrides": {
+    "horizon_days": 15,
+    "dt_days": 0.25,
+    "init_regime": 0
+  },
+  "timeline": [
+    {
+      "steps": 4,
+      "regime": "expansion",
+      "add_shocks": [
+        { "key": "global", "risk_z_jump": 4.0, "liq_z_jump": -2.0, "step": 2, "name": "flash_crash_spike" }
+      ]
+    },
+    {
+      "steps": 2,
+      "regime": "crisis"
+    },
+    {
+      "steps": 4,
+      "regime": "slowdown",
+      "add_shocks": [
+        { "key": "fed", "delta_bps": -25, "step": 1, "name": "mini_stabilization_cut" }
+      ]
+    },
+    {
+      "steps": 5,
+      "regime": "expansion"
+    }
+  ],
+  "notes": {
+    "story": "Equities gap down violently in a single day, liquidity dries up, Fed reassures with symbolic cut, markets normalize quickly."
+  }
+}

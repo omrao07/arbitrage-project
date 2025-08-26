@@ -38,7 +38,7 @@ from typing import Any, Dict, List, Optional
 
 # Optional type import; works without news module too.
 try:
-    from backend.ingestion.news.news_base import NewsEvent
+    from backend.ingestion.news.news_base import NewsEvent # type: ignore
 except Exception:
     @dataclass
     class NewsEvent:  # minimal stub
@@ -260,7 +260,7 @@ class LearningMode:
             if s is None and hasattr(ev, "score"):
                 s = getattr(ev, "score")
             try:
-                score = float(s)
+                score = float(s) # type: ignore
             except Exception:
                 score = 0.0
 

@@ -1,0 +1,56 @@
+# Volatility Surface Config
+# Used by vol_surface.py, fit_vol_surface.py, and option chain dashboards
+
+underlyings:
+  - symbol: AAPL
+    currency: USD
+    spot: 225.0
+    risk_free_rate: 0.045     # annualized risk-free rate
+    dividend_yield: 0.005
+  - symbol: RELIANCE.NS
+    currency: INR
+    spot: 2950.0
+    risk_free_rate: 0.068
+    dividend_yield: 0.012
+
+surface_model:
+  type: SABR                  # {SABR, Heston, SVI, Polynomial, LocalVol}
+  params:
+    alpha: 0.25               # initial volatility level
+    beta: 0.9                 # elasticity (0=normal, 1=lognormal)
+    rho: -0.2                 # correlation
+    nu: 0.5                   # vol-of-vol
+
+grid:
+  tenors: [7d, 14d, 30d, 60d, 90d, 180d, 1y]
+  moneyness: [0.8, 0.9, 1.0, 1.1, 1.2]
+
+interpolation:
+  method: bicubic             # {linear, spline, bicubic, kriging}
+  extrapolation: flat         # {flat, linear, nearest}
+
+calibration:
+  method: least_squares       # {least_squares, mle, gradient_descent}
+  optimizer:
+    max_iter: 500
+    tolerance: 1e-6
+  constraints:
+    vol_min: 0.01
+    vol_max: 2.0
+
+stress_tests:
+  - name: Vol Spike
+    description: "Shock all vols +25%"
+    shock: 1.25
+  - name: Vol Collapse
+    description: "Shock all vols -30%"
+    shock: 0.70
+
+reporting:
+  metrics:
+    - implied_vol
+    - skew
+    - term_structure
+    - smile
+  output: "reports/vol_surface.json"
+  plot: "reports/vol_surface.png"

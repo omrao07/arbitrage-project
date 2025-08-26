@@ -1,0 +1,96 @@
+# Governor Configuration
+# Controls central bank, sovereign, and policy response simulations
+
+meta:
+  version: 1.0
+  description: >
+    Policy and central bank settings for systemic stress simulation,
+    liquidity injection, sovereign guarantees, and rate policy rules.
+
+institutions:
+  - name: Federal Reserve
+    country: US
+    currency: USD
+    base_rate: 0.0525       # current policy rate
+    inflation_target: 0.02
+    balance_sheet_trillion: 8.5
+    toolkit:
+      - rate_hike
+      - qe
+      - liquidity_injection
+      - swap_lines
+  - name: Reserve Bank of India
+    country: IN
+    currency: INR
+    base_rate: 0.065
+    inflation_target: 0.04
+    balance_sheet_trillion: 0.9
+    toolkit:
+      - rate_cut
+      - liquidity_injection
+      - macroprudential_controls
+  - name: ECB
+    country: EU
+    currency: EUR
+    base_rate: 0.0375
+    inflation_target: 0.02
+    balance_sheet_trillion: 7.0
+    toolkit:
+      - rate_hike
+      - qe
+      - targeted_lending
+
+policy_rules:
+  taylor_rule:
+    description: >
+      Adjust rates as function of inflation gap and output gap.
+    weight_inflation: 1.5
+    weight_output: 0.5
+  qe_triggers:
+    equity_drawdown_pct: 25
+    credit_spread_bps: 300
+    unemployment_threshold_pct: 8
+  fx_intervention:
+    usd_inr: [80, 95]      # intervention corridor
+    eur_usd: [0.9, 1.2]
+
+scenarios:
+  - name: Inflation Shock
+    description: "Supply shock → CPI spikes +7%"
+    shocks:
+      inflation: 0.07
+      growth: -0.02
+    expected_actions:
+      - rate_hike
+      - fx_intervention
+
+  - name: Banking Crisis
+    description: "Multiple bank failures, contagion, liquidity freeze"
+    shocks:
+      bank_defaults: 5
+      funding_cost_bps: 400
+      credit_spread_bps: 500
+    expected_actions:
+      - liquidity_injection
+      - qe
+      - guarantees
+
+  - name: Sovereign Crisis
+    description: "Eurozone sovereign spreads blow out, default risk"
+    shocks:
+      sovereign_spread_bps: 600
+      gdp_shock: -0.05
+    expected_actions:
+      - targeted_lending
+      - qe
+      - swap_lines
+
+reporting:
+  metrics:
+    - policy_rate
+    - balance_sheet_size
+    - inflation
+    - gdp_growth
+    - unemployment
+  output: "reports/governor_policy.json"
+  plot: "reports/governor_policy.png"

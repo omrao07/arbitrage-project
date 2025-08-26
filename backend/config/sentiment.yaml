@@ -1,0 +1,58 @@
+# backend/config/sentiment.yaml
+# Config for social sentiment ingestion and scoring.
+# Each source can be toggled, with its own API keys/params.
+# All results are normalized into STREAM_ALT_SIGNALS.
+
+sources:
+  reddit:
+    enabled: true
+    client_id: "${REDDIT_CLIENT_ID}"
+    client_secret: "${REDDIT_CLIENT_SECRET}"
+    user_agent: "hedgefundx-bot/0.1"
+    subreddits:
+      - "wallstreetbets"
+      - "stocks"
+      - "cryptocurrency"
+    limit: 100      # posts per scrape
+
+  twitter:   # (X API)
+    enabled: true
+    bearer_token: "${X_BEARER_TOKEN}"
+    queries:
+      - "TSLA"
+      - "AAPL"
+      - "BTC"
+    lang: "en"
+    max_results: 50
+
+  tiktok:
+    enabled: false
+    api_key: "${TIKTOK_API_KEY}"   # if you get access
+    hashtags:
+      - "stockmarket"
+      - "crypto"
+      - "trading"
+
+  discord:
+    enabled: false
+    bot_token: "${DISCORD_BOT_TOKEN}"
+    servers:
+      - id: "1234567890"
+        channels:
+          - "markets"
+          - "crypto"
+
+scoring:
+  model: "finbert"     # finbert | textblob | transformers/custom
+  use_transformers: true
+  cache_results: true
+  output_scale: [-1, 1]  # normalized sentiment range
+
+normalization:
+  update_interval_sec: 300    # run every 5 minutes
+  signal_schema:
+    - name: "source"          # reddit / twitter / etc
+    - name: "symbol"          # mapped ticker/crypto
+    - name: "timestamp"
+    - name: "sentiment"       # float -1 to 1
+    - name: "confidence"      # optional ML confidence

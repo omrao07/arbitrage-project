@@ -1,0 +1,132 @@
+# specs/examples.yaml
+# -------------------------------------------------------------------
+# SPECIFICATION EXAMPLES for arbitrage project configs.
+# This file is a reference only. Copy relevant blocks into:
+#   backend/config/altdata.yaml
+#   backend/config/sentiment.yaml
+#   backend/config/venues.yaml
+#   backend/config/cost_model.yaml
+#   backend/config/router.yaml
+# -------------------------------------------------------------------
+
+# -------------------------------
+# ALT-DATA SOURCES SPEC
+# -------------------------------
+altdata:
+  sources:
+    starlink:
+      enabled: true              # bool: collect Starlink metrics
+      provider: "starlink_demo"  # str: provider name or API key
+      regions:                   # list of region dicts
+        - name: "US"
+        - name: "EU"
+        - name: "IN"
+      metrics:                   # list[str]: metric ids
+        - latency_ms
+        - packet_loss_pct
+        - throughput_mbps
+        - active_terminals
+
+    fiber:
+      enabled: true
+      provider: "fiber_demo"
+      regions:
+        - name: "US"
+          asns: ["AS15169","AS7922"]   # list of ASN strings
+          ixps: ["DE-CIX"]             # list of IXPs
+      metrics:
+        - latency_ms
+        - packet_loss_pct
+        - throughput_mbps
+        - outages
+        - peering_congestion
+        - route_changes
+
+    satellites:
+      enabled: false
+      provider: "esa"                  # e.g., ESA / NASA
+      regions: []
+      metrics: ["ndvi","nightlights"]
+
+    climate:
+      enabled: true
+      provider: "ecmwf_demo"
+      regions:
+        - name: "GLOBAL"
+      metrics:
+        - temp_anomaly_c
+        - precip_anomaly_mm
+        - hurricane_count
+
+# -------------------------------
+# SENTIMENT / SOCIAL SPEC
+# -------------------------------
+sentiment:
+  sources:
+    reddit:
+      enabled: true
+      subreddits: ["wallstreetbets","stocks"]  # list[str]
+      symbols: ["AAPL","TSLA"]                 # track tickers
+
+    x:
+      enabled: true
+      bearer_token: "${X_BEARER_TOKEN}"        # env var string
+      queries: ["BTC","ETH"]
+      max_results: 30
+      symbols: ["BTC","ETH"]
+
+    tiktok:
+      enabled: false
+      hashtags: ["#crypto","#stocks"]
+
+    discord:
+      enabled: false
+      servers: ["fintech"]
+
+# -------------------------------
+# VENUES / ADAPTERS SPEC
+# -------------------------------
+venues:
+  - id: "BINANCE"                  # str: unique venue id
+    name: "Binance"                # str: human name
+    type: "crypto"                 # str: equities|crypto|futures
+    region: "SG"
+    base_currency: "USDT"
+    maker_fee_bps: 0.1             # float: basis points
+    taker_fee_bps: 0.1
+    min_order_size: 10.0
+    max_order_size: 10000000.0
+    avg_latency_ms: 80
+    adapter: "plugins.exec.ccxt:BinanceAdapter" # optional dotted path
+
+  - id: "NYSE"
+    name: "New York Stock Exchange"
+    type: "equities"
+    region: "US"
+    base_currency: "USD"
+    maker_fee_bps: 0.5
+    taker_fee_bps: 1.0
+    min_order_size: 100.0
+    max_order_size: 1000000.0
+    avg_latency_ms: 20
+
+routing:
+  default_strategy: "min_cost_latency"
+
+# -------------------------------
+# COST MODEL SPEC
+# -------------------------------
+cost_model:
+  spread_bps_fallback: 8           # int: fallback spread bps
+  impact_coeff: 0.0009             # float: sqrt impact coefficient
+  impact_vol_dollars: 5000000      # float: daily $ volume baseline
+  latency_bps_per_100ms: 0.6       # float: adverse selection drift
+
+# -------------------------------
+# ROUTER SPEC
+# -------------------------------
+router:
+  topk: 2                          # int: split across best K venues
+  min_child_notional: 5000         # float: USD min child size
+  max_slippage_bps: 50             # int: guardrail slippage
+  dry_run: true                    # bool: simulate only

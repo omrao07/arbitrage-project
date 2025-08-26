@@ -1,0 +1,88 @@
+# backend/config/ecb.yaml
+# European Central Bank (ECB) data ingestion + mapping
+
+sources:
+  policy_rates:
+    enabled: true
+    url: "https://www.ecb.europa.eu/stats/policy_and_exchange_rates/key_ecb_interest_rates/html/index.en.html"
+    scrape: true
+    fields:
+      - "main_refi_rate"
+      - "deposit_facility_rate"
+      - "marginal_lending_rate"
+    update_interval_days: 7
+
+  balance_sheet:
+    enabled: true
+    url: "https://www.ecb.europa.eu/press/pr/wfs/html/index.en.html"
+    scrape: true
+    fields:
+      - "assets_total_eur_bn"
+      - "securities_marked_eur_bn"
+      - "ltro_outstanding_eur_bn"
+    update_interval_days: 7
+
+  inflation_expectations:
+    enabled: true
+    url: "https://www.ecb.europa.eu/stats/ecb_surveys/survey_of_professional_forecasters/html/index.en.html"
+    scrape: true
+    fields:
+      - "spf_cpi_next_year"
+      - "spf_gdp_growth_next_year"
+    update_interval_days: 90
+
+  speeches:
+    enabled: true
+    url: "https://www.ecb.europa.eu/press/key/html/index.en.html"
+    scrape: true
+    fields:
+      - "president_speech"
+      - "executive_board_speech"
+    update_interval_days: 30
+
+  bulletins:
+    enabled: true
+    url: "https://www.ecb.europa.eu/pub/economic-bulletin/html/index.en.html"
+    scrape: true
+    fields:
+      - "economic_bulletin"
+      - "monetary_policy_account"
+    update_interval_days: 30
+
+normalization:
+  signal_schema:
+    - name: "main_refi_rate"
+      alias: "ECB.main_refi"
+      unit: "%"
+    - name: "deposit_facility_rate"
+      alias: "ECB.deposit"
+      unit: "%"
+    - name: "marginal_lending_rate"
+      alias: "ECB.marginal_lending"
+      unit: "%"
+    - name: "assets_total_eur_bn"
+      alias: "ECB.assets_total"
+      unit: "EUR bn"
+    - name: "securities_marked_eur_bn"
+      alias: "ECB.securities"
+      unit: "EUR bn"
+    - name: "ltro_outstanding_eur_bn"
+      alias: "ECB.ltro"
+      unit: "EUR bn"
+    - name: "spf_cpi_next_year"
+      alias: "ECB.spf_cpi_fwd"
+      unit: "%"
+    - name: "spf_gdp_growth_next_year"
+      alias: "ECB.spf_gdp_fwd"
+      unit: "%"
+
+publish:
+  stream: "STREAM_ECB"
+  bus_key_prefix: "ecb."
+  output_scale: native
+
+update_policy:
+  # cron-style: Thursdays at 14:30 CET (typical ECB press release window)
+  cron: "30 14 * * THU"
+  tz: "Europe/Brussels"
+  grace_sec: 600

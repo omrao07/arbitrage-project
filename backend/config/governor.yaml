@@ -1,0 +1,96 @@
+# config/governor.yaml
+# -------------------------------------------------------------------
+# Governor Policy Configuration
+# Oversees capital, risk, compliance, hedging & escalation
+# Hooks into: backend/risk/governor.py
+# -------------------------------------------------------------------
+
+meta:
+  base_ccy: "USD"
+  asof: "auto"
+  description: "Governor config: command-and-control ruleset"
+
+risk_controls:
+  var:
+    firm_limit_pct_nav: 0.035     # 3.5% 1-day 99% VaR
+    per_strategy_pct_nav:
+      alpha.meanrev: 0.008
+      alpha.momentum: 0.012
+      statarb.pairs: 0.010
+      hrp.portfolio: 0.006
+  expected_shortfall:
+    firm_limit_pct_nav: 0.045
+  drawdown_ladder:
+    - trigger: 0.05
+      actions: ["reduce_gross:0.2", "halt_new_risk:true"]
+    - trigger: 0.10
+      actions: ["reduce_gross:0.4", "cut_worst_5:true", "board_notify:true"]
+    - trigger: 0.15
+      actions: ["reduce_gross:0.6", "close_core:true", "investor_update:true"]
+    - trigger: 0.20
+      actions: ["risk_freeze:true", "cap_raise_plan:true", "gate_redemptions:true"]
+
+leverage_limits:
+  gross: 3.0
+  net: 1.2
+  per_strategy:
+    alpha.meanrev: 1.0
+    alpha.momentum: 1.5
+    statarb.pairs: 1.8
+    hrp.portfolio: 0.8
+
+liquidity_limits:
+  horizon_days: 5
+  min_cash_pct_nav: 0.10
+  min_treasury_pct_nav: 0.05
+  max_illiquid_pct_nav: 0.20
+
+hedging_policy:
+  beta_neutral:
+    enabled: true
+    benchmark: "SPX"
+    tolerance_abs: 0.10
+  tail_hedge:
+    enabled: true
+    triggers:
+      vix_z_above: 2.0
+      credit_spread_z_above: 1.5
+      mood_index_below: -0.35
+    actions:
+      - "buy_put_spread:SPX,notional_pct_nav=0.5"
+      - "buy_gamma:front_month,notional_pct_nav=0.3"
+
+integration:
+  mood_index:
+    enabled: true
+    slope: 0.5           # risk_mult = 1 + slope * mmi
+    bounds: [0.5, 1.5]
+  regime_map:
+    enabled: true
+    overrides:
+      if_quadrant: "Stagflation"
+      actions: ["reduce_gross:0.25", "tilt_to_value:true"]
+
+escalation:
+  approvals_required:
+    reduce_gross_above: 0.40   # CIO + Risk Chair approval needed
+    risk_freeze: true
+  board_notify_threshold_dd: 0.10
+  investor_update_threshold_dd: 0.15
+
+compliance:
+  banned_symbols: ["XYZ123", "ILLEGAL.STOCK"]
+  max_position_notional_usd: 2_000_000
+  max_position_pct_nav: 0.05
+  restricted_regions: ["IRAN", "NORTH_KOREA"]
+
+reporting:
+  publish_streams:
+    - "governor.events"
+    - "risk.limits"
+    - "hedge.actions"
+  email_on:
+    var_breach: true
+    es_breach: true
+    dd_ladder_trigger: true
+    compliance_breach: true

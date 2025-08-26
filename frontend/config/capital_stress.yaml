@@ -1,0 +1,88 @@
+# Capital Stress Test Scenarios
+# Used by bank_stress.py, stress_attribution.py, crisis_theatre.py
+
+meta:
+  version: 1.0
+  description: >
+    Models capital adequacy shocks (Basel III/IV), buffer breaches,
+    and systemic scenarios for portfolio + banking system.
+
+defaults:
+  horizon_days: 90
+  confidence: 0.99
+  capital_min_ratio: 8.0        # Basel III minimum CET1 ratio
+  tier1_min_ratio: 6.0
+  leverage_ratio_min: 3.0
+
+buffers:
+  - name: conservation_buffer
+    pct: 2.5
+  - name: countercyclical_buffer
+    pct: 1.0
+  - name: systemic_buffer
+    pct: 1.5
+
+scenarios:
+  - name: Credit Shock
+    description: "Corporate defaults surge, NPL increase"
+    shocks:
+      npl_increase_pct: 10
+      loss_given_default_pct: 55
+      rwa_increase_pct: 8
+      retained_earnings_hit_pct: 25
+    triggers:
+      breach_if_cet1_below: 7.0
+
+  - name: Market Shock
+    description: "Equity + bond market crash → mark-to-market hits"
+    shocks:
+      equity_price_drop_pct: 30
+      bond_price_drop_pct: 12
+      trading_book_loss_pct: 15
+      rwa_increase_pct: 5
+    triggers:
+      breach_if_tier1_below: 5.0
+
+  - name: Sovereign Stress
+    description: "Major sovereign default impacts bank capital"
+    shocks:
+      sovereign_bond_haircut_pct: 35
+      funding_cost_bps: 250
+      liquidity_buffer_draw_pct: 30
+    triggers:
+      breach_if_cet1_below: 6.0
+      breach_if_leverage_below: 2.5
+
+  - name: Global Recession
+    description: "GDP contraction, unemployment spike"
+    shocks:
+      gdp_contraction_pct: 4
+      unemployment_rate_increase_pct: 3
+      credit_losses_pct_nav: 15
+      rwa_increase_pct: 10
+    triggers:
+      breach_if_cet1_below: 5.5
+
+  - name: Liquidity Spiral + Contagion
+    description: "Funding freeze, interbank contagion, systemic shock"
+    shocks:
+      interbank_rate_bps: 400
+      deposit_outflow_pct: 18
+      cross_exposure_loss_pct: 10
+      liquidity_buffer_draw_pct: 50
+    triggers:
+      breach_if_cet1_below: 5.0
+      breach_if_lcr_below: 90
+
+reporting:
+  metrics:
+    - cet1_ratio
+    - tier1_ratio
+    - leverage_ratio
+    - rwa
+    - capital_buffer_usage
+    - liquidity_coverage_ratio
+    - stressed_var
+    - pnl
+  output: "reports/capital_stress.json"
+  plot: "reports/capital_stress.png"

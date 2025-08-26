@@ -1,0 +1,87 @@
+# Sovereign Risk Configuration
+# Used by sovereign.py, sovereign_adapter.py, bank_stress.py
+
+meta:
+  version: 1.0
+  description: >
+    Defines sovereign bond markets, spreads, and default stress scenarios
+    for contagion graph + systemic risk simulations.
+
+countries:
+  - name: United States
+    iso: US
+    currency: USD
+    debt_to_gdp: 125
+    ratings: [AAA, AA+]
+    curve:
+      1y: 0.052
+      2y: 0.049
+      5y: 0.046
+      10y: 0.045
+      30y: 0.047
+    cds_spread_bps: 30
+    default_prob_1y: 0.001
+
+  - name: India
+    iso: IN
+    currency: INR
+    debt_to_gdp: 82
+    ratings: [BBB-, BB+]
+    curve:
+      1y: 0.068
+      2y: 0.071
+      5y: 0.074
+      10y: 0.075
+      30y: 0.078
+    cds_spread_bps: 160
+    default_prob_1y: 0.015
+
+  - name: Italy
+    iso: IT
+    currency: EUR
+    debt_to_gdp: 145
+    ratings: [BBB, BBB-]
+    curve:
+      1y: 0.041
+      2y: 0.042
+      5y: 0.045
+      10y: 0.049
+      30y: 0.052
+    cds_spread_bps: 210
+    default_prob_1y: 0.025
+
+scenarios:
+  - name: Mild Spread Widening
+    description: "Sovereign bond spreads widen by 100 bps"
+    shocks:
+      cds_spread_bps: +100
+      yields_shift_bps: +80
+
+  - name: Sovereign Default
+    description: "One sovereign defaults outright → haircut on bonds"
+    shocks:
+      default_event: true
+      haircut_pct: 45
+
+  - name: Contagion Event
+    description: "Italy default → spread widening across EU periphery"
+    shocks:
+      default_event: true
+      impacted_countries: [IT, ES, PT, GR]
+      spread_widening_bps: 350
+
+  - name: Global Risk-Off
+    description: "Flight to safety → EM spreads + developed rally"
+    shocks:
+      em_spreads_bps: +400
+      developed_yields_shift_bps: -50
+      usd_fx_appreciation_pct: 10
+
+reporting:
+  metrics:
+    - cds_spread
+    - default_prob
+    - yield_curve
+    - contagion_links
+  output: "reports/sovereign_results.json"
+  plot: "reports/sovereign_stress.png"

@@ -1,0 +1,132 @@
+# Rivals / Competitors Configuration
+# Used by competitors.py, competitor_ai.py, swarm_manager.py
+
+meta:
+  version: 1.0
+  description: >
+    Defines peer institutions, hedge funds, sovereign wealth funds, and AI rivals
+    with their strategies, assets, and behavioral profiles.
+
+entities:
+
+  - name: BlackRock
+    type: asset_manager
+    region: global
+    aum_trillion: 9.5
+    strategies: [etf_flow, factor_models, esg_overlay]
+    aggressiveness: low
+    reaction_lag_minutes: 30
+    info_sources: [bloomberg, reuters]
+    rival_score: 0.7
+
+  - name: Citadel Securities
+    type: hedge_fund
+    region: US
+    aum_billion: 62
+    strategies: [market_making, stat_arb, options_mm]
+    aggressiveness: high
+    reaction_lag_minutes: 5
+    info_sources: [exchange_feed, dark_pool]
+    rival_score: 0.9
+
+  - name: Renaissance Technologies
+    type: hedge_fund
+    region: US
+    aum_billion: 55
+    strategies: [quant_macro, stat_arb, altdata]
+    aggressiveness: medium
+    reaction_lag_minutes: 10
+    info_sources: [altdata, web_scrape]
+    rival_score: 0.95
+
+  - name: Bridgewater Associates
+    type: hedge_fund
+    region: global
+    aum_billion: 125
+    strategies: [macro, pure_alpha, risk_parity]
+    aggressiveness: medium
+    reaction_lag_minutes: 20
+    info_sources: [macro_data, central_bank]
+    rival_score: 0.85
+
+  - name: GIC
+    type: sovereign_wealth
+    region: SG
+    aum_billion: 750
+    strategies: [long_term, real_assets, private_equity]
+    aggressiveness: low
+    reaction_lag_minutes: 120
+    info_sources: [imf, world_bank]
+    rival_score: 0.6
+
+  - name: Adversary_AI
+    type: ai_agent
+    region: global
+    aum_billion: 999
+    strategies: [latency_sniping, adversarial_trading, dark_pool_exploit]
+    aggressiveness: extreme
+    reaction_lag_minutes: 0
+    info_sources: [direct_feed, spoof_detection]
+    rival_score: 1.0
+
+attributes:
+  aggressiveness:
+    low:
+      order_size_multiplier: 0.5
+      latency_ms: 300
+      bluff_prob: 0.05
+    medium:
+      order_size_multiplier: 1.0
+      latency_ms: 150
+      bluff_prob: 0.15
+    high:
+      order_size_multiplier: 2.0
+      latency_ms: 50
+      bluff_prob: 0.3
+    extreme:
+      order_size_multiplier: 5.0
+      latency_ms: 10
+      bluff_prob: 0.5
+
+scenarios:
+  - name: ETF_Flow_Shock
+    description: "BlackRock ETF rebalancing moves markets."
+    trigger: "end_of_quarter"
+    impacted_assets: [SPY, QQQ, RELIANCE.NS]
+    rival: BlackRock
+    aggressiveness_override: medium
+
+  - name: Options_Gamma_Squeeze
+    description: "Citadel + retail flows trigger gamma squeeze."
+    trigger: "earnings_announcement"
+    impacted_assets: [AAPL, TSLA, NIFTY.FUT]
+    rival: Citadel Securities
+    aggressiveness_override: extreme
+
+  - name: Quant_AltData_Dominance
+    description: "Renaissance exploits alternative data edge."
+    trigger: "altdata_spike"
+    impacted_assets: [AMZN, INFY.NS, BTCUSDT]
+    rival: Renaissance Technologies
+
+  - name: Macro_Regime_Shift
+    description: "Bridgewater Pure Alpha triggers cross-asset shock."
+    trigger: "macro_shock"
+    impacted_assets: [BONDS.US10Y, EURUSD, GOLD]
+    rival: Bridgewater Associates
+
+  - name: AI_Adversary_Attack
+    description: "Adversary AI overloads dark pools and latency paths."
+    trigger: "market_open"
+    impacted_assets: [BTCUSDT, NIFTY.FUT, AAPL]
+    rival: Adversary_AI
+    aggressiveness_override: extreme
+
+reporting:
+  metrics:
+    - rival_score
+    - aggressiveness
+    - impact_assets
+    - latency_ms
+  output: "reports/rivals.json"
+  plot: "reports/rivals.png"

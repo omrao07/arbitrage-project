@@ -1,0 +1,110 @@
+# Market Microstructure Configuration
+# Used by limit_order_book.py, liquidity_surface.py, router.py, cost_model.py
+
+meta:
+  version: 1.0
+  description: >
+    Defines microstructure parameters: spreads, depth, resiliency,
+    and execution cost calibrations across venues & asset classes.
+
+venues:
+  - name: NASDAQ
+    region: US
+    tick_size: 0.01
+    lot_size: 1
+    trading_hours: "09:30-16:00"
+    avg_spread_bps: 3
+    avg_depth_lots: 500
+    resiliency_ms: 150        # how quickly depth refills after trades
+  - name: NSE
+    region: IN
+    tick_size: 0.05
+    lot_size: 1
+    trading_hours: "09:15-15:30"
+    avg_spread_bps: 5
+    avg_depth_lots: 300
+    resiliency_ms: 250
+  - name: Binance
+    region: Global
+    tick_size: 0.01
+    lot_size: 0.001
+    trading_hours: "24x7"
+    avg_spread_bps: 8
+    avg_depth_lots: 800
+    resiliency_ms: 100
+
+order_book:
+  depth_levels: 10
+  snapshot_frequency_ms: 500
+  fields: [bid_px, ask_px, bid_qty, ask_qty]
+  imbalance_metric: order_imbalance      # (bid_qty - ask_qty) / (bid_qty + ask_qty)
+  trade_impact_calc: mid_price_slippage  # used in cost_model.py
+
+impact_models:
+  - name: square_root
+    formula: "impact_bps = k * sqrt(pov_pct)"
+    params:
+      k: 12.0
+  - name: linear
+    formula: "impact_bps = alpha * pov_pct"
+    params:
+      alpha: 0.8
+  - name: power_law
+    formula: "impact_bps = k * (pov_pct ^ beta)"
+    params:
+      k: 10.0
+      beta: 0.6
+
+execution_costs:
+  half_spread_bps: true
+  market_impact_bps: true
+  timing_risk:
+    model: variance_of_returns
+    horizon_s: [10, 60, 300]
+
+stress_regimes:
+  calm:
+    spread_multiplier: 0.8
+    depth_multiplier: 1.2
+    resiliency_ms: 120
+  normal:
+    spread_multiplier: 1.0
+    depth_multiplier: 1.0
+    resiliency_ms: 200
+  volatile:
+    spread_multiplier: 1.5
+    depth_multiplier: 0.7
+    resiliency_ms: 400
+  crisis:
+    spread_multiplier: 2.5
+    depth_multiplier: 0.4
+    resiliency_ms: 1000
+
+router_rules:
+  pov_cap_pct: 20               # cap % of volume participation
+  max_order_size_lots: 5000
+  min_child_order_size_lots: 10
+  slicing_horizons_s: [1, 5, 15, 60]
+  venue_priority: [NSE, NASDAQ, Binance]
+
+metrics:
+  publish_streams:
+    - microstructure.metrics
+    - liquidity.surface
+  track:
+    - spread_bps
+    - depth_lots
+    - resiliency_ms
+    - order_imbalance
+    - realized_impact_bps
+
+reporting:
+  backtest_window_days: 14
+  acceptance:
+    max_mape_pct: 25
+    max_bias_bps: 3
+  output: "reports/microstructure.json"
+  plots:
+    - spread_histogram
+    - depth_profile
+    - impact_vs_pov

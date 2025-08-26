@@ -1,0 +1,211 @@
+# config/liquidity_surface.yaml
+# -------------------------------------------------------------------
+# Liquidity Surface / Slippage & Impact Model
+# Consumed by: backend/adapters/liquidity_adapter.py
+# Purpose:
+#   - Describe available liquidity and costs across venues/symbols
+#   - Provide coefficients for temporary & permanent impact
+#   - Encode time-of-day & volatility adjustments
+#   - Guide routers (POV/TWAP/SOR) with participation caps & urgency
+# Units: prices in instrument currency; returns as fractions (0.01 = 1%)
+# -------------------------------------------------------------------
+
+meta:
+  asof: "auto"
+  base_ccy: "USD"
+  description: "Venue- & symbol-level liquidity/impact parameters."
+
+models:
+  # Almgren–Chriss style: cost = spread_half + k * (q/V)^alpha + gamma * sign(q)
+  # q = child order size, V = expected volume in slice bucket
+  default:
+    spread_model: "half_spread"       # half_spread | custom
+    temp_impact:
+      k: 0.30           # scale
+      alpha: 0.65       # 0.5..1.0; convexity of impact vs (q/V)
+    perm_impact:
+      gamma: 0.02       # drift after execution (bps as fraction)
+    vol_scaling:
+      enabled: true
+      ref_vol_1m: 0.02  # reference daily vol (2%); scale impact ∝ (vol / ref)
+      cap: 2.0          # clamp scaling multiplier
+    min_child_notional_usd: 2_000
+    max_child_notional_usd: 250_000
+    min_slice_ms: 150
+    adverse_selection_penalty_bps: 1.5
+
+  high_touch:
+    inherit: "default"
+    temp_impact: { k: 0.22, alpha: 0.60 }
+    perm_impact: { gamma: 0.015 }
+    min_slice_ms: 400
+    adverse_selection_penalty_bps: 1.0
+
+  crypto_fast:
+    inherit: "default"
+    temp_impact: { k: 0.18, alpha: 0.55 }
+    perm_impact: { gamma: 0.010 }
+    min_child_notional_usd: 500
+    min_slice_ms: 60
+
+time_of_day:
+  # Intraday participation ceilings and volume curves by local exchange time.
+  # Buckets are [HH:MM, HH:MM) 24h local.
+  default:
+    buckets:
+      - { window: ["09:15", "09:30"], pov_cap: 0.05, vol_share: 0.03 }   # open
+      - { window: ["09:30", "11:00"], pov_cap: 0.10, vol_share: 0.17 }
+      - { window: ["11:00", "14:00"], pov_cap: 0.08, vol_share: 0.30 }
+      - { window: ["14:00", "15:15"], pov_cap: 0.12, vol_share: 0.25 }
+      - { window: ["15:15", "15:30"], pov_cap: 0.15, vol_share: 0.25 }   # close
+  us:
+    buckets:
+      - { window: ["09:30", "10:00"], pov_cap: 0.06, vol_share: 0.05 }
+      - { window: ["10:00", "12:30"], pov_cap: 0.10, vol_share: 0.30 }
+      - { window: ["12:30", "15:00"], pov_cap: 0.08, vol_share: 0.28 }
+      - { window: ["15:00", "16:00"], pov_cap: 0.12, vol_share: 0.37 }
+
+urgency_profiles:
+  # Router picks a profile → sets POV caps & slice cadence.
+  passive:
+    pov_multiplier: 0.6
+    slice_ms_multiplier: 1.5
+  normal:
+    pov_multiplier: 1.0
+    slice_ms_multiplier: 1.0
+  urgent:
+    pov_multiplier: 1.6
+    slice_ms_multiplier: 0.7
+  crisis:
+    pov_multiplier: 2.2
+    slice_ms_multiplier: 0.5
+
+venues:
+  NSE:
+    currency: "INR"
+    tz: "Asia/Kolkata"
+    model: "high_touch"
+    half_spread_bps: 3.0
+    odd_lot_allowed: false
+    lot_size_overrides:
+      RELIANCE.NS: 1
+      TCS.NS: 1
+    halt_rules:
+      auction_open_minutes: 10
+      auction_close_minutes: 10
+  BSE:
+    currency: "INR"
+    tz: "Asia/Kolkata"
+    model: "high_touch"
+    half_spread_bps: 3.5
+    odd_lot_allowed: true
+  NASDAQ:
+    currency: "USD"
+    tz: "America/New_York"
+    model: "default"
+    half_spread_bps: 0.9
+    odd_lot_allowed: true
+    dark_pool:
+      enabled: true
+      min_block_usd: 100_000
+      hit_rate: 0.25
+      price_improve_bps: 0.4
+  NYSE:
+    currency: "USD"
+    tz: "America/New_York"
+    model: "default"
+    half_spread_bps: 1.1
+    odd_lot_allowed: true
+  BINANCE:
+    currency: "USDT"
+    tz: "UTC"
+    model: "crypto_fast"
+    half_spread_bps: 0.4
+    fee_bps_taker: 7.5
+    fee_bps_maker: 1.0
+    lot_size_overrides:
+      BTCUSDT: 0.0001
+      ETHUSDT: 0.001
+
+symbols:
+  # Per-symbol overrides (if omitted: inherit venue + model defaults)
+  RELIANCE.NS:
+    venue: "NSE"
+    half_spread_bps: 2.8
+    adv_shares: 6_000_000
+    intraday_curve: "default"
+    model_overrides:
+      temp_impact: { k: 0.28, alpha: 0.62 }
+  TCS.NS:
+    venue: "NSE"
+    half_spread_bps: 3.2
+    adv_shares: 3_200_000
+    intraday_curve: "default"
+  AAPL:
+    venue: "NASDAQ"
+    half_spread_bps: 0.6
+    adv_shares: 90_000_000
+    intraday_curve: "us"
+  MSFT:
+    venue: "NASDAQ"
+    half_spread_bps: 0.6
+    adv_shares: 35_000_000
+    intraday_curve: "us"
+  BTCUSDT:
+    venue: "BINANCE"
+    half_spread_bps: 0.2
+    adv_usd: 8_000_000_000
+    model_overrides:
+      temp_impact: { k: 0.14, alpha: 0.52 }
+      min_slice_ms: 40
+
+routing:
+  # Global controls for SOR/TWAP/POV
+  pov_default: 0.10            # baseline % of real-time market volume
+  max_sweep_levels: 5          # how many book levels to sweep per slice
+  min_fill_pct_to_continue: 0.50
+  rest_if_slippage_bps_gt: 6.0
+  switch_to_dark_if:
+    enabled: true
+    min_child_notional_usd: 50_000
+    book_imbalance_ratio_gt: 2.5
+  cancel_replace_if_ms_gt: 900   # stale order refresh threshold
+  max_live_children: 6
+
+volatility_adjustments:
+  # Adjust POV caps and impact by volatility regime (z-score based).
+  vix_z:
+    thresholds:
+      calm:   { z_max: -0.5, pov_mult: 0.8, impact_mult: 0.9 }
+      normal: { z_min: -0.5, z_max: 1.0, pov_mult: 1.0, impact_mult: 1.0 }
+      high:   { z_min: 1.0, pov_mult: 1.4, impact_mult: 1.3 }
+  symbol_vol_z:
+    thresholds:
+      calm:   { z_max: -0.5, pov_mult: 0.85, impact_mult: 0.9 }
+      high:   { z_min: 1.0, pov_mult: 1.5,  impact_mult: 1.4 }
+
+risk_guards:
+  max_child_slippage_bps: 12.0
+  max_total_slippage_bps: 35.0
+  min_fill_ratio: 0.25
+  freeze_on:
+    liquidity_halt: true
+    circuit_breaker: true
+    venue_outage: true
+
+calibration:
+  # Rolling fit windows; the adapter writes realized data here and re-fits k, alpha, gamma
+  fit_lookback_days: 30
+  min_trades_for_refit: 200
+  writeback_path: "runtime/calibration/liquidity_surface_fits.json"
+  allow_symbol_backfill: true
+
+monitoring:
+  publish_streams:
+    - "exec.slippage"
+    - "exec.participation"
+    - "exec.router.decisions"
+  alerts:
+    slippage_bps_avg_gt: 8.0
+    rejection_rate_gt: 0.03
+    dark_hit_rate_lt: 0.10

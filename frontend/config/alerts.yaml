@@ -1,0 +1,323 @@
+# Alerts / Notifications Configuration
+# Consumed by alerts/engine.py and backend services
+
+meta:
+  version: 1.0
+  description: "Unified routing, throttling, and rules for price/risk/news/infra alerts."
+  environment: dev   # dev | staging | prod
+  default_timezone: Asia/Kolkata
+  quiet_hours:       # suppress non-critical alerts during these hours (local)
+    start: "22:30"   # 10:30 PM
+    end:   "06:30"   # 6:30 AM
+    allowlist_severities: ["critical"]  # still deliver these
+
+severities:
+  - name: info
+    color: "#4B5563"
+  - name: warning
+    color: "#D97706"
+  - name: critical
+    color: "#DC2626"
+
+channels:
+  email:
+    enabled: true
+    from: "alerts@hedge.local"
+    default_recipients: ["ops@hedge.local"]
+  slack:
+    enabled: true
+    webhooks:
+      ops: "https://hooks.slack.com/services/XXX/OPS"
+      risk: "https://hooks.slack.com/services/XXX/RISK"
+      devs: "https://hooks.slack.com/services/XXX/DEVS"
+  sms:
+    enabled: false
+    provider: twilio
+    from: "+10000000000"
+  webhook:
+    enabled: true
+    endpoints:
+      incident: "https://incident.local/api/v1/ingest"
+      grafana:  "https://grafana.local/api/alert"
+  in_app:
+    enabled: true   # pushes to ws_gateway.py
+
+routing:
+  # Map tags/severity to channel + recipients
+  - match:
+      tags_any: ["risk", "drawdown"]
+      severity: critical
+    send:
+      slack: ops
+      email: ["pm@hedge.local","risk@hedge.local"]
+      in_app: true
+  - match:
+      tags_any: ["latency","infra"]
+      severity: warning
+    send:
+      slack: devs
+      in_app: true
+  - match:
+      tags_any: ["news","sentiment"]
+    send:
+      in_app: true
+
+throttle:
+  # Avoid spam: per (rule_id, symbol) we enforce these limits
+  debounce_ms: 60000            # minimum spacing between repeated alerts
+  burst_limit: 5                # max alerts per rule per 5 minutes
+  window_ms: 300000
+  deduplicate_window_ms: 180000 # collapse identical payloads into one
+
+escalation:
+  # If a critical alert remains open, escalate
+  - after_minutes: 10
+    add_channels:
+      sms: ["+19998887777"]
+      email: ["cto@hedge.local"]
+  - after_minutes: 30
+    add_channels:
+      webhook: incident
+
+templates:
+  # simple handlebars-style tokens
+  default: |
+    [{{severity | upper}}] {{title}}
+    {{message}}
+
+    context: {{context_json}}
+    ts: {{ts}}
+  price: |
+    [{{severity | upper}}] Price Alert {{symbol}} @ {{px}}
+    {{message}}
+    ts: {{ts}}
+  risk: |
+    [{{severity | upper}}] Risk Breach {{metric}} {{value}} (thr {{threshold}})
+    {{message}}
+    portfolio: {{portfolio}}
+    ts: {{ts}}
+  news: |
+    [{{severity | upper}}] News {{symbol}} ({{source}})
+    {{headline}}
+    sentiment: {{sentiment}}
+    ts: {{ts}}
+
+recipients:
+  groups:
+    ops:        ["ops@hedge.local"]
+    risk_team:  ["risk@hedge.local"]
+    pm_desk:    ["pm@hedge.local"]
+    india_desk: ["india_pm@hedge.local"]
+
+# ---------- RULES ----------
+rules:
+
+  # --- Price / Market micro ---
+  - id: price_threshold_cross
+    enabled: true
+    kind: price   # handled by market data listener
+    severity: warning
+    tags: ["price","market"]
+    symbols: ["AAPL","MSFT","RELIANCE.NS","NIFTY.FUT"]
+    conditions:
+      any_of:
+        - change_pct_abs_1m_gte: 1.0         # ±1% in 1 minute
+        - change_pct_abs_5m_gte: 2.5
+    payload:
+      title: "Fast move"
+      template: price
+
+  - id: option_iv_spike
+    enabled: true
+    kind: options
+    severity: warning
+    tags: ["options","vol"]
+    symbols: ["RELIANCE.NS","BANKNIFTY.FUT"]
+    conditions:
+      all_of:
+        - iv_change_pct_30m_gte: 20
+        - moneyness_range: [0.9, 1.1]
+        - tenor_days_max: 30
+    payload:
+      title: "IV spike (≤30D, ATM±10%)"
+      template: default
+
+  # --- Risk & PnL ---
+  - id: var_breach
+    enabled: true
+    kind: risk
+    severity: critical
+    tags: ["risk","var"]
+    portfolios: ["master","india"]
+    conditions:
+      all_of:
+        - var_99_abs_gte: 0.02         # ≥ 2% of NAV
+        - exposure_notional_gte: 5e6
+    payload:
+      title: "VaR(99) breach"
+      template: risk
+      context_fields: ["var_99_abs","exposure_notional","nav"]
+
+  - id: drawdown_run
+    enabled: true
+    kind: risk
+    severity: critical
+    tags: ["risk","drawdown"]
+    portfolios: ["master","india"]
+    conditions:
+      all_of:
+        - drawdown_pct_gte: 5.0
+        - rolling_hours: 24
+    payload:
+      title: "Drawdown >=5% in 24h"
+      template: risk
+      context_fields: ["drawdown_pct","pnl_24h","beta","gross"]
+
+  - id: liquidity_cost_jump
+    enabled: true
+    kind: router
+    severity: warning
+    tags: ["liquidity","router"]
+    conditions:
+      all_of:
+        - impact_bps_ewma_increase_pct_gte: 50
+        - pov_range_pct: [5, 20]
+    payload:
+      title: "Liquidity impact ↑ 50% (POV 5–20%)"
+      template: default
+
+  # --- Latency / Infra health ---
+  - id: venue_latency_p99
+    enabled: true
+    kind: latency
+    severity: warning
+    tags: ["latency","infra"]
+    venues: ["NSE","NYSE","NASDAQ","Binance"]
+    conditions:
+      all_of:
+        - p99_ms_gte: 120
+        - consecutive_windows_gte: 3
+    payload:
+      title: "Venue latency p99 ≥ 120ms"
+      template: default
+
+  - id: adapter_error_rate
+    enabled: true
+    kind: health
+    severity: critical
+    tags: ["infra","adapters"]
+    services: ["broker_ibkr","broker_zerodha","broker_binance"]
+    conditions:
+      all_of:
+        - error_rate_pct_gte: 5
+        - window_min: 5
+    payload:
+      title: "Adapter error rate ≥5%"
+      template: default
+
+  # --- News & Sentiment (Yahoo + Moneycontrol) ---
+  - id: india_news_negative
+    enabled: true
+    kind: news
+    severity: warning
+    tags: ["news","sentiment","india"]
+    sources: ["moneycontrol","yahoo_finance"]
+    symbols: ["RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","NIFTY.FUT"]
+    conditions:
+      all_of:
+        - sentiment_model: "distilroberta-finance"   # used by sentiment_ai.py
+        - sentiment_score_lte: -0.4
+        - lookback_min: 15
+    payload:
+      title: "Negative news sentiment (IN)"
+      template: news
+      context_fields: ["headline","url","source","sentiment","summary"]
+
+  - id: breaking_news_spike
+    enabled: true
+    kind: news
+    severity: warning
+    tags: ["news","burst"]
+    conditions:
+      all_of:
+        - headlines_per_5m_gte: 20
+        - unique_sources_gte: 5
+    payload:
+      title: "Breaking news burst"
+      template: default
+
+  # --- Compliance / Reporting ---
+  - id: reg_reporting_failure
+    enabled: true
+    kind: compliance
+    severity: critical
+    tags: ["compliance","reporting"]
+    services: ["mifid_reporter","cftc_part43","sebi_otr"]
+    conditions:
+      any_of:
+        - last_success_min_gte: 30
+        - backlog_count_gte: 10
+    payload:
+      title: "Regulatory reporting stalled"
+      template: default
+
+  # --- User-defined price alerts with context notifs ---
+  - id: user_price_alert
+    enabled: true
+    kind: user_price
+    severity: info
+    tags: ["price","user"]
+    dynamic: true   # created per user/watchlist via watchlists.py
+    payload:
+      title: "User price alert"
+      template: price
+      deliver_to_in_app_only: true
+
+# ---------- FNO (Futures & Options) toggles ----------
+fno:
+  enabled: true
+  default_chain:
+    exchange: NSE
+    product: BANKNIFTY
+    strikes_window: 15      # number of strikes around ATM
+    expiries_max: 4
+  greeks_alerts:
+    delta_limit: 0.35
+    gamma_limit: 0.02
+    vega_limit:  0.10
+    theta_limit: 0.15
+    severity: warning
+
+# ---------- Persistence / State ----------
+storage:
+  engine: redis
+  redis:
+    host: localhost
+    port: 6379
+    streams:
+      alerts_out: "alerts.out"
+      alerts_open: "alerts.open"
+      alerts_snoozed: "alerts.snoozed"
+
+# ---------- Security / RBAC ----------
+rbac:
+  roles:
+    pm:
+      can_ack: true
+      can_snooze: true
+      can_edit_rules: false
+      can_set_routing: false
+    risk:
+      can_ack: true
+      can_snooze: true
+      can_edit_rules: true
+      can_set_routing: true
+    ops:
+      can_ack: true
+      can_snooze: true
+      can_edit_rules: true
+      can_set_routing: true
+  assignments:
+    pm@hedge.local: pm
+    risk@hedge.local: risk
+    ops@hedge.local: ops

@@ -1,0 +1,50 @@
+# backend/config/altdata.yaml
+# Config for alt-data sources powering Hedge Fund X.
+# Each source can be toggled independently.
+
+sources:
+  satellites:
+    enabled: true
+    provider: "nasa"            # nasa | esa | sentinelhub
+    api_key: "${SATELLITE_API_KEY}"   # from .env
+    regions:
+      - name: "us_corn_belt"
+        bbox: [-98.0, 37.0, -89.0, 43.0]   # lon/lat bounds
+        signals: ["ndvi", "soil_moisture"]
+      - name: "china_industrial"
+        bbox: [110.0, 30.0, 120.0, 40.0]
+        signals: ["nightlights"]
+
+  shipping:
+    enabled: true
+    provider: "ais"             # ais | marine_traffic
+    api_key: "${SHIPPING_API_KEY}"
+    signals:
+      - "oil_tankers"
+      - "lng_carriers"
+    regions:
+      - name: "strait_of_hormuz"
+        bbox: [55.0, 24.0, 57.0, 27.0]
+      - name: "singapore_strait"
+        bbox: [103.5, 1.0, 104.5, 1.5]
+
+  web_trends:
+    enabled: true
+    provider: "google_trends"   # google_trends | baidu_index
+    signals:
+      - query: "electric vehicles"
+        symbol: "TSLA"
+      - query: "oil prices"
+        symbol: "CL=F"
+      - query: "wheat shortage"
+        symbol: "ZW=F"
+
+# Normalize raw feeds into signals for STREAM_ALT_SIGNALS
+normalization:
+  update_interval_sec: 3600       # scrape/normalize frequency
+  signal_schema:
+    - name: "series_id"           # unique ID of signal
+    - name: "timestamp"
+    - name: "region"
+    - name: "metric"
+    - name: "value"

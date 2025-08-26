@@ -1,0 +1,45 @@
+{
+  "name": "lehman_2008",
+  "description": "Lehman Brothers collapse, systemic crisis, massive rate cuts and liquidity injections.",
+  "overrides": {
+    "horizon_days": 120,
+    "dt_days": 1.0,
+    "init_regime": 0
+  },
+  "timeline": [
+    {
+      "steps": 15,
+      "regime": "expansion",
+      "add_shocks": [
+        { "key": "global", "risk_z_jump": 2.5, "liq_z_jump": -1.0, "step": 10, "name": "lehman_bankruptcy" }
+      ]
+    },
+    {
+      "steps": 30,
+      "regime": "crisis",
+      "add_shocks": [
+        { "key": "fed", "delta_bps": -50, "step": 2, "name": "emergency_cut1" },
+        { "key": "fed", "delta_bps": -75, "step": 7, "name": "emergency_cut2" },
+        { "key": "ecb", "delta_bps": -50, "step": 10, "name": "ecb_liquidity" },
+        { "key": "global", "risk_z_jump": 3.0, "liq_z_jump": -2.0, "step": 12, "name": "systemic_panic" }
+      ]
+    },
+    {
+      "steps": 30,
+      "regime": "slowdown",
+      "add_shocks": [
+        { "key": "fed", "delta_bps": -25, "prob": 0.05, "name": "followup_cuts" }
+      ]
+    },
+    {
+      "steps": 45,
+      "regime": "slowdown",
+      "add_shocks": [
+        { "key": "global", "liq_z_jump": 1.5, "step": 5, "name": "quantitative_easing" }
+      ]
+    }
+  ],
+  "notes": {
+    "story": "Lehman bankruptcy triggers systemic crisis, cascading liquidity freeze and policy panic. Fed/ECB deliver emergency cuts, liquidity floods, QE begins as slowdown persists."
+  }
+}

@@ -1,0 +1,169 @@
+# Liquidity Surface Configuration
+# Calibrates impact/footprint cost across venues, instruments, and regimes.
+
+meta:
+  version: 1.0
+  description: "Liquidity impact, depth, and resilience surfaces for routing/TCA."
+  timezone: "Asia/Kolkata"
+
+universe:
+  # Per instrument we can calibrate separate surfaces (cash equity, futures, options).
+  - symbol: AAPL
+    venue_primary: NASDAQ
+    asset_class: equity
+    currency: USD
+  - symbol: RELIANCE.NS
+    venue_primary: NSE
+    asset_class: equity
+    currency: INR
+  - symbol: NIFTY.FUT
+    venue_primary: NSE
+    asset_class: futures
+    currency: INR
+  - symbol: BTCUSDT
+    venue_primary: Binance
+    asset_class: crypto
+    currency: USDT
+
+venues:
+  - name: NASDAQ
+    region: US
+    tick_size: 0.01
+    lot_size: 1
+    trading_hours: "09:30-16:00"
+  - name: NSE
+    region: IN
+    tick_size: 0.05
+    lot_size: 1
+    trading_hours: "09:15-15:30"
+  - name: Binance
+    region: Global
+    tick_size: 0.01
+    lot_size: 0.001
+    trading_hours: "24x7"
+
+surface_model:
+  # Market impact model family and functional form.
+  type: square_root         # {square_root, power, piecewise, glm}
+  params:
+    k_default_bps: 12.0     # baseline impact coefficient
+    alpha: 0.5              # exponent for power law
+  # Optional regime-specific overrides
+  regimes:
+    calm:
+      k_bps: 8.0
+      spread_multiplier: 1.0
+    normal:
+      k_bps: 12.0
+      spread_multiplier: 1.2
+    stress:
+      k_bps: 25.0
+      spread_multiplier: 1.8
+
+dimensions:
+  # Grid over which the surface is estimated.
+  pov: [1, 2.5, 5, 10, 15, 25]         # % of visible volume executed
+  duration_s: [1, 5, 15, 60, 300]      # execution horizon (seconds)
+  participation_cap_pct: 20            # hard cap for router
+  book_levels: [1, 3, 5, 10]           # LOB levels considered in depth
+
+inputs:
+  # Data sources used for calibration.
+  trades_stream: "md.trades"           # tick trades with size/price
+  book_stream: "md.book"               # order book snapshots
+  metrics_stream: "router.metrics"     # realized impact logs
+  lookback_days: 30
+  min_trades_per_bucket: 200
+
+calibration:
+  # How we fit the liquidity/impact surface.
+  method: robust_regression            # {ols, robust_regression, quantile}
+  loss: huber                          # {mse, huber, quantile_0.9}
+  regularization:
+    l2: 1e-4
+    monotone_pov: true                 # enforce non-decreasing impact with POV
+    smooth_duration: true              # penalize curvature across duration
+  cross_validation:
+    kfold: 5
+    metric: mape                       # {mape, rmse, r2}
+  outliers:
+    remove_top_pct: 1.0                # drop top 1% impact outliers
+    min_spread_ticks: 1                # ignore zero-spread artifacts
+
+microstructure:
+  # Base microstructure stats used as features/normalizers.
+  rolling_windows_s: [1, 5, 30, 300]
+  features:
+    - spread_bps
+    - depth_top5
+    - volatility_1m
+    - order_imbalance
+    - trade_count
+    - volume_imbalance
+  normalizers:
+    price_scale: mid
+    volume_scale: adv_20d              # average daily volume over 20d
+
+cost_decomposition:
+  # Split into half-spread, footprint/impact, and timing risk.
+  components:
+    half_spread_bps: true
+    impact_bps: true
+    timing_risk_bps: true
+  timing_risk:
+    model: variance_of_returns
+    window_s: 60
+
+stress_tests:
+  - name: Spread_Widening_2x
+    description: "Double quoted spread; depth shrinks 30%."
+    spread_multiplier: 2.0
+    depth_multiplier: 0.7
+  - name: Liquidity_Spiral
+    description: "Vol↑, cancellations↑ → k_bps +80%."
+    k_bps_multiplier: 1.8
+    volatility_multiplier: 1.5
+  - name: Overnight_Gap
+    description: "Apply opening auction gap, widen all durations <60s."
+    opening_gap_bps: 40
+    duration_penalty_lt_60s: 1.25
+
+router_integration:
+  # Guidance for the smart order router / pricer.
+  prefer_internalization: false
+  venue_priority: [NSE, NASDAQ, Binance]
+  slippage_budget_bps: 15
+  # Fallbacks if estimated cost exceeds budget:
+  fallbacks:
+    - slice_order: true
+    - extend_duration: true
+    - reduce_pov: true
+
+persistence:
+  # Where to write calibrated surfaces.
+  output_json: "reports/liquidity_surface.json"
+  output_parquet: "reports/liquidity_surface.parquet"
+  versions_keep: 5
+  publish_stream: "liquidity.surface"
+
+validation:
+  # Post-fit checks against realized costs.
+  backtest_window_days: 7
+  acceptance:
+    mape_max_pct: 25
+    bias_abs_bps_max: 3
+    violation_rate_max_pct: 10   # % trades where realized > estimate + budget
+
+reporting:
+  metrics:
+    - spread_bps
+    - depth_top5
+    - impact_surface
+    - timing_risk
+    - fit_error_mape
+    - violation_rate
+  plots:
+    - surface_3d
+    - pov_vs_cost
+    - duration_vs_cost
+  output_dir: "reports/"

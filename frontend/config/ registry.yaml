@@ -1,0 +1,106 @@
+# Registry Configuration
+# Central registry of strategies, data feeds, adapters, and dashboards
+
+meta:
+  version: 1.0
+  description: >
+    Master registry for hedge fund system components.
+    Used by loaders to auto-discover modules and enable/disable features.
+
+strategies:
+  alpha:
+    - name: ema_crossover
+      path: backend/engine/strategies/ema_crossover.py
+      enabled: true
+      region: US
+    - name: pairs_arbitrage
+      path: backend/engine/strategies/pairs_arbitrage.py
+      enabled: true
+      region: EU
+    - name: hrp_allocator
+      path: backend/engine/strategies/hrp_allocator.py
+      enabled: true
+      region: GLOBAL
+
+  diversified:
+    - name: carry_trade
+      path: backend/engine/strategies/carry_trade.py
+      enabled: false
+      region: FX
+    - name: vol_breakout
+      path: backend/engine/strategies/vol_breakout.py
+      enabled: true
+      region: APAC
+
+adapters:
+  brokers:
+    - name: ibkr
+      path: backend/adapters/broker_ibkr.py
+      mode: paper   # {paper, live}
+      enabled: true
+    - name: zerodha
+      path: backend/adapters/broker_zerodha.py
+      mode: live
+      enabled: false
+    - name: binance
+      path: backend/adapters/broker_binance.py
+      mode: paper
+      enabled: true
+  banks:
+    - name: hsbc
+      path: backend/adapters/bank_hsbc.py
+      enabled: true
+    - name: jp_morgan
+      path: backend/adapters/bank_jpm.py
+      enabled: false
+
+data_feeds:
+  - name: yahoo_finance
+    path: backend/news/news_yahoo.py
+    type: news
+    enabled: true
+  - name: moneycontrol
+    path: backend/news/news_moneycontrol.py
+    type: news
+    enabled: true
+  - name: crypto_prices
+    path: backend/feeds/crypto_feed.py
+    type: market
+    enabled: true
+  - name: equities_prices
+    path: backend/feeds/equities_feed.py
+    type: market
+    enabled: true
+
+risk_modules:
+  - name: var
+    path: backend/risk/risk_metrics.py
+    enabled: true
+  - name: stress_tester
+    path: backend/risk/stress_attribution.py
+    enabled: true
+  - name: pnl_attribution
+    path: backend/risk/pnl_attribution.py
+    enabled: true
+  - name: contagion_graph
+    path: backend/systemic/contagion_graph.py
+    enabled: true
+
+dashboards:
+  - name: hedge_dashboard
+    path: frontend/dashboards/hedge_dashboard.tsx
+    enabled: true
+  - name: risk_dashboard
+    path: frontend/dashboards/risk_dashboard.tsx
+    enabled: true
+  - name: literacy_dashboard
+    path: frontend/dashboards/literacy_dashboard.tsx
+    enabled: true
+  - name: options_chain
+    path: frontend/components/options_chain.tsx
+    enabled: true
+
+reporting:
+  format: json
+  output_dir: reports/
+  enabled: true

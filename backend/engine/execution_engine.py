@@ -107,7 +107,7 @@ def _gross_exposure_usd() -> float:
         if isinstance(v, dict):
             # in case older runs stored {"usd": x}
             return float(v.get("usd", 0.0))
-        return float(v)
+        return float(v) # type: ignore
     except Exception:
         return 0.0
 
@@ -123,7 +123,7 @@ def _strategy_notional_usd(strategy: str) -> float:
         obj = json.loads(v) if isinstance(v, str) else v
         if isinstance(obj, dict):
             return float(obj.get("usd", 0.0))
-        return float(obj)
+        return float(obj) # type: ignore
     except Exception:
         return 0.0
 
@@ -144,7 +144,7 @@ def _load_pos(symbol: str) -> Dict:
     if not raw:
         return {"symbol": symbol, "qty": 0.0, "avg_price": 0.0, "realized_pnl": 0.0}
     try:
-        return json.loads(raw) if isinstance(raw, str) else raw
+        return json.loads(raw) if isinstance(raw, str) else raw # type: ignore
     except Exception:
         return {"symbol": symbol, "qty": 0.0, "avg_price": 0.0, "realized_pnl": 0.0}
 
@@ -156,7 +156,7 @@ def _load_pos_strategy(symbol: str, strategy: str) -> Dict:
     if not raw:
         return {"symbol": symbol, "qty": 0.0, "avg_price": 0.0, "realized_pnl": 0.0}
     try:
-        return json.loads(raw) if isinstance(raw, str) else raw
+        return json.loads(raw) if isinstance(raw, str) else raw # type: ignore
     except Exception:
         return {"symbol": symbol, "qty": 0.0, "avg_price": 0.0, "realized_pnl": 0.0}
 
@@ -273,13 +273,13 @@ def _effective_strategy_cap(strategy: str) -> float:
 def _would_breach_strategy_cap(strategy: str, new_notional_abs: float) -> bool:
     cap = _effective_strategy_cap(strategy)
     used = r.hget("risk:used_by_strategy", strategy)
-    used = float(used) if used else 0.0
+    used = float(used) if used else 0.0 # type: ignore
     return (used + new_notional_abs) > cap
 
 def _bump_usage(strategy: str, notional_abs: float) -> None:
     used = r.hget("risk:used_by_strategy", strategy)
-    used = float(used) if used else 0.0
-    r.hset("risk:used_by_strategy", strategy, used + notional_abs)
+    used = float(used) if used else 0.0 # type: ignore
+    r.hset("risk:used_by_strategy", strategy, used + notional_abs) # type: ignore
 
 # ---------- Main order loop ----------
 def _process_order(order: Dict) -> None:

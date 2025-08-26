@@ -1,0 +1,146 @@
+# config/sovereign.yaml
+# -------------------------------------------------------------------
+# Sovereign / Country Registry
+# Used by: backend/adapters/sovereign_adapter.py
+#          backend/sim/policy_sim.py
+#          backend/risk/sovereign.py
+#          backend/analytics/contagion_graph.py
+#
+# Purpose:
+#   - Track sovereign debt metrics, FX regimes, policy stance
+#   - Drive sovereign contagion & policy shock simulations
+#   - Provide hooks for sovereign_adapter (data ingest / stress runs)
+# -------------------------------------------------------------------
+
+meta:
+  asof: "auto"
+  base_ccy: "USD"
+  description: "Registry of sovereigns, debt profiles, and policy stances."
+
+defaults:
+  recovery_rate: 0.40          # assumed recovery if sovereign default
+  contagion_beta: 0.35         # spillover strength into other sovereigns
+  fx_pass_through: 0.60        # share of FX move passed to CPI/inflation
+  policy_reaction_delay_days: 5
+
+sovereigns:
+  - id: "US"
+    name: "United States"
+    region: "NA"
+    currency: "USD"
+    gdp_usd: 26_000_000_000_000
+    debt_gdp: 1.20
+    reserves_usd: 450_000_000_000
+    policy_rate: 0.0525
+    inflation_yoy: 0.032
+    rating: "AA+"
+    default_prob_1y: 0.001
+    contagion_links:
+      - target: "EU"
+        weight: 0.4
+      - target: "CN"
+        weight: 0.3
+  - id: "EU"
+    name: "Eurozone"
+    region: "EU"
+    currency: "EUR"
+    gdp_usd: 18_000_000_000_000
+    debt_gdp: 0.95
+    reserves_usd: 250_000_000_000
+    policy_rate: 0.0375
+    inflation_yoy: 0.025
+    rating: "AA"
+    default_prob_1y: 0.002
+    contagion_links:
+      - target: "US"
+        weight: 0.3
+      - target: "IN"
+        weight: 0.2
+  - id: "CN"
+    name: "China"
+    region: "APAC"
+    currency: "CNY"
+    gdp_usd: 17_000_000_000_000
+    debt_gdp: 0.80
+    reserves_usd: 3_100_000_000_000
+    policy_rate: 0.0275
+    inflation_yoy: 0.018
+    rating: "A+"
+    default_prob_1y: 0.003
+    contagion_links:
+      - target: "US"
+        weight: 0.25
+      - target: "IN"
+        weight: 0.25
+  - id: "IN"
+    name: "India"
+    region: "APAC"
+    currency: "INR"
+    gdp_usd: 3_800_000_000_000
+    debt_gdp: 0.85
+    reserves_usd: 580_000_000_000
+    policy_rate: 0.0650
+    inflation_yoy: 0.055
+    rating: "BBB"
+    default_prob_1y: 0.007
+    contagion_links:
+      - target: "CN"
+        weight: 0.2
+      - target: "EU"
+        weight: 0.2
+  - id: "BR"
+    name: "Brazil"
+    region: "LATAM"
+    currency: "BRL"
+    gdp_usd: 2_000_000_000_000
+    debt_gdp: 0.90
+    reserves_usd: 350_000_000_000
+    policy_rate: 0.1125
+    inflation_yoy: 0.065
+    rating: "BB+"
+    default_prob_1y: 0.015
+    contagion_links:
+      - target: "US"
+        weight: 0.15
+      - target: "CN"
+        weight: 0.15
+
+scenarios:
+  - name: "US Debt Ceiling Crisis"
+    shocks:
+      default_event: "US"
+      credit_spread_bp: +200
+      fx: { EURUSD: +0.05, USDJPY: -0.07 }
+      contagion_strength: 0.6
+  - name: "Euro Sovereign Stress"
+    shocks:
+      default_event: "EU"
+      rates_bp: +100
+      equity: { factor: "SX5E", ret: -0.08 }
+      contagion_strength: 0.5
+  - name: "China Hard Landing"
+    shocks:
+      growth_shock: -0.05
+      equity: { factor: "CN", ret: -0.12 }
+      commodities: { COPPER: -0.15, WTI: -0.08 }
+      contagion_strength: 0.7
+  - name: "India Inflation Spiral"
+    shocks:
+      inflation_yoy: +0.05
+      policy_rate: +0.015
+      equity: { factor: "NIFTY", ret: -0.09 }
+      fx: { USDINR: +0.08 }
+  - name: "Brazil Default"
+    shocks:
+      default_event: "BR"
+      fx: { USDBRL: +0.12 }
+      contagion_strength: 0.4
+
+policy_rules:
+  # Optional: how central banks react dynamically
+  - trigger: "inflation_yoy > 0.06"
+    actions: ["raise_rates:0.50%"]
+  - trigger: "growth_shock < -0.03"
+    actions: ["cut_rates:0.25%", "qe_inject:0.02NAV"]
+  - trigger: "default_event"
+    actions: ["capital_controls:true", "freeze_outflows:true"]

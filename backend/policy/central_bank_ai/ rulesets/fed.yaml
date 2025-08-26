@@ -1,0 +1,100 @@
+# backend/config/fed.yaml
+# U.S. Federal Reserve (FED) data ingestion + mapping
+
+sources:
+  policy_rates:
+    enabled: true
+    url: "https://www.federalreserve.gov/monetarypolicy/fomcprojtabl20240612.htm"
+    scrape: true
+    fields:
+      - "fed_funds_target_upper"
+      - "fed_funds_target_lower"
+      - "discount_rate"
+    update_interval_days: 7
+
+  fomc_statements:
+    enabled: true
+    url: "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
+    scrape: true
+    fields:
+      - "fomc_statement_text"
+      - "minutes_text"
+    update_interval_days: 30
+
+  balance_sheet:
+    enabled: true
+    url: "https://www.federalreserve.gov/releases/h41/current/"
+    scrape: true
+    fields:
+      - "total_assets_usd_bn"
+      - "treasuries_usd_bn"
+      - "mbs_usd_bn"
+    update_interval_days: 7
+
+  economic_projections:
+    enabled: true
+    url: "https://www.federalreserve.gov/monetarypolicy/fomcprojtabl20240612.htm"
+    scrape: true
+    fields:
+      - "gdp_growth_proj"
+      - "unemployment_proj"
+      - "pce_inflation_proj"
+    update_interval_days: 90
+
+  speeches:
+    enabled: true
+    url: "https://www.federalreserve.gov/newsevents/speeches.htm"
+    scrape: true
+    fields:
+      - "chair_speech"
+      - "governor_speech"
+    update_interval_days: 30
+
+  beige_book:
+    enabled: true
+    url: "https://www.federalreserve.gov/monetarypolicy/beigebook/default.htm"
+    scrape: true
+    fields:
+      - "beige_book_summary"
+    update_interval_days: 60
+
+normalization:
+  signal_schema:
+    - name: "fed_funds_target_upper"
+      alias: "FED.ff_upper"
+      unit: "%"
+    - name: "fed_funds_target_lower"
+      alias: "FED.ff_lower"
+      unit: "%"
+    - name: "discount_rate"
+      alias: "FED.discount_rate"
+      unit: "%"
+    - name: "total_assets_usd_bn"
+      alias: "FED.assets_total"
+      unit: "USD bn"
+    - name: "treasuries_usd_bn"
+      alias: "FED.treasuries"
+      unit: "USD bn"
+    - name: "mbs_usd_bn"
+      alias: "FED.mbs"
+      unit: "USD bn"
+    - name: "gdp_growth_proj"
+      alias: "FED.gdp_proj"
+      unit: "%"
+    - name: "unemployment_proj"
+      alias: "FED.unemp_proj"
+      unit: "%"
+    - name: "pce_inflation_proj"
+      alias: "FED.pce_inflation"
+      unit: "%"
+
+publish:
+  stream: "STREAM_FED"
+  bus_key_prefix: "fed."
+  output_scale: native
+
+update_policy:
+  # FOMC statements typically 14:00 ET on meeting days (Wed)
+  cron: "0 14 * * WED"
+  tz: "America/New_York"
+  grace_sec: 600

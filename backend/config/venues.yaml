@@ -1,0 +1,70 @@
+# backend/config/venues.yaml
+# Venue definitions for Hedge Fund X execution layer.
+# Used by arb_router.discovery + cost_model to evaluate latency, fees, and limits.
+
+venues:
+  - id: "NYSE"
+    name: "New York Stock Exchange"
+    type: "equities"
+    region: "US"
+    base_currency: "USD"
+    maker_fee_bps: 0.5
+    taker_fee_bps: 1.0
+    min_order_size: 100.0
+    max_order_size: 1_000_000.0
+    avg_latency_ms: 20
+    adapter: "engine.adapters.nyse"   # path to adapter class
+
+  - id: "NSE"
+    name: "National Stock Exchange of India"
+    type: "equities"
+    region: "IN"
+    base_currency: "INR"
+    maker_fee_bps: 1.0
+    taker_fee_bps: 1.5
+    min_order_size: 10_000.0
+    max_order_size: 50_000_000.0
+    avg_latency_ms: 40
+    adapter: "engine.adapters.nse"
+
+  - id: "BINANCE"
+    name: "Binance"
+    type: "crypto"
+    region: "SG"
+    base_currency: "USDT"
+    maker_fee_bps: 0.1
+    taker_fee_bps: 0.1
+    min_order_size: 10.0
+    max_order_size: 10_000_000.0
+    avg_latency_ms: 80
+    adapter: "engine.adapters.binance"
+
+  - id: "LSE"
+    name: "London Stock Exchange"
+    type: "equities"
+    region: "UK"
+    base_currency: "GBP"
+    maker_fee_bps: 0.6
+    taker_fee_bps: 1.2
+    min_order_size: 1_000.0
+    max_order_size: 5_000_000.0
+    avg_latency_ms: 30
+    adapter: "engine.adapters.lse"
+
+  - id: "CME"
+    name: "Chicago Mercantile Exchange"
+    type: "futures"
+    region: "US"
+    base_currency: "USD"
+    maker_fee_bps: 0.25
+    taker_fee_bps: 0.25
+    min_order_size: 1.0
+    max_order_size: 100_000.0
+    avg_latency_ms: 25
+    adapter: "engine.adapters.cme"
+
+routing:
+  default_strategy: "min_cost_latency"   # min_cost_latency | best_liquidity | hybrid
+  retry_on_fail: true
+  backup_path: "STARLINK"                # fallback route provider
+  slippage_bps_buffer: 5.0

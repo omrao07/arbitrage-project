@@ -1,0 +1,268 @@
+# Unified Shock Library
+# Consumed by: shock_models.py, bank_stress.py, sovereign.py, liquidity_surface.py,
+#              vol_surface.py, router.py, latency.py, crisis_theatre.py, alerts/engine.py
+
+meta:
+  version: 1.0
+  description: "Reusable shocks across macro, microstructure, credit, and infra."
+  timezone: Asia/Kolkata
+
+schema:
+  shock:
+    name: str
+    domain: [macro, equities, rates, credit, fx, options, liquidity, latency, bank, sovereign, altdata, news, infra]
+    # Each shock may contain one or more blocks below.
+
+defaults:
+  horizon_days: 30
+  apply_mode: override        # {override, add, multiply}
+  severity_scale: 1.0         # global multiplier (set by runner)
+
+# -------------------- ATOMIC SHOCKS --------------------
+atomic:
+
+  # ---- Macro / Cross-asset ----
+  - name: Growth_Down_1pct
+    domain: macro
+    macro:
+      gdp_growth_delta_pct: -1.0
+      unemployment_delta_pct: +0.5
+      inflation_delta_pct: -0.2
+
+  - name: Inflation_Spike_200bps
+    domain: macro
+    macro:
+      inflation_delta_pct: +2.0
+      real_rate_delta_bps: +150
+
+  - name: RiskOff_Equity_-10
+    domain: equities
+    market:
+      equity_index_move_pct: -10
+      vol_spike_mult: 1.6
+
+  # ---- Rates / Curves ----
+  - name: Bear_Flatten_100
+    domain: rates
+    rates:
+      parallel_bps: +50
+      twist_2s10s_bps: -50      # 2y +75, 10y +25 (example implementation)
+
+  - name: Bull_Steepen_80
+    domain: rates
+    rates:
+      parallel_bps: -20
+      twist_2s10s_bps: +60
+
+  # ---- Credit / Spreads ----
+  - name: Credit_Widen_300
+    domain: credit
+    credit:
+      ig_spread_bps: +150
+      hy_spread_bps: +300
+      default_rate_delta_pct: +1.2
+
+  # ---- FX ----
+  - name: USD_Surge_5
+    domain: fx
+    fx:
+      usd_basket_appreciation_pct: 5
+      usd_inr_appreciation_pct: 4
+
+  # ---- Options / Vol ----
+  - name: Vol_Smirk_Up
+    domain: options
+    options:
+      smile_skew_delta: +0.2
+      term_struct_shift: +0.15     # 15% up across tenors (mult)
+      sabr_params:
+        alpha_mult: 1.25
+        rho_delta: -0.05
+        nu_mult: 1.20
+
+  - name: IV_Surge_30
+    domain: options
+    options:
+      surface_mult: 1.30           # +30% all nodes
+
+  # ---- Liquidity / Microstructure ----
+  - name: Spread_2x_Depth_-30
+    domain: liquidity
+    liquidity:
+      spread_mult: 2.0
+      depth_mult: 0.7
+      resiliency_ms_mult: 1.5
+      impact_k_bps_mult: 1.8
+
+  - name: Opening_Auction_Gap_40bps
+    domain: liquidity
+    liquidity:
+      opening_gap_bps: 40
+      short_horizon_penalty_lt_60s: 1.25
+
+  # ---- Latency / Infra ----
+  - name: Venue_Latency_p99_+80ms
+    domain: latency
+    latency:
+      p99_add_ms: 80
+      throttle_mult: 1.5
+
+  - name: Network_Congestion_x2
+    domain: infra
+    latency:
+      network_congestion_mult: 2.0
+
+  # ---- Banking System ----
+  - name: Deposit_Run_10pct
+    domain: bank
+    bank:
+      deposit_outflow_pct: 10
+      funding_cost_bps: +150
+      lcr_draw_pct: 30
+
+  - name: TradingBook_Loss_15pct
+    domain: bank
+    bank:
+      trading_book_loss_pct: 15
+      rwa_increase_pct: 5
+
+  # ---- Sovereign ----
+  - name: Sovereign_Default_Event
+    domain: sovereign
+    sovereign:
+      default_event: true
+      haircut_pct: 45
+      spread_widening_bps: 350
+
+  # ---- Alt-data / Behavioral ----
+  - name: Consumer_Spend_-12
+    domain: altdata
+    altdata:
+      card_spend_delta_pct: -12
+      web_search_trend_delta_pct: -10
+
+  - name: Port_Traffic_-20
+    domain: altdata
+    altdata:
+      shipping_decline_pct: 20
+      dwell_time_increase_pct: 15
+
+  # ---- News / Sentiment ----
+  - name: Negative_News_Burst
+    domain: news
+    news:
+      headlines_per_5m_add: 25
+      sentiment_shift: -0.4
+      unique_sources_add: 8
+
+# -------------------- COMPOSITE SCENARIOS --------------------
+composites:
+
+  - name: Classic_Risk_Off
+    severity_scale: 1.0
+    include: [RiskOff_Equity_-10, Bear_Flatten_100, Credit_Widen_300, IV_Surge_30, Spread_2x_Depth_-30, USD_Surge_5]
+
+  - name: Liquidity_Spiral
+    severity_scale: 1.2
+    include: [Spread_2x_Depth_-30, Venue_Latency_p99_+80ms, Network_Congestion_x2, Opening_Auction_Gap_40bps]
+    bank_overlay:
+      deposit_outflow_pct: 8
+      funding_cost_bps: +200
+
+  - name: Banking_Crisis
+    severity_scale: 1.0
+    include: [Deposit_Run_10pct, TradingBook_Loss_15pct, Credit_Widen_300, IV_Surge_30]
+    sovereign_overlay:
+      spread_widening_bps: 200
+
+  - name: EM_Sovereign_Contagion
+    severity_scale: 1.0
+    include: [Sovereign_Default_Event, USD_Surge_5, Port_Traffic_-20]
+    liquidity_overlay:
+      spread_mult: 1.6
+      depth_mult: 0.8
+
+  - name: Inflation_Shock
+    severity_scale: 1.0
+    include: [Inflation_Spike_200bps, Bear_Flatten_100, USD_Surge_5]
+    options_overlay:
+      surface_mult: 1.15
+
+  - name: Overnight_Gap_Rerisk
+    severity_scale: 1.0
+    include: [Opening_Auction_Gap_40bps, IV_Surge_30]
+
+# -------------------- TARGETING / SCOPES --------------------
+scopes:
+  # You can bind shocks to specific assets/venues/regions for selective application.
+  - name: India_Equities
+    universe:
+      symbols: ["RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "NIFTY.FUT"]
+      venues: ["NSE"]
+    apply:
+      composites: ["Classic_Risk_Off", "Liquidity_Spiral"]
+      atomic: ["Negative_News_Burst", "IV_Surge_30"]
+
+  - name: US_MegaTech
+    universe:
+      symbols: ["AAPL","MSFT","AMZN","NVDA"]
+      venues: ["NASDAQ"]
+    apply:
+      composites: ["Classic_Risk_Off", "Inflation_Shock"]
+      atomic: ["Spread_2x_Depth_-30"]
+
+# -------------------- TIME PROFILES / SCHEDULES --------------------
+time_profiles:
+  # How shocks unfold over time (used by crisis_theatre.py / scenarios.py)
+  instant:
+    kind: step
+    t0_weight: 1.0
+  linear_15m:
+    kind: linear
+    total_minutes: 15
+  easing_1h:
+    kind: ease_in_out
+    total_minutes: 60
+
+# -------------------- SEQUENCES / PLAYBOOKS --------------------
+sequences:
+  - name: Open_To_Lunch_RiskOff
+    profile: linear_15m
+    steps:
+      - t: 0m    ; include: [Opening_Auction_Gap_40bps]
+      - t: 3m    ; include: [RiskOff_Equity_-10]
+      - t: 5m    ; include: [Spread_2x_Depth_-30, Venue_Latency_p99_+80ms]
+      - t: 12m   ; include: [IV_Surge_30]
+  - name: Bank_Run_Day1
+    profile: easing_1h
+    steps:
+      - t: 0m    ; include: [Deposit_Run_10pct]
+      - t: 15m   ; include: [Network_Congestion_x2]
+      - t: 30m   ; include: [Credit_Widen_300]
+
+# -------------------- REPORTING / VALIDATION --------------------
+reporting:
+  emit_streams:
+    - shocks.events
+    - shocks.applied
+  output_json: "reports/shocks_applied.json"
+  metrics:
+    - realized_vs_expected_move
+    - liquidity_violation_rate
+    - router_budget_breaches
+    - var_99_change
+    - pnl
+
+validation:
+  # Accept if model response (vol/liquidity/cost) behaves consistently with shock direction.
+  rules:
+    - name: IV_Should_Rise_On_RiskOff
+      expect:
+        when_include: [RiskOff_Equity_-10]
+        metric: iv_change_pct
+        gte: 10
+    - name: Spread_Should_Widen_On_LiquidityShock
+      expect:
+        when_include: [Spread_2x_Depth_-30]
+        metric: spread_mult
+        gte: 1.5

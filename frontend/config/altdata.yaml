@@ -1,0 +1,139 @@
+# Alternative Data Configuration
+# Consumed by altdata ingestion workers & adapters
+
+meta:
+  version: 1.0
+  description: >
+    Alternative datasets for alpha generation and systemic risk.
+    Used by ingestion workers (satellite_lights.py, shipping_traffic.py, etc.).
+
+sources:
+
+  - name: satellite_lights
+    type: imagery
+    provider: nasa_viirs
+    frequency: daily
+    coverage: global
+    fields:
+      - region
+      - night_light_index
+      - cloud_cover
+    ingest:
+      api_url: "https://api.nasa.gov/viirs"
+      auth: api_key
+    transforms:
+      normalize: true
+      scale_to: [0, 1]
+    storage:
+      stream: altdata.satellite
+      collection: satellite_lights
+
+  - name: shipping_traffic
+    type: maritime
+    provider: ais_marine
+    frequency: hourly
+    coverage: global_ports
+    fields:
+      - port_id
+      - arrivals
+      - departures
+      - avg_dwell_time
+    ingest:
+      api_url: "https://api.marinetraffic.com/v1/"
+      auth: api_key
+    transforms:
+      anomaly_detection: zscore
+    storage:
+      stream: altdata.shipping
+      collection: shipping_traffic
+
+  - name: card_spend
+    type: consumer
+    provider: card_aggregator
+    frequency: weekly
+    coverage: us_regions
+    fields:
+      - sector
+      - spend_index
+      - yoy_change
+    ingest:
+      sftp_host: "sftp.carddata.local"
+      file_pattern: "spend_*.csv"
+    transforms:
+      inflation_adjust: true
+      seasonal_adjust: true
+    storage:
+      stream: altdata.card_spend
+      collection: card_spend
+
+  - name: web_search_trends
+    type: search
+    provider: google_trends
+    frequency: daily
+    coverage: global
+    fields:
+      - keyword
+      - search_volume_index
+    ingest:
+      api_url: "https://trends.google.com/api"
+    transforms:
+      smooth: moving_avg
+      window: 7
+    storage:
+      stream: altdata.web_trends
+      collection: web_trends
+
+  - name: mood_index
+    type: sentiment
+    provider: twitter_api
+    frequency: intraday
+    coverage: equity_symbols
+    fields:
+      - symbol
+      - sentiment_score
+      - volume
+    ingest:
+      api_url: "https://api.twitter.com/2/tweets/search"
+      auth: bearer_token
+    transforms:
+      model: "finbert"
+      rescale: [-1, 1]
+    storage:
+      stream: altdata.mood
+      collection: mood_index
+
+  - name: esg_factors
+    type: sustainability
+    provider: refinitiv
+    frequency: quarterly
+    coverage: global_equities
+    fields:
+      - symbol
+      - e_score
+      - s_score
+      - g_score
+    ingest:
+      api_url: "https://api.refinitiv.com/esg"
+      auth: oauth2
+    storage:
+      stream: altdata.esg
+      collection: esg_factors
+
+stress_tests:
+  - name: Global Slowdown
+    description: "Drop in shipping + card spend"
+    shocks:
+      shipping_decline_pct: 20
+      card_spend_decline_pct: 15
+  - name: Consumer Boom
+    description: "Spike in search & card spend"
+    shocks:
+      search_trend_spike_pct: 40
+      card_spend_increase_pct: 25
+
+reporting:
+  metrics:
+    - correlation_matrix
+    - leading_indicators
+    - anomaly_flags
+  output: "reports/altdata.json"
