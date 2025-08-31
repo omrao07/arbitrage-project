@@ -1,0 +1,189 @@
+# analyst_worker.yaml
+# Purpose: Configure the "analyst" worker that consumes market data & signals,
+# runs analytics (GNN correlations, VaR/ES scenarios, Almgren–Chriss schedules, anomalies),
+# and publishes outputs back to Redis streams and UI channels.
+
+version: 1
+
+worker:
+  name: analyst
+  role: research_analytics
+  runtime: python3.11
+  entrypoint: backend/workers/analyst_worker.py
+  args: ["--log-level=INFO"]
+  resources:
+    cpu: "2"
+    memory: "4Gi"
+    gpu: false
+  concurrency:
+    max_tasks: 4
+    per_queue: 2
+  retry_policy:
+    max_retries: 3
+    backoff_seconds: 10
+
+io:
+  redis:
+    host: ${REDIS_HOST:-localhost}
+    port: ${REDIS_PORT:-6379}
+    db: ${REDIS_DB:-0}
+    username: ${REDIS_USERNAME:-}
+    password: ${REDIS_PASSWORD:-}
+    consumer_group: analyst_v1
+    consumer_name: ${HOSTNAME:-analyst-1}
+
+streams:
+  inbound:
+    prices:
+      name: ${STREAM_PRICES:-STREAM_PRICES}
+      start: ">"
+      batch_max: 512
+      block_ms: 5000
+    signals:
+      name: ${STREAM_SIGNALS:-STREAM_SIGNALS}
+      start: ">"
+      batch_max: 256
+      block_ms: 5000
+    orders:
+      name: ${STREAM_ORDERS:-STREAM_ORDERS}
+      start: ">"
+      batch_max: 128
+      block_ms: 5000
+    news:
+      name: ${STREAM_NEWS:-STREAM_NEWS}
+      start: ">"
+      batch_max: 128
+      block_ms: 5000
+
+  outbound:
+    factors:
+      name: ${STREAM_FACTORS:-STREAM_FACTORS}
+    alerts:
+      name: ${STREAM_ALERTS:-STREAM_ALERTS}
+    research:
+      name: ${STREAM_RESEARCH:-STREAM_RESEARCH}
+    fills:
+      name: ${STREAM_FILLS:-STREAM_FILLS}
+
+pubsub:
+  channels:
+    ui_bus: ${CHAN_ANALYST:-CHAN_ANALYST}
+
+storage:
+  local_root: ${ANALYST_DATA_ROOT:-/var/data/analyst}
+
+routing:
+  routes:
+    - match: {stream: prices, topic: snapshot}
+      task: gnn_clusters
+    - match: {stream: signals, topic: risk_request}
+      task: var_es_report
+    - match: {stream: signals, topic: exec_schedule}
+      task: almgren_schedule
+    - match: {stream: news, topic: anomaly_check}
+      task: anomaly_scan
+
+tasks:
+  gnn_clusters:
+    module: research.gnn_correlations_runner
+    entry: run
+    timeout_sec: 180
+    rate_limit_per_min: 6
+    params:
+      method: ${GNN_METHOD:-mst_topk}
+      topk: ${GNN_TOPK:-3}
+      shrink: ${GNN_SHRINK:-0.10}
+      emb_dim: ${GNN_EMB_DIM:-16}
+      epochs: ${GNN_EPOCHS:-300}
+
+  var_es_report:
+    module: research.risk.var_es_runner
+    entry: generate_report
+    timeout_sec: 180
+    rate_limit_per_min: 12
+    params:
+      alpha: ${VAR_ALPHA:-0.99}
+      horizon_days: ${VAR_HORIZON_DAYS:-10}
+      notional: ${VAR_NOTIONAL:-1000000}
+      method: ${VAR_METHOD:-historical}
+      monte_carlo:
+        dist: ${VAR_MC_DIST:-student_t}
+        nu: ${VAR_MC_NU:-5}
+        n_sims: ${VAR_MC_SIMS:-200000}
+
+  almgren_schedule:
+    module: research.exec.almgren_runner
+    entry: optimal_schedule
+    timeout_sec: 90
+    rate_limit_per_min: 20
+    params:
+      eta: ${AC_ETA:-5e-7}
+      gamma: ${AC_GAMMA:-1e-7}
+      sigma: ${AC_SIGMA:-0.004}
+      lam: ${AC_LAMBDA:-2e-6}
+      slices: ${AC_SLICES:-60}
+      horizon_sec: ${AC_HORIZON_SEC:-3600}
+      dry_run: true
+
+  anomaly_scan:
+    module: research.anomaly.scan_runner
+    entry: scan
+    timeout_sec: 120
+    rate_limit_per_min: 6
+    params:
+      methods: ["zscore", "vol_spike", "corr_shift"]
+      zscore_window: 250
+      vol_window: 60
+      corr_window: 250
+      alert_thresholds:
+        zscore: 4.0
+        vol_spike: 2.5
+        corr_shift: 0.30
+
+scheduling:
+  cron:
+    - name: nightly_gnn_refresh
+      cron: "15 20 * * 1-5"
+      signal:
+        topic: snapshot
+        stream: prices
+        payload: {reason: "nightly_refresh"}
+    - name: hourly_var_check
+      cron: "5 * * * *"
+      signal:
+        topic: risk_request
+        stream: signals
+        payload: {reason: "hourly_var"}
+
+logging:
+  level: ${LOG_LEVEL:-INFO}
+  format: json
+  stdout: true
+  file:
+    enabled: true
+    path: ${ANALYST_LOG_FILE:-/var/log/analyst/worker.log}
+    rotate_mb: 100
+    backups: 5
+
+health:
+  liveness:
+    type: redis_ping
+    interval_sec: 15
+    timeout_sec: 2
+  readiness:
+    checks:
+      - type: redis_stream_read
+        stream: ${STREAM_PRICES:-STREAM_PRICES}
+      - type: redis_stream_write
+        stream: ${STREAM_FACTORS:-STREAM_FACTORS}
+
+metrics:
+  prometheus:
+    enabled: true
+    bind: 0.0.0.0
+    port: ${METRICS_PORT:-9093}
+
+security:
+  allowlist_topics: ["snapshot", "risk_request", "exec_schedule", "anomaly_check"]
+  denylist_topics: []
+  redact_fields: ["api_key", "secret", "password"]

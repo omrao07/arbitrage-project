@@ -103,9 +103,9 @@ r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 def _hgetf(hk: str, field: str) -> Optional[float]:
     v = r.hget(hk, field)
     if v is None: return None
-    try: return float(v)
+    try: return float(v) # type: ignore
     except Exception:
-        try: return float(json.loads(v))
+        try: return float(json.loads(v)) # type: ignore
         except Exception: return None
 
 def _sched_ts(field: str) -> Optional[int]:
@@ -116,7 +116,7 @@ def _sched_ts(field: str) -> Optional[int]:
         if not env: return None
         try: return int(env)
         except Exception: return None
-    try: return int(v)
+    try: return int(v) # type: ignore
     except Exception: return None
 
 def _now_ms() -> int:
@@ -158,7 +158,7 @@ def _load_ewma() -> EwmaMV:
     raw = r.get(_ewma_key())
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", EWMA_ALPHA)))
         except Exception:
             pass
@@ -317,7 +317,7 @@ class IPOAllocationArbitrage(Strategy):
         raw = r.get(_poskey(self.ctx.name))
         if not raw: return None
         try:
-            return OpenState(**json.loads(raw))
+            return OpenState(**json.loads(raw)) # type: ignore
         except Exception:
             return None
 

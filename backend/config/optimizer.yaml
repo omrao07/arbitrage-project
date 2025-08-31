@@ -1,0 +1,63 @@
+# config/optimizer.yaml
+
+enabled: true
+
+# === Objective functions ===
+objectives:
+  mean_variance: true            # Markowitz MV optimization
+  risk_parity: true              # HRP / Risk Parity
+  cvar_minimization: true        # Conditional VaR
+  transaction_costs: true        # penalize high-cost trades
+  turnover_penalty: 0.01         # penalty per unit turnover
+
+# === Constraints ===
+constraints:
+  max_gross_exposure: 2.0        # max gross leverage
+  max_long_exposure: 1.5
+  max_short_exposure: 1.0
+  position_limit_pct: 0.10       # per-asset limit (10% NAV)
+  sector_limit_pct: 0.25         # sector cap
+  esg_min_score: 0.6             # require portfolio ESG score ≥ 0.6
+  liquidity_min_adv_pct: 0.05    # cannot trade >5% of ADV
+
+# === Risk models ===
+risk_model:
+  covariance: "shrunk"           # sample | shrunk | factor
+  factor_model: "barra_like"     # for factor-based optimization
+  stress_scenarios:
+    - name: "Equity -10%"
+      shocks: {"Equity": -0.10}
+    - name: "Rates +100bps"
+      shocks: {"Rates": 0.01}
+
+# === Execution style ===
+execution:
+  slicing: "twap"                # twap | vwap | pov
+  max_child_order_size: 0.05     # 5% of ADV per slice
+  max_order_latency_ms: 250
+  use_dark_pools: true
+
+# === Multi-objective weights ===
+weights:
+  return: 1.0
+  risk: 1.0
+  cost: 0.5
+  esg: 0.3
+
+# === Scenarios ===
+scenarios:
+  baseline:
+    return_target: 0.08
+    vol_target: 0.15
+  defensive:
+    return_target: 0.05
+    vol_target: 0.10
+  aggressive:
+    return_target: 0.15
+    vol_target: 0.25
+
+# === Reporting ===
+reporting:
+  enabled: true
+  path: "./reports/optimizer/"
+  formats: ["csv", "pdf", "json"]

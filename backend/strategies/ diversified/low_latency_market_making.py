@@ -77,7 +77,7 @@ r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 def _hget_json(hk: str, field: str) -> Optional[dict]:
     raw = r.hget(hk, field)
     if not raw: return None
-    try: return json.loads(raw)
+    try: return json.loads(raw) # type: ignore
     except Exception:
         return None
 
@@ -124,7 +124,7 @@ def _pos_key(sym: str) -> str:
 
 def _get_pos(sym: str) -> float:
     v = r.get(_pos_key(sym))
-    try: return float(v) if v is not None else 0.0
+    try: return float(v) if v is not None else 0.0 # type: ignore
     except Exception: return 0.0
 
 def _bump_pos(sym: str, side: str, qty: float):
@@ -149,7 +149,7 @@ def _load_vol(sym: str) -> VolEWMA:
     raw = r.get(_vol_key(sym))
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return VolEWMA(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", VOL_ALPHA)), last_mid=float(o.get("lm", 0)))
         except Exception:
             pass
@@ -184,7 +184,7 @@ def _load_side(sym: str, side: str) -> SideState:
     raw = r.get(_side_key(sym, side))
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return SideState(last_replace_ts=float(o.get("ts", 0)), active=int(o.get("n", 0)))
         except Exception: pass
     return SideState(last_replace_ts=0.0, active=0)
@@ -292,7 +292,7 @@ class LowLatencyMarketMaking(Strategy):
             st.active = max(0, st.active - 1)
 
         flags = {"post_only": MAKER_ONLY, "replace": True}
-        self.order(SYM, side, qty=qty, price=px, order_type="limit", venue=VENUE, flags=flags)
+        self.order(SYM, side, qty=qty, price=px, order_type="limit", venue=VENUE, flags=flags) # type: ignore
         st.last_replace_ts = now
         st.active = min(MAX_ACTIVE_ORDERS, st.active + 1)
         _save_side(SYM, side, st)

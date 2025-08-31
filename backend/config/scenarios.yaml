@@ -1,0 +1,69 @@
+# config/scenarios.yaml
+
+enabled: true
+
+# === Macro stress scenarios ===
+macro:
+  - name: "Equity Crash"
+    description: "Global equities drop 20%, rates +150bps"
+    shocks:
+      Equity: -0.20
+      Rates: 0.015
+      FX: 0.05
+
+  - name: "Inflation Shock"
+    description: "Rates surge, equities wobble"
+    shocks:
+      Equity: -0.10
+      Rates: 0.020
+      Commodities: 0.15
+      FX: 0.03
+
+  - name: "Recession"
+    description: "Slowdown: equities -15%, rates -100bps"
+    shocks:
+      Equity: -0.15
+      Rates: -0.01
+      CreditSpreads: 0.02
+
+# === Market microstructure shocks ===
+microstructure:
+  - name: "Liquidity Drain"
+    description: "Bid-ask spreads double, order book depth halves"
+    params:
+      spread_mult: 2.0
+      depth_mult: 0.5
+
+  - name: "Volatility Spike"
+    description: "Implied vol surfaces shift up 50%"
+    params:
+      vol_surface_shift: 0.5
+
+# === Regional shocks ===
+regional:
+  - name: "US Tech Crash"
+    shocks:
+      US_Equity: -0.25
+      Nasdaq: -0.30
+      Rates: 0.01
+
+  - name: "India FX Stress"
+    shocks:
+      INRUSD: -0.08
+      IN_Equity: -0.12
+      Rates: 0.015
+
+# === Black swan / tail events ===
+tail:
+  - name: "Pandemic 2.0"
+    description: "Global lockdowns, equities -30%"
+    shocks:
+      Equity: -0.30
+      FX: 0.10
+      Commodities: -0.20
+
+  - name: "Cyber Attack"
+    description: "Exchange outage, latency +2000ms"
+    params:
+      latency_add_ms: 2000
+      reject_rate_pct: 15

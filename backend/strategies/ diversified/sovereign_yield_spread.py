@@ -111,16 +111,16 @@ r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 def _hgetf(hk: str, field: str) -> Optional[float]:
     v = r.hget(hk, field)
     if v is None: return None
-    try: return float(v)
+    try: return float(v) # type: ignore
     except Exception:
-        try: return float(json.loads(v))
+        try: return float(json.loads(v)) # type: ignore
         except Exception: return None
 
 def _hget_json(hk: str, field: str) -> Optional[dict]:
     raw = r.hget(hk, field)
     if not raw: return None
     try:
-        j = json.loads(raw)
+        j = json.loads(raw) # type: ignore
         return j if isinstance(j, dict) else None
     except Exception:
         return None
@@ -155,7 +155,7 @@ def _load_ewma(tag: str) -> EwmaMV:
     raw = r.get(_ewma_key(tag))
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", EWMA_ALPHA)))
         except Exception: pass
     return EwmaMV(mean=0.0, var=1.0, alpha=EWMA_ALPHA)
@@ -362,7 +362,7 @@ class SovereignYieldSpread(Strategy):
         raw = r.get(_poskey(self.ctx.name, tag))
         if not raw: return None
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return OpenState(mode=str(o["mode"]), side=str(o["side"]),
                              qty_A=float(o["qty_A"]), qty_B=float(o["qty_B"]),
                              entry_bps=float(o["entry_bps"]), entry_z=float(o["entry_z"]),

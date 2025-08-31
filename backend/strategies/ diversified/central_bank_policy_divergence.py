@@ -76,25 +76,25 @@ r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 def _hgetf(key: str, field: str) -> Optional[float]:
     v = r.hget(key, field)
     if v is None: return None
-    try: return float(v)
+    try: return float(v) # type: ignore
     except Exception: return None
 
 def _getf(key: str) -> Optional[float]:
     v = r.get(key)
     if v is None: return None
-    try: return float(v)
+    try: return float(v) # type: ignore
     except Exception: return None
 
 def _last_price(sym: str) -> Optional[float]:
     raw = r.hget("last_price", sym)
     if not raw: return None
-    try: return float(json.loads(raw)["price"])
+    try: return float(json.loads(raw)["price"]) # type: ignore
     except Exception: return None
 
 def _pos_by_strategy(strategy: str, symbol: str) -> Dict:
     raw = r.hget(f"positions:by_strategy:{strategy}", symbol)
     if not raw: return {"symbol": symbol, "qty": 0.0, "avg_price": 0.0}
-    try: return json.loads(raw)
+    try: return json.loads(raw) # type: ignore
     except Exception: return {"symbol": symbol, "qty": 0.0, "avg_price": 0.0}
 
 # --------------- Helpers ----------------
@@ -164,7 +164,7 @@ def _surprise_bias(ccy: str) -> float:
         prev = _getf(f"cbd:surp:{ccy}")
         return float(prev or 0.0)
     try:
-        bps = float(raw)
+        bps = float(raw) # type: ignore
     except Exception:
         bps = 0.0
     surprise_dec = bps / 1e4  # 25 -> 0.0025

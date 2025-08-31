@@ -1,383 +1,414 @@
 # backend/analytics/correlations.py
-"""
-Correlations & Collinearity Monitor
------------------------------------
-Compute correlation matrices (static & rolling), cluster by similarity,
-flag high collinearity, and emit diversification metrics for dashboards.
-
-Inputs (flexible):
-  returns: Dict[name, List[{"ts": int, "ret": float}]]   # percentage/decimal returns
-           or Dict[name, List[float]]                    # equally spaced
-Options:
-  align='union'|'intersect'   -> how to align on timestamps
-  min_overlap: int            -> required overlapping points for a valid corr
-  roll_window: int            -> if >0, compute rolling correlations
-  alert_threshold: float      -> |corr| >= threshold triggers alert
-  publish_insight: bool       -> publish compact summary to ai.insight (if bus present)
-
-Outputs:
-  {
-    "asof": ts_ms,
-    "names": [...],
-    "corr": [[...]],              # Pearson correlations
-    "diversification_score": 0..1 # 1 = very diversified (low average |corr|)
-    "clusters": [[idx,...], ...], # rough agglomerative clusters
-    "rolling": { "window": W, "series": { "A|B": [{"ts":..,"corr":..}, ...], ... } }  # optional
-    "alerts": [ {"pair":"A|B","corr":0.93}, ... ]
-  }
-
-CLI:
-  python -m backend.analytics.correlations --probe
-  python -m backend.analytics.correlations --in data/returns.json --out runtime/corr.json --roll 60
-"""
-
 from __future__ import annotations
 
-import json
-import math
-import os
-import time
-from collections import defaultdict, deque
-from typing import Any, Dict, List, Tuple, Optional
+"""
+Correlations Toolkit
+--------------------
+- Compute correlation matrices from returns
+- Rolling/pairwise correlations
+- Distance matrices and (optional) hierarchical clustering order
+- Stability diagnostics to detect correlation regime shifts
+- Optional Redis worker to stream matrices to dashboards
 
-# Optional accelerators
+Streams (env):
+  returns.bars  : {"ts_ms","symbol","ret"}  or
+  prices.bars   : {"ts_ms","symbol","close"} (we convert to log-returns)
+  corr.matrices : {"ts_ms","window","symbols":[...],"rho":[[...]],"method":"pearson","diag":{...}}
+
+This file is dependency-light: requires numpy; pandas/scipy optional.
+"""
+
+import os, json, time, math
+from dataclasses import dataclass, asdict
+from typing import Dict, List, Tuple, Iterable, Optional
+
+# ---- deps (graceful) --------------------------------------------------------
 try:
-    import numpy as _np  # type: ignore
-except Exception:
-    _np = None
+    import numpy as np
+except Exception as e:
+    raise RuntimeError("correlations requires numpy") from e
 
 try:
-    import pandas as _pd  # type: ignore
+    import pandas as pd  # optional (for spearman/kendall and convenience)
 except Exception:
-    _pd = None
+    pd = None  # type: ignore
 
-# Optional clustering
+HAVE_SCIPY = True
 try:
-    from scipy.cluster.hierarchy import linkage, fcluster  # type: ignore
-    _SCIPY = True
+    from scipy.cluster.hierarchy import linkage, dendrogram
+    from scipy.spatial.distance import squareform
 except Exception:
-    _SCIPY = False
+    HAVE_SCIPY = False
 
-# Optional bus
+# ---- optional redis ---------------------------------------------------------
+USE_REDIS = True
 try:
-    from backend.bus.streams import publish_stream
+    from redis.asyncio import Redis as AsyncRedis  # type: ignore
 except Exception:
-    publish_stream = None  # type: ignore
+    USE_REDIS = False
+    AsyncRedis = None  # type: ignore
 
+# ---- env / streams ----------------------------------------------------------
+REDIS_URL        = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+RETURNS_STREAM   = os.getenv("RETURNS_STREAM", "returns.bars")
+PRICES_BARS      = os.getenv("PRICES_BARS_STREAM", "prices.bars")
+CORR_OUT_STREAM  = os.getenv("CORR_OUT_STREAM", "corr.matrices")
+MAXLEN           = int(os.getenv("CORR_MAXLEN", "500"))
 
-# --------------------------- utils ---------------------------
+# -----------------------------------------------------------------------------
+# Core math
+# -----------------------------------------------------------------------------
 
-def _utc_ms() -> int:
-    return int(time.time() * 1000)
-
-def _is_ts_row(x: Any) -> bool:
-    return isinstance(x, dict) and ("ts" in x) and ("ret" in x)
-
-def _align_series(returns: Dict[str, Any], align: str = "union") -> Tuple[List[str], List[int], Dict[str, List[float]]]:
+def corr_matrix_pearson(returns_by_symbol: Dict[str, Iterable[float]]) -> Tuple[np.ndarray, List[str]]:
     """
-    Align series by timestamp if dicts with ts are provided; else index by position.
-    Returns (names, ts_list, series_map[name]->list[float]).
+    returns_by_symbol: symbol -> iterable of returns aligned in time (same length).
+    Returns (rho, symbols) where rho is (N,N).
     """
-    names = list(returns.keys())
-    # Case 1: already lists of floats
-    if names and returns[names[0]] and not _is_ts_row(returns[names[0]][0]):
-        L = max(len(v) for v in returns.values())
-        ts = list(range(L))
-        series = {k: [float(x) for x in returns[k]] + [None]*(L-len(returns[k])) for k in names}
-        return names, ts, series # type: ignore
+    keys = [k for k, v in returns_by_symbol.items() if v is not None]
+    if not keys:
+        return np.zeros((0, 0)), []
+    arrays = []
+    mlen = min(len(list(returns_by_symbol[k])) for k in keys)
+    if mlen == 0:
+        return np.zeros((0, 0)), []
+    for k in keys:
+        a = np.asarray(list(returns_by_symbol[k])[-mlen:], dtype=float)
+        arrays.append(a)
+    X = np.vstack(arrays)  # (N, T)
+    # subtract mean row-wise
+    X = X - X.mean(axis=1, keepdims=True)
+    denom = np.sqrt((X**2).sum(axis=1, keepdims=True))
+    denom = np.where(denom == 0, 1e-18, denom)
+    Xn = X / denom
+    rho = Xn @ Xn.T
+    rho = np.clip(rho, -1.0, 1.0)
+    return rho, keys
 
-    # Case 2: list of {"ts","ret"} dicts
-    index_set = set()
-    per = {}
-    for k, rows in returns.items():
-        per[k] = {int(r["ts"]): float(r["ret"]) for r in rows if r and "ts" in r and "ret" in r}
-        index_set |= set(per[k].keys())
+def corr_matrix_rank(returns_by_symbol: Dict[str, Iterable[float]], method: str = "spearman") -> Tuple[np.ndarray, List[str]]:
+    """
+    Spearman or Kendall (requires pandas). Falls back to Pearson if pandas missing.
+    """
+    if pd is None:
+        return corr_matrix_pearson(returns_by_symbol)
+    keys = [k for k in returns_by_symbol if returns_by_symbol[k] is not None]
+    if not keys:
+        return np.zeros((0, 0)), []
+    mlen = min(len(list(returns_by_symbol[k])) for k in keys)
+    if mlen == 0:
+        return np.zeros((0, 0)), []
+    df = pd.DataFrame({k: list(returns_by_symbol[k])[-mlen:] for k in keys})
+    rho = df.corr(method=method).values # type: ignore
+    rho = np.clip(rho, -1.0, 1.0)
+    return rho, keys
 
-    if align == "intersect":
-        idx = None
-        for k in names:
-            idx = set(per[k].keys()) if idx is None else (idx & set(per[k].keys()))
-        idx = sorted(idx or [])
-    else:
-        idx = sorted(index_set)
+def distance_from_corr(rho: np.ndarray) -> np.ndarray:
+    """Mantegna distance: d_ij = sqrt(2*(1 - rho_ij))."""
+    rho = np.clip(rho, -1.0, 1.0)
+    return np.sqrt(2.0 * (1.0 - rho))
 
-    series = {k: [per[k].get(t, None) for t in idx] for k in names}
-    return names, idx, series
+def cluster_order(rho: np.ndarray) -> List[int]:
+    """
+    Return an ordering of assets to quasi-diagonalize the correlation (clustering).
+    Uses SciPy if available; else falls back to sorting by average correlation.
+    """
+    N = rho.shape[0]
+    if N == 0:
+        return []
+    if HAVE_SCIPY:
+        dist = np.sqrt(0.5 * (1 - np.clip(rho, -1.0, 1.0)))
+        Z = linkage(squareform(dist, checks=False), method="single")
+        dn = dendrogram(Z, no_plot=True)
+        return list(map(int, dn["leaves"]))
+    # Fallback: order by average correlation ascending (low to high)
+    avg = np.mean(rho - np.eye(N), axis=1)
+    return list(np.argsort(avg))
 
-def _pearson(x: List[Optional[float]], y: List[Optional[float]]) -> float:
-    # Drop Nones pairwise
-    xs, ys = [], []
-    for a, b in zip(x, y):
-        if a is None or b is None:
+def pairwise_rolling_corr(a: Iterable[float], b: Iterable[float], window: int) -> np.ndarray:
+    """
+    Rolling Pearson correlation of two series.
+    """
+    x = np.asarray(list(a), dtype=float)
+    y = np.asarray(list(b), dtype=float)
+    n = len(x)
+    if n == 0 or len(y) != n or window <= 1:
+        return np.array([])
+    out = np.full(n, np.nan)
+    # cumulative sums for O(1) window stats
+    c1 = np.cumsum(x); c2 = np.cumsum(y)
+    c1s = np.cumsum(x * x); c2s = np.cumsum(y * y)
+    c12 = np.cumsum(x * y)
+    for i in range(window - 1, n):
+        j = i - window
+        sx = c1[i] - (c1[j] if j >= 0 else 0.0)
+        sy = c2[i] - (c2[j] if j >= 0 else 0.0)
+        sxx = c1s[i] - (c1s[j] if j >= 0 else 0.0)
+        syy = c2s[i] - (c2s[j] if j >= 0 else 0.0)
+        sxy = c12[i] - (c12[j] if j >= 0 else 0.0)
+        vx = sxx - sx * sx / window
+        vy = syy - sy * sy / window
+        cov = sxy - sx * sy / window
+        denom = math.sqrt(max(vx, 0.0) * max(vy, 0.0)) + 1e-18
+        out[i] = cov / denom
+    return out
+
+def rolling_corr_matrix(returns: Dict[str, Iterable[float]], window: int) -> Tuple[List[np.ndarray], List[str]]:
+    """
+    Produces a list of correlation matrices aligned with time (NaN until enough data).
+    For efficiency, this uses pandas if available; otherwise builds per-pair rolling.
+    """
+    keys = [k for k in returns]
+    if pd is not None:
+        # Align into DataFrame
+        mlen = min(len(list(returns[k])) for k in keys) if keys else 0
+        if mlen == 0:
+            return [], keys
+        df = pd.DataFrame({k: list(returns[k])[-mlen:] for k in keys})
+        # rolling corr returns a Panel-like structure in older pandas; do manual loop
+        mats: List[np.ndarray] = []
+        for i in range(mlen):
+            if i + 1 < window:
+                mats.append(np.full((len(keys), len(keys)), np.nan))
+                continue
+            seg = df.iloc[i+1-window:i+1]
+            rho = seg.corr().values
+            mats.append(np.clip(rho, -1.0, 1.0))
+        return mats, keys
+
+    # Fallback without pandas: compute pairwise for each step (O(N^2 T))
+    series = [np.asarray(list(returns[k]), dtype=float) for k in keys]
+    T = min(len(s) for s in series) if series else 0
+    mats = []
+    for t in range(T):
+        if t + 1 < window:
+            mats.append(np.full((len(keys), len(keys)), np.nan))
             continue
-        xs.append(float(a)); ys.append(float(b))
-    n = len(xs)
-    if n < 2:
-        return float("nan")
-    if _np is not None:
-        return float(_np.corrcoef(_np.asarray(xs), _np.asarray(ys))[0,1])
-    # stdlib fallback
-    mx = sum(xs)/n; my = sum(ys)/n
-    num = sum((a-mx)*(b-my) for a,b in zip(xs,ys))
-    denx = math.sqrt(sum((a-mx)**2 for a in xs))
-    deny = math.sqrt(sum((b-my)**2 for b in ys))
-    return num/(denx*deny) if denx>0 and deny>0 else float("nan")
+        rho = np.ones((len(keys), len(keys)))
+        for i in range(len(keys)):
+            for j in range(i + 1, len(keys)):
+                r = pairwise_rolling_corr(series[i][:t+1], series[j][:t+1], window)
+                val = r[-1]
+                rho[i, j] = rho[j, i] = np.clip(val, -1.0, 1.0)
+        mats.append(rho)
+    return mats, keys
 
-def _diversification_score(C: List[List[float]]) -> float:
-    """
-    1 - average absolute correlation (off-diagonal).
-    """
-    n = len(C)
-    if n <= 1: return 1.0
-    s = 0.0; m = 0
-    for i in range(n):
-        for j in range(i+1, n):
-            cij = C[i][j]
-            if not (cij is None or math.isnan(cij)):
-                s += abs(cij); m += 1
-    if m == 0: return 1.0
-    return max(0.0, min(1.0, 1.0 - s/m))
+# -----------------------------------------------------------------------------
+# Diagnostics / stability
+# -----------------------------------------------------------------------------
 
-def _distance_from_corr(C: List[List[float]]) -> List[List[float]]:
-    """
-    Convert correlation to distance: d = sqrt(0.5 * (1 - corr)), safe for NaNs.
-    """
-    n = len(C)
-    D = [[0.0]*n for _ in range(n)]
-    for i in range(n):
-        for j in range(n):
-            c = C[i][j]
-            if i == j:
-                D[i][j] = 0.0
-            else:
-                if c is None or math.isnan(c):
-                    D[i][j] = 1.0
-                else:
-                    D[i][j] = math.sqrt(max(0.0, 0.5*(1.0 - c)))
-    return D
+@dataclass
+class CorrDiagnostics:
+    ts_ms: int
+    symbols: List[str]
+    avg_abs_corr: float
+    eig_max: float
+    eig_min: float
+    eig_cond: float
+    avg_abs_change: Optional[float] = None  # vs previous rho
+    method: str = "pearson"
 
-def _cluster(D: List[List[float]], names: List[str], k: Optional[int] = None) -> List[List[int]]:
-    """
-    Rough clustering. If SciPy is available, use hierarchical clustering; else
-    do a greedy linkage-ish grouping.
-    Returns a list of clusters, each as a list of indices.
-    """
-    n = len(names)
-    if n == 0: return []
-    if _SCIPY and _np is not None:
-        # Convert square to condensed form for linkage
-        arr = _np.asarray(D)
-        iu = _np.triu_indices(n, 1)
-        condensed = arr[iu]
-        Z = linkage(condensed, method="average")
-        # choose number of clusters ~ sqrt(n) if not given
-        k = k or max(1, int(round(math.sqrt(n))))
-        labels = fcluster(Z, k, criterion="maxclust")
-        clusters: Dict[int, List[int]] = defaultdict(list)
-        for i, lab in enumerate(labels):
-            clusters[int(lab)].append(i)
-        return list(clusters.values())
-
-    # Fallback: greedy grouping by nearest neighbor
-    remaining = set(range(n))
-    clusters = [] # type: ignore
-    while remaining:
-        i = remaining.pop()
-        # find closest neighbors under a soft radius
-        radius = sorted(D[i])[min(2, n-1)] if n > 1 else 0.0  # 2nd-nearest distance
-        group = [i]
-        to_add = [j for j in list(remaining) if D[i][j] <= radius]
-        for j in to_add:
-            remaining.remove(j); group.append(j)
-        clusters.append(sorted(group)) # type: ignore
-    return clusters # type: ignore
-
-
-# --------------------------- core API ---------------------------
-
-def compute_correlations(
-    returns: Dict[str, Any],
-    *,
-    align: str = "union",
-    min_overlap: int = 20,
-    roll_window: int = 0,
-    alert_threshold: float = 0.9,
-    publish_insight_flag: bool = False
-) -> Dict[str, Any]:
-    """
-    Main entrypoint: compute static matrix, (optional) rolling, clusters, alerts.
-    """
-    names, ts, series = _align_series(returns, align=align)
-    n = len(names)
-    # Static matrix
-    C = [[float("nan")]*n for _ in range(n)]
-    for i in range(n):
-        C[i][i] = 1.0
-        for j in range(i+1, n):
-            # enforce overlap
-            if min_overlap > 0:
-                overlap = 0
-                for a, b in zip(series[names[i]], series[names[j]]):
-                    if a is not None and b is not None:
-                        overlap += 1
-                if overlap < min_overlap:
-                    cij = float("nan")
-                else:
-                    cij = _pearson(series[names[i]], series[names[j]]) # type: ignore
-            else:
-                cij = _pearson(series[names[i]], series[names[j]]) # type: ignore
-            C[i][j] = C[j][i] = cij
-
-    div_score = _diversification_score(C)
-    D = _distance_from_corr(C)
-    clusters = _cluster(D, names)
-
-    # Alerts for high |corr|
-    alerts: List[Dict[str, Any]] = []
-    for i in range(n):
-        for j in range(i+1, n):
-            cij = C[i][j]
-            if not (cij is None or math.isnan(cij)) and abs(cij) >= alert_threshold:
-                alerts.append({"pair": f"{names[i]}|{names[j]}", "corr": float(cij)})
-
-    # Rolling correlations (pairwise)
-    rolling = None
-    if roll_window and roll_window > 3:
-        roll_series: Dict[str, List[Dict[str, Any]]] = {}
-        L = len(ts)
-        for i in range(n):
-            xi = series[names[i]]
-            for j in range(i+1, n):
-                key = f"{names[i]}|{names[j]}"
-                xj = series[names[j]]
-                pts = []
-                for k in range(roll_window, L+1):
-                    win_x = xi[k-roll_window:k]
-                    win_y = xj[k-roll_window:k]
-                    c = _pearson(win_x, win_y) # type: ignore
-                    pts.append({"ts": ts[k-1] if ts else (k-1), "corr": float(c)})
-                roll_series[key] = pts
-        rolling = {"window": roll_window, "series": roll_series}
-
-    out = {
-        "asof": _utc_ms(),
-        "names": names,
-        "corr": C,
-        "diversification_score": float(div_score),
-        "clusters": clusters,
-        "rolling": rolling,
-        "alerts": alerts,
-    }
-
-    if publish_insight_flag:
-        _publish_insight(names, C, div_score, alerts)
-
-    return out
-
-
-# --------------------------- insight publisher ---------------------------
-
-def _publish_insight(names: List[str], C: List[List[float]], div: float, alerts: List[Dict[str, Any]]):
-    if not publish_stream:
-        return
-    # summarize hottest pair and average |corr|
-    n = len(names)
-    hot_pair = None; hot_val = -1.0
-    s = 0.0; m = 0
-    for i in range(n):
-        for j in range(i+1, n):
-            cij = C[i][j]
-            if cij is None or math.isnan(cij): continue
-            if abs(cij) > hot_val:
-                hot_val = abs(cij); hot_pair = (names[i], names[j], cij)
-            s += abs(cij); m += 1
-    avg_abs = (s/m) if m else 0.0
-    summary = f"Correlation monitor — avg|ρ|={avg_abs:.2f}, divScore={div:.2f}" \
-              + (f"; hottest: {hot_pair[0]}↔{hot_pair[1]} (ρ={hot_pair[2]:.2f})" if hot_pair else "")
-    publish_stream("ai.insight", {
-        "ts_ms": _utc_ms(),
-        "kind": "correlation",
-        "summary": summary[:240],
-        "details": [f"Alerts: {len(alerts)} pairs ≥ threshold."],
-        "tags": ["risk","correlation","diversification"],
-        "refs": {}
-    })
-
-
-# --------------------------- convenience I/O ---------------------------
-
-def load_returns(path: str) -> Dict[str, Any]:
-    """
-    Load returns JSON. Expected format:
-      {"alpha.momo":[{"ts":1690000000000,"ret":0.003}, ...],
-       "statarb.pairs":[...]}
-    or lists of floats of equal/unequal length.
-    """
-    with open(path, "r") as f:
-        return json.load(f)
-
-def save_report(obj: Dict[str, Any], path: str) -> None:
+def corr_diagnostics(rho: np.ndarray, symbols: List[str], prev_rho: Optional[np.ndarray] = None, method: str = "pearson") -> CorrDiagnostics:
+    N = rho.shape[0]
+    if N == 0:
+        return CorrDiagnostics(int(time.time()*1000), [], 0.0, 0.0, 0.0, 0.0, None, method)
+    mask = ~np.eye(N, dtype=bool)
+    avg_abs = float(np.mean(np.abs(rho[mask])))
+    # eigen spread (PSD guard)
     try:
-        with open(path, "w") as f:
-            json.dump(obj, f, indent=2)
+        w = np.linalg.eigvalsh((rho + rho.T) * 0.5)
     except Exception:
-        pass
+        w = np.linalg.eigvals(rho)
+    w = np.real(w)
+    eig_max = float(np.max(w))
+    eig_min = float(np.min(w))
+    cond = float(eig_max / (eig_min + 1e-9))
+    avg_delta = None
+    if prev_rho is not None and prev_rho.shape == rho.shape:
+        avg_delta = float(np.mean(np.abs(rho[mask] - prev_rho[mask])))
+    return CorrDiagnostics(
+        ts_ms=int(time.time()*1000),
+        symbols=symbols,
+        avg_abs_corr=avg_abs,
+        eig_max=eig_max,
+        eig_min=eig_min,
+        eig_cond=cond,
+        avg_abs_change=avg_delta,
+        method=method
+    )
 
+# -----------------------------------------------------------------------------
+# Streaming worker (Redis)
+# -----------------------------------------------------------------------------
 
-# --------------------------- CLI / demo ---------------------------
+class CorrWorker:
+    """
+    Tails returns/prices streams, keeps rolling returns per symbol,
+    emits correlation matrices periodically.
+    Input messages:
+      returns.bars : {"ts_ms","symbol","ret"}
+      prices.bars  : {"ts_ms","symbol","close"}
+    Output:
+      corr.matrices: {"ts_ms","window","symbols":[...],"method":"pearson","rho":[[...]],"diag":{...}}
+    """
+    def __init__(self, window: int = 120, method: str = "pearson", emit_every: int = 30):
+        self.window = int(window)
+        self.method = method  # "pearson"|"spearman"|"kendall"
+        self.emit_every = int(emit_every)
+        self.r: Optional[AsyncRedis] = None # type: ignore
+        self.last_returns_id = "$"
+        self.last_prices_id = "$"
+        self.buff_ret: Dict[str, List[float]] = {}
+        self.last_px: Dict[str, float] = {}
+        self.ticks = 0
+        self.prev_rho: Optional[np.ndarray] = None
+        self.prev_symbols: List[str] = []
 
-def _synthetic_returns(n: int = 6, L: int = 250, seed: int = 7) -> Dict[str, List[Dict[str, Any]]]:
-    import random
-    rng = random.Random(seed)
-    base = [rng.gauss(0, 0.01) for _ in range(L)]
-    out: Dict[str, List[Dict[str, Any]]] = {}
-    ts0 = _utc_ms() - L*86_400_000
-    for i in range(n):
-        # mix base + idiosyncratic
-        series = [0.6*base[t] + 0.4*rng.gauss(0, 0.01) for t in range(L)]
-        # add some pairs with deliberate correlation
-        if i % 3 == 1:
-            series = [series[t] + 0.3*base[t] for t in range(L)]
-        if i % 5 == 2:
-            series = [series[t] - 0.3*base[t] for t in range(L)]
-        name = f"alpha_{i}"
-        out[name] = [{"ts": ts0 + t*86_400_000, "ret": series[t]} for t in range(L)]
-    return out
+    async def connect(self):
+        if not USE_REDIS:
+            return
+        try:
+            self.r = AsyncRedis.from_url(REDIS_URL, decode_responses=True)  # type: ignore
+            await self.r.ping() # type: ignore
+        except Exception:
+            self.r = None
 
-def main():
-    import argparse
-    ap = argparse.ArgumentParser(description="Correlations & collinearity monitor")
-    ap.add_argument("--in", dest="inp", type=str, help="Path to returns JSON")
-    ap.add_argument("--out", dest="out", type=str, default="runtime/corr.json")
-    ap.add_argument("--align", type=str, default="union", choices=["union","intersect"])
-    ap.add_argument("--min-overlap", type=int, default=20)
-    ap.add_argument("--roll", type=int, default=0, help="Rolling window length")
-    ap.add_argument("--alert", type=float, default=0.9, help="|corr| alert threshold")
-    ap.add_argument("--publish", action="store_true", help="Publish a short insight")
-    ap.add_argument("--probe", action="store_true", help="Run a synthetic demo")
-    args = ap.parse_args()
+    def _push_ret(self, sym: str, r: float):
+        buf = self.buff_ret.setdefault(sym, [])
+        buf.append(float(r))
+        if len(buf) > max(self.window * 4, self.window + 10):  # keep some extra
+            self.buff_ret[sym] = buf[-max(self.window * 4, self.window + 10):]
 
-    if args.probe:
-        rets = _synthetic_returns()
-        rep = compute_correlations(rets, align=args.align, min_overlap=args.min_overlap,
-                                   roll_window=args.roll, alert_threshold=args.alert,
-                                   publish_insight_flag=args.publish)
-        os.makedirs(os.path.dirname(args.out) or "runtime", exist_ok=True)
-        save_report(rep, args.out)
-        print(json.dumps(rep, indent=2)[:2000] + "\n... (truncated)")
-        return
+    async def run(self):
+        await self.connect()
+        if not self.r:
+            print("[correlations] no redis; worker idle"); return
 
-    if not args.inp:
-        print("Provide --in <returns.json> or use --probe for a demo.")
-        return
+        while True:
+            try:
+                resp = await self.r.xread({RETURNS_STREAM: self.last_returns_id, PRICES_BARS: self.last_prices_id}, count=500, block=2000)  # type: ignore
+                if not resp:
+                    continue
+                update = False
+                for stream, entries in resp:
+                    for _id, fields in entries:
+                        j = {}
+                        try:
+                            j = json.loads(fields.get("json", "{}"))
+                        except Exception:
+                            continue
+                        sym = str(j.get("symbol") or "").upper()
+                        ts  = int(j.get("ts_ms") or 0)
+                        if not sym: 
+                            continue
 
-    rets = load_returns(args.inp)
-    rep = compute_correlations(rets, align=args.align, min_overlap=args.min_overlap,
-                               roll_window=args.roll, alert_threshold=args.alert,
-                               publish_insight_flag=args.publish)
-    os.makedirs(os.path.dirname(args.out) or "runtime", exist_ok=True)
-    save_report(rep, args.out)
-    print(f"Wrote {args.out}")
+                        if stream == RETURNS_STREAM:
+                            self.last_returns_id = _id
+                            r = j.get("ret")
+                            if r is not None:
+                                self._push_ret(sym, float(r))
+                                update = True
+                        elif stream == PRICES_BARS:
+                            self.last_prices_id = _id
+                            close = j.get("close")
+                            if close is not None:
+                                px = float(close)
+                                if px > 0:
+                                    if sym in self.last_px and self.last_px[sym] > 0:
+                                        r = math.log(px) - math.log(self.last_px[sym])
+                                        self._push_ret(sym, r)
+                                        update = True
+                                    self.last_px[sym] = px
+
+                if update:
+                    self.ticks += 1
+                    if self.ticks % self.emit_every == 0:
+                        await self._emit_snapshot()
+
+            except Exception as e:
+                await self._publish({"ts_ms": int(time.time()*1000), "error": str(e)})
+
+    async def _emit_snapshot(self):
+        # filter symbols that have enough observations
+        ready = {k: v for k, v in self.buff_ret.items() if len(v) >= self.window}
+        if len(ready) < 2:
+            return
+        if self.method == "pearson":
+            rho, symbols = corr_matrix_pearson(ready) # type: ignore
+        else:
+            rho, symbols = corr_matrix_rank(ready, method=("spearman" if self.method != "kendall" else "kendall")) # type: ignore
+
+        order = cluster_order(rho) if rho.size > 0 else []
+        if order:
+            rho = rho[np.ix_(order, order)]
+            symbols = [symbols[i] for i in order]
+
+        diag = asdict(corr_diagnostics(rho, symbols, prev_rho=self.prev_rho if symbols == self.prev_symbols else None, method=self.method))
+        self.prev_rho = rho.copy()
+        self.prev_symbols = list(symbols)
+
+        await self._publish({
+            "ts_ms": int(time.time()*1000),
+            "window": self.window,
+            "method": self.method,
+            "symbols": symbols,
+            "rho": rho.round(6).tolist(),
+            "diag": diag
+        })
+
+    async def _publish(self, obj: Dict):
+        if self.r:
+            try:
+                await self.r.xadd(CORR_OUT_STREAM, {"json": json.dumps(obj)}, maxlen=MAXLEN, approximate=True)  # type: ignore
+            except Exception:
+                pass
+        else:
+            print("[correlations]", obj)
+
+# -----------------------------------------------------------------------------
+# Quick helpers & demo
+# -----------------------------------------------------------------------------
+
+def build_returns_from_prices(prices: Iterable[float]) -> List[float]:
+    r = []
+    last = None
+    for px in prices:
+        px = float(px)
+        if px <= 0: 
+            last = px
+            continue
+        if last is not None and last > 0:
+            r.append(math.log(px) - math.log(last))
+        last = px
+    return r
+
+def demo():
+    rng = np.random.default_rng(7)
+    T = 1000
+    # Make three correlated series
+    base = rng.standard_normal(T) * 0.01
+    a = base + 0.005 * rng.standard_normal(T)
+    b = 0.7 * base + 0.009 * rng.standard_normal(T)
+    c = -0.3 * base + 0.011 * rng.standard_normal(T)
+    d = rng.standard_normal(T) * 0.012
+
+    rho, names = corr_matrix_pearson({"AAPL": a, "MSFT": b, "TSLA": c, "META": d})
+    print("symbols:", names)
+    print("rho[0]:", rho[0].round(3))
+
+    mats, keys = rolling_corr_matrix({"AAPL": a, "MSFT": b, "TSLA": c}, window=60)
+    print("rolling mats:", len(mats), "last non-nan mean:", np.nanmean(mats[-1]))
 
 if __name__ == "__main__":
-    main()
+    import argparse, asyncio
+    ap = argparse.ArgumentParser("correlations")
+    ap.add_argument("--demo", action="store_true")
+    ap.add_argument("--worker", action="store_true")
+    ap.add_argument("--window", type=int, default=120)
+    ap.add_argument("--method", type=str, default="pearson")
+    args = ap.parse_args()
+    if args.demo:
+        demo()
+    elif args.worker:
+        worker = CorrWorker(window=args.window, method=args.method)
+        asyncio.run(worker.run())
+    else:
+        demo()

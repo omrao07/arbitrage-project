@@ -38,7 +38,7 @@ SNAPSHOT_EVERY_SEC = int(os.getenv("CH_SNAPSHOT_EVERY_SEC", "15"))
 
 # ---------- Clients ----------
 r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
-ch = clickhouse_connect.get_client(host=CH_HOST, port=CH_PORT, username=CH_USER or None, password=CH_PASS or None, database=CH_DB)
+ch = clickhouse_connect.get_client(host=CH_HOST, port=CH_PORT, username=CH_USER or None, password=CH_PASS or None, database=CH_DB) # type: ignore
 
 _stop = False
 def _graceful(*_a):
@@ -179,14 +179,14 @@ def _consume_stream(stream: str):
     last_id = "$"
     mapping = {stream: last_id}
     while not _stop:
-        res = r.xread(mapping, block=1000, count=500)
+        res = r.xread(mapping, block=1000, count=500) # type: ignore
         if not res:
             # periodic flush to keep latency low
             buf_ticks.maybe_flush()
             buf_orders.maybe_flush()
             buf_fills.maybe_flush()
             continue
-        st, entries = res[0]
+        st, entries = res[0] # type: ignore
         for mid, fields in entries:
             try:
                 msg = _parse_payload(fields)
@@ -226,7 +226,7 @@ def _snapshot_positions_and_pnl():
             # positions (aggregate by symbol)
             pos = r.hgetall("positions") or {}
             rows_pos = []
-            for sym, raw in pos.items():
+            for sym, raw in pos.items(): # type: ignore
                 try:
                     p = json.loads(raw)
                     rows_pos.append((
@@ -242,9 +242,9 @@ def _snapshot_positions_and_pnl():
 
             # positions by strategy (if we can discover strategy names)
             enabled = r.hgetall("strategy:enabled") or {}
-            for strat in enabled.keys():
+            for strat in enabled.keys(): # type: ignore
                 bys = r.hgetall(f"positions:by_strategy:{strat}") or {}
-                for sym, raw in bys.items():
+                for sym, raw in bys.items(): # type: ignore
                     try:
                         p = json.loads(raw)
                         rows_pos.append((
@@ -269,7 +269,7 @@ def _snapshot_positions_and_pnl():
             pnl_raw = r.get("pnl")
             if pnl_raw:
                 try:
-                    p = json.loads(pnl_raw)
+                    p = json.loads(pnl_raw) # type: ignore
                     ch.insert(
                         "pnl_snap",
                         [(ts, float(p.get("realized", 0.0)), float(p.get("unrealized", 0.0)), float(p.get("total", 0.0)))],

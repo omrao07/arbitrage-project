@@ -1,0 +1,57 @@
+# api_depl.yaml
+# Kubernetes Deployment + Service for analyst-api
+# Exposes a FastAPI/Flask/REST backend running inside your cluster.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analyst-api
+  labels:
+    app: analyst-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: analyst-api
+  template:
+    metadata:
+      labels:
+        app: analyst-api
+    spec:
+      containers:
+        - name: analyst-api
+          image: myregistry/analyst-api:latest   # <-- replace with your image
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000   # FastAPI default
+          env:
+            - name: REDIS_HOST
+              value: "redis"        # or your redis service name
+            - name: REDIS_PORT
+              value: "6379"
+            - name: ANALYST_CONFIG
+              value: "/config/analyst_worker.yaml"
+          volumeMounts:
+            - name: config-volume
+              mountPath: /config
+              readOnly: true
+      volumes:
+        - name: config-volume
+          configMap:
+            name: analyst-worker-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: analyst-api-svc
+  labels:
+    app: analyst-api
+spec:
+  type: ClusterIP        # change to LoadBalancer/NodePort if you need external access
+  selector:
+    app: analyst-api
+  ports:
+    - port: 80           # service port
+      targetPort: 8000   # container port
+      protocol: TCP

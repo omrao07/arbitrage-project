@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hedgefund-api
+  labels:
+    app: hedgefund
+    tier: backend
+spec:
+  replicas: 3   # run 3 pods for redundancy
+  selector:
+    matchLabels:
+      app: hedgefund
+      tier: backend
+  template:
+    metadata:
+      labels:
+        app: hedgefund
+        tier: backend
+    spec:
+      containers:
+        - name: hedgefund-api
+          image: your-docker-registry/hedgefund-api:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          env:
+            - name: REDIS_HOST
+              value: "redis"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: hedgefund-secrets
+                  key: db_host
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: hedgefund-secrets
+                  key: db_user
+            - name: DB_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: hedgefund-secrets
+                  key: db_pass
+            - name: BROKER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: hedgefund-secrets
+                  key: broker_api_key
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 20
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hedgefund-api-service
+  labels:
+    app: hedgefund
+    tier: backend
+spec:
+  type: ClusterIP
+  selector:
+    app: hedgefund
+    tier: backend
+  ports:
+    - port: 80
+      targetPort: 8000
+      protocol: TCP
+      name: http

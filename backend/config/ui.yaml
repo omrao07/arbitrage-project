@@ -1,0 +1,72 @@
+# config/ui.yaml
+
+enabled: true
+
+# === General settings ===
+theme:
+  mode: "dark"                  # dark | light | auto
+  primary_color: "#0A84FF"      # accent color
+  font: "Inter"                 # UI font
+  chart_palette: "cool"         # cool | warm | neutral
+
+layout:
+  default:
+    rows: 3
+    cols: 3
+  terminal_view:
+    rows: 2
+    cols: 3
+  multi_chart:
+    rows: 2
+    cols: 2
+
+# === Panels & widgets ===
+panels:
+  risk_dashboard: true
+  pnl_curve: true
+  pnl_greeks: true
+  vol_surface: true
+  corr_matrix: true
+  heatmap: true
+  positions: true
+  depth: true
+  strategy_builder: true
+  stress_sandbox: true
+  visual_trade_history: true
+  dark_pool_xray: true
+  ai_chat: true
+  margin_widget: true
+  alerts_banner: true
+  trade_log: true
+  candle_panel: true
+
+# === Features ===
+features:
+  drag_and_drop_layout: true
+  save_user_layouts: true
+  real_time_refresh_ms: 1000
+  multi_tab_support: true
+  export_charts: ["png", "csv", "pdf"]
+
+# === Alerts & notifications ===
+notifications:
+  in_app: true
+  sound: false
+  toast_timeout_ms: 5000
+  severity_colors:
+    info: "#2E86AB"
+    warn: "#FFB703"
+    critical: "#D90429"
+
+# === Data binding ===
+data:
+  backend_ws_url: "ws://localhost:8000/ws"
+  rest_api_url: "http://localhost:8000/api"
+  auth_required: true
+  refresh_tokens: true
+
+# === Demo / literacy mode ===
+literacy_mode:
+  enabled: true
+  show_explanations: true
+  highlight_risk_terms: true

@@ -1,0 +1,64 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "description": "AI-generated trading signals configuration",
+    "last_updated": "2025-08-29T00:00:00Z",
+    "author": "AI Engine"
+  },
+  "signals": [
+    {
+      "id": "sentiment_aapl",
+      "name": "AAPL News + Twitter Sentiment",
+      "type": "sentiment",
+      "source": ["news_yahoo", "news_moneycontrol", "twitter"],
+      "model": "finbert-v2",
+      "aggregation": "rolling_mean",
+      "lookback": "1h",
+      "thresholds": {
+        "buy": 0.6,
+        "sell": -0.6
+      },
+      "assets": ["AAPL"],
+      "region": "US"
+    },
+    {
+      "id": "vol_surface_skew",
+      "name": "SPX Skew Steepener",
+      "type": "options",
+      "source": ["vol_surface"],
+      "feature": "25d_rr", 
+      "lookback": "1d",
+      "thresholds": {
+        "long_vol": 0.15,
+        "short_vol": -0.15
+      },
+      "assets": ["SPX"],
+      "region": "US"
+    },
+    {
+      "id": "macro_regime",
+      "name": "Regime Map Macro State",
+      "type": "regime",
+      "source": ["regime_map"],
+      "features": ["yields", "credit_spreads", "equity_vol"],
+      "states": {
+        "bull": { "allocation_bias": "long_risk" },
+        "bear": { "allocation_bias": "short_equity, long_treasury" },
+        "crisis": { "allocation_bias": "long_vol, long_gold" }
+      },
+      "region": "Global"
+    },
+    {
+      "id": "pairs_trade",
+      "name": "MSFT vs AMZN Statistical Arbitrage",
+      "type": "stat_arb",
+      "source": ["price_data"],
+      "method": "zscore_spread",
+      "lookback": "20d",
+      "entry_threshold": 2.0,
+      "exit_threshold": 0.5,
+      "assets": ["MSFT", "AMZN"],
+      "region": "US"
+    }
+  ]
+}

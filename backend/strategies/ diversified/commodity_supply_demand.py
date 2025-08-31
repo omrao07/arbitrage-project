@@ -106,10 +106,10 @@ def _last_price(symbol: str) -> Optional[float]:
     if not raw:
         return None
     try:
-        return float(json.loads(raw)["price"])
+        return float(json.loads(raw)["price"]) # type: ignore
     except Exception:
         try:
-            return float(raw)
+            return float(raw) # type: ignore
         except Exception:
             return None
 

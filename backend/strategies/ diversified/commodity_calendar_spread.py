@@ -120,10 +120,10 @@ def _hget_last(symbol: str) -> Optional[float]:
     if not raw:
         return None
     try:
-        return float(json.loads(raw)["price"])
+        return float(json.loads(raw)["price"]) # type: ignore
     except Exception:
         try:
-            return float(raw)
+            return float(raw) # type: ignore
         except Exception:
             return None
 
@@ -133,7 +133,7 @@ def _fx(pair: str) -> float:
     v = r.hget(FX_SPOT_HKEY, pair)
     if v:
         try:
-            return float(v)
+            return float(v) # type: ignore
         except Exception:
             pass
     # allow last_price for FX as fallback
@@ -175,7 +175,7 @@ def _load_ewma(pair: Tuple[str, str], alpha: float) -> EwmaMV:
     raw = r.get(_ewma_key(*pair))
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", alpha)))
         except Exception:
             pass
@@ -293,7 +293,7 @@ class CommodityCalendarSpread(Strategy):
         if not raw:
             return None
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return PairState(**o)
         except Exception:
             return None

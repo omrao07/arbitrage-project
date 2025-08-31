@@ -91,7 +91,7 @@ def _hget_json(hk: str, field: str) -> Optional[dict]:
     raw = r.hget(hk, field)
     if not raw: return None
     try:
-        j = json.loads(raw)
+        j = json.loads(raw) # type: ignore
         return j if isinstance(j, dict) else None
     except Exception:
         return None
@@ -100,14 +100,14 @@ def _px(sym: str) -> Optional[float]:
     raw = r.hget(LAST_HK, sym)
     if not raw: return None
     try:
-        j = json.loads(raw); return float(j.get("price", 0.0))
+        j = json.loads(raw); return float(j.get("price", 0.0)) # type: ignore
     except Exception:
-        try: return float(raw)
+        try: return float(raw) # type: ignore
         except Exception: return None
 
 def _iv_atm(sym: str, dte: int) -> Optional[float]:
     v = r.hget(IV_ATM_HK, f"{sym}:{dte}")
-    try: return float(v) if v is not None else None
+    try: return float(v) if v is not None else None # type: ignore
     except Exception: return None
 
 def _opt_mid(sym: str, right: str, k: float, dte: int) -> Optional[float]:
@@ -119,7 +119,7 @@ def _opt_mid(sym: str, right: str, k: float, dte: int) -> Optional[float]:
 
 def _fees_bps(venue: str="OPT") -> float:
     v = r.hget(FEES_HK, venue)
-    try: return float(v) if v is not None else 15.0
+    try: return float(v) if v is not None else 15.0 # type: ignore
     except Exception: return 15.0
 
 def _now_ms() -> int: return int(time.time() * 1000)
@@ -161,7 +161,7 @@ def _load_ema(tag: str, a: float, default: float=0.0) -> Ema:
     raw = r.get(_ema_key(tag))
     if raw:
         try:
-            o = json.loads(raw); return Ema(val=float(o["v"]), a=float(o.get("a", a)))
+            o = json.loads(raw); return Ema(val=float(o["v"]), a=float(o.get("a", a))) # type: ignore
         except Exception: pass
     return Ema(val=default, a=a)
 
@@ -234,7 +234,7 @@ class TailRiskHedge(Strategy):
         raw = r.get("credit:hy_ig_oas_bps")
         if raw:
             try:
-                oas = float(raw)
+                oas = float(raw) # type: ignore
                 credit = min(1.0, max(0.0, (oas - 250.0) / 200.0))
             except Exception:
                 pass
@@ -358,7 +358,7 @@ class TailRiskHedge(Strategy):
         raw = r.get(_poskey(self.ctx.name, tag))
         if not raw: return None
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return OpenState(mode=str(o["mode"]), tag=str(o["tag"]),
                              qty_long=float(o["qty_long"]), qty_short=float(o["qty_short"]),
                              k_long=float(o["k_long"]), k_short=float(o["k_short"]),

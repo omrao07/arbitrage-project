@@ -111,10 +111,10 @@ def _hgetf(key: str, field: str) -> Optional[float]:
     v = r.hget(key, field)
     if v is None: return None
     try:
-        return float(v)
+        return float(v) # type: ignore
     except Exception:
         try:
-            return float(json.loads(v))
+            return float(json.loads(v)) # type: ignore
         except Exception:
             return None
 
@@ -122,10 +122,10 @@ def _hget_price(symbol: str) -> Optional[float]:
     raw = r.hget(LAST_PRICE_HKEY, symbol)
     if not raw: return None
     try:
-        return float(json.loads(raw)["price"])
+        return float(json.loads(raw)["price"]) # type: ignore
     except Exception:
         try:
-            return float(raw)
+            return float(raw) # type: ignore
         except Exception:
             return None
 
@@ -157,7 +157,7 @@ def _load_ewma(issuer: str, bond_id: str, tenor: str, alpha: float) -> EwmaMV:
     raw = r.get(_ewma_key(issuer, bond_id, tenor))
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", alpha)))
         except Exception:
             pass
@@ -305,7 +305,7 @@ class CreditDefaultSwapArbitrage(Strategy):
         if not raw:
             return None
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return OpenState(**o)
         except Exception:
             return None

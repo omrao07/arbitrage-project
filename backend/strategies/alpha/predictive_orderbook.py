@@ -93,21 +93,21 @@ def _hget_json(hk: str, field: str) -> Optional[dict]:
     raw = r.hget(hk, field)
     if not raw: return None
     try:
-        j = json.loads(raw); return j if isinstance(j, dict) else None
+        j = json.loads(raw); return j if isinstance(j, dict) else None # type: ignore
     except Exception: return None
 
 def _last_px(symkey: str) -> Optional[float]:
     raw = r.hget(LAST_HK, symkey)
     if not raw: return None
     try:
-        j = json.loads(raw); return float(j.get("price", 0.0))
+        j = json.loads(raw); return float(j.get("price", 0.0)) # type: ignore
     except Exception:
-        try: return float(raw)
+        try: return float(raw) # type: ignore
         except Exception: return None
 
 def _fees_bps(venue: str="EXCH") -> float:
     v = r.hget(FEES_HK, venue)
-    try: return float(v) if v is not None else 2.0
+    try: return float(v) if v is not None else 2.0 # type: ignore
     except Exception: return 2.0
 
 # ============================ state ============================
@@ -192,7 +192,7 @@ class PredictiveOrderBook(Strategy):
         if now - self._last < RECHECK_SECS: return
         self._last = now
 
-        syms: List[str] = list(r.smembers(UNIV_KEY) or [])
+        syms: List[str] = list(r.smembers(UNIV_KEY) or []) # type: ignore
         if not syms:
             self.emit_signal(0.0); return
 
@@ -267,7 +267,7 @@ class PredictiveOrderBook(Strategy):
         raw = r.get(_poskey(self.ctx.name, sym))
         if not raw: return None
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return OpenState(side=str(o["side"]), qty=float(o["qty"]), entry_px=float(o["entry_px"]),
                              entry_ms=int(o["entry_ms"]), entry_score=float(o.get("entry_score", 0.0)))
         except Exception:

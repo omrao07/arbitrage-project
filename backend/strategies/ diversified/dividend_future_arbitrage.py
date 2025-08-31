@@ -104,10 +104,10 @@ r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 def _hgetf(key: str, field: str) -> Optional[float]:
     v = r.hget(key, field)
     if v is None: return None
-    try: return float(v)
+    try: return float(v)#type:ignore
     except Exception:
         try:
-            return float(json.loads(v))
+            return float(json.loads(v))#type:ignore
         except Exception:
             return None
 
@@ -118,9 +118,9 @@ def _rate(ccy: str) -> float:
 def _price(sym: str) -> Optional[float]:
     raw = r.hget(LAST_PRICE_HKEY, sym)
     if not raw: return None
-    try: return float(json.loads(raw)["price"])
+    try: return float(json.loads(raw)["price"])#type:ignore
     except Exception:
-        try: return float(raw)
+        try: return float(raw) # type: ignore
         except Exception:
             return None
 
@@ -148,7 +148,7 @@ def _forecast_points(year: str) -> Optional[float]:
         wmap = r.hgetall(WGT_HKEY_FMT.format(index=INDEX))
         if not wmap: return None
         tot = 0.0
-        for ticker, w in wmap.items():
+        for ticker, w in wmap.items():#type:ignore
             dv = _hgetf(DIV_FORECAST_FMT.format(year=year), ticker.upper())
             if dv is None: return None
             try:
@@ -184,7 +184,7 @@ def _load_ewma(year: str) -> EwmaMV:
     raw = r.get(_ewma_key(year))
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw)#type:ignore
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", EWMA_ALPHA)))
         except Exception:
             pass
@@ -299,7 +299,7 @@ class DividendFutureArbitrage(Strategy):
         raw = r.get(_poskey(self.ctx.name, year))
         if not raw: return None
         try:
-            return OpenState(**json.loads(raw))
+            return OpenState(**json.loads(raw))#type:ignore
         except Exception:
             return None
 

@@ -93,9 +93,9 @@ r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 def _hgetf(hkey: str, field: str) -> Optional[float]:
     v = r.hget(hkey, field)
     if v is None: return None
-    try: return float(v)
+    try: return float(v) # type: ignore
     except Exception:
-        try: return float(json.loads(v))
+        try: return float(json.loads(v)) # type: ignore
         except Exception: return None
 
 def _rate(ccy: str) -> float:
@@ -139,7 +139,7 @@ def _load_ewma(bond_id: str) -> EwmaMV:
     raw = r.get(_ewma_key(bond_id))
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", EWMA_ALPHA)))
         except Exception:
             pass
@@ -239,7 +239,7 @@ class InsuranceLinkedSecuritiesArbitrage(Strategy):
         raw = r.get(_poskey(self.ctx.name, BOND_ID))
         if not raw: return None
         try:
-            return OpenState(**json.loads(raw))
+            return OpenState(**json.loads(raw)) # type: ignore
         except Exception:
             return None
 

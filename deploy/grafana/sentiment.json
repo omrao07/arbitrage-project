@@ -1,0 +1,96 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "description": "Configuration and outputs for sentiment models and feeds",
+    "last_updated": "2025-08-29T00:00:00Z",
+    "author": "AI Engine"
+  },
+  "sources": [
+    {
+      "id": "news_yahoo",
+      "name": "Yahoo Finance News",
+      "type": "rss",
+      "language": "en",
+      "update_freq": "5m",
+      "enabled": true
+    },
+    {
+      "id": "news_moneycontrol",
+      "name": "Moneycontrol India News",
+      "type": "rss",
+      "language": "en",
+      "update_freq": "5m",
+      "enabled": true
+    },
+    {
+      "id": "twitter_fin",
+      "name": "Twitter Financial Hashtags",
+      "type": "social",
+      "language": "multi",
+      "update_freq": "1m",
+      "enabled": true
+    }
+  ],
+  "models": [
+    {
+      "id": "finbert_v2",
+      "name": "FinBERT v2",
+      "type": "transformer",
+      "languages": ["en"],
+      "output": "score",
+      "scale": [-1.0, 1.0]
+    },
+    {
+      "id": "hinglish_sentiment",
+      "name": "Hinglish Finance Sentiment",
+      "type": "lstm",
+      "languages": ["hi", "en"],
+      "output": "score",
+      "scale": [-1.0, 1.0]
+    }
+  ],
+  "entities": [
+    {
+      "ticker": "AAPL",
+      "region": "US",
+      "latest_score": 0.72,
+      "label": "positive",
+      "confidence": 0.91,
+      "history": [
+        { "ts": "2025-08-29T09:30:00Z", "score": 0.68 },
+        { "ts": "2025-08-29T09:45:00Z", "score": 0.70 },
+        { "ts": "2025-08-29T10:00:00Z", "score": 0.72 }
+      ]
+    },
+    {
+      "ticker": "TSLA",
+      "region": "US",
+      "latest_score": -0.35,
+      "label": "negative",
+      "confidence": 0.84,
+      "history": [
+        { "ts": "2025-08-29T09:30:00Z", "score": -0.20 },
+        { "ts": "2025-08-29T09:45:00Z", "score": -0.30 },
+        { "ts": "2025-08-29T10:00:00Z", "score": -0.35 }
+      ]
+    },
+    {
+      "ticker": "NIFTY",
+      "region": "IN",
+      "latest_score": 0.15,
+      "label": "neutral",
+      "confidence": 0.60,
+      "history": [
+        { "ts": "2025-08-29T09:30:00Z", "score": 0.10 },
+        { "ts": "2025-08-29T09:45:00Z", "score": 0.20 },
+        { "ts": "2025-08-29T10:00:00Z", "score": 0.15 }
+      ]
+    }
+  ],
+  "aggregates": {
+    "global_sentiment_index": 0.18,
+    "us_equities": 0.25,
+    "india_equities": 0.10,
+    "crypto": -0.05
+  }
+}

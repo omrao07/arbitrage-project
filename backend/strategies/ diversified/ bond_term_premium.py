@@ -103,12 +103,12 @@ def _search_lambda(yields: np.ndarray, mats: np.ndarray) -> Tuple[float, np.ndar
     lam0, beta0, mse0 = best
 
     # small neighborhood refine
-    local = np.linspace(max(lb, lam0 * 0.5), min(ub, lam0 * 1.5), 25)
+    local = np.linspace(max(lb, lam0 * 0.5), min(ub, lam0 * 1.5), 25) # type: ignore
     for g in local:
         beta, mse = _fit_ns_once(yields, mats, g)
         if mse < mse0:
             lam0, beta0, mse0 = g, beta, mse
-    return float(lam0), beta0, float(mse0)
+    return float(lam0), beta0, float(mse0) # type: ignore
 
 
 def fit_ns_cross_section(curve: pd.Series) -> Tuple[np.ndarray, float]:
@@ -118,7 +118,7 @@ def fit_ns_cross_section(curve: pd.Series) -> Tuple[np.ndarray, float]:
     """
     y = curve.astype(float).values
     mats = curve.index.to_numpy(dtype=float)
-    lam, beta, mse = _search_lambda(y, mats)
+    lam, beta, mse = _search_lambda(y, mats) # type: ignore
     return np.array([beta[0], beta[1], beta[2], lam], dtype=float), mse
 
 
@@ -155,9 +155,9 @@ def fit_ar1(factors: pd.DataFrame) -> AR1:
     a = []
     resid = []
     for col in cols:
-        x = np.column_stack([np.ones(len(X)), X[col].values])
+        x = np.column_stack([np.ones(len(X)), X[col].values]) # type: ignore
         y = Y[col].values
-        b, *_ = np.linalg.lstsq(x, y, rcond=None)  # y = b0 + b1 * x
+        b, *_ = np.linalg.lstsq(x, y, rcond=None)  # type: ignore # y = b0 + b1 * x
         c.append(b[0])
         a.append(b[1])
         resid.append(y - x @ b)
@@ -196,7 +196,7 @@ class TermPremiumNS:
         self.ns_fit_mse_: Optional[pd.Series] = None
 
     # ---- Fit over history ----
-    def fit(self, df_yields: pd.DataFrame) -> Dict[str, any]:
+    def fit(self, df_yields: pd.DataFrame) -> Dict[str, any]: # type: ignore
         """
         df_yields: index = dates; columns = maturities in years (floats); values in decimals.
         Returns summary dict.
@@ -225,7 +225,7 @@ class TermPremiumNS:
 
         return {
             "n_obs": len(df_yields),
-            "avg_fit_rmse_bps": float(np.sqrt(np.nanmean(self.ns_fit_mse_.values)) * 1e4),
+            "avg_fit_rmse_bps": float(np.sqrt(np.nanmean(self.ns_fit_mse_.values)) * 1e4), # type: ignore
             "last_lambda": float(fac["lambda"].iloc[-1]),
         }
 
@@ -250,7 +250,7 @@ class TermPremiumNS:
 
         idx0 = (self.factors_.index[-1] if start_at is None else start_at)
         # make a PeriodIndex-like forward dates (keeps simple spacing)
-        idx = pd.date_range(idx0, periods=H, freq=pd.infer_freq(self.factors_.index) or "M")
+        idx = pd.date_range(idx0, periods=H, freq=pd.infer_freq(self.factors_.index) or "M") # type: ignore
         return pd.Series(path, index=idx, name="E_short")
 
     # ---- Term premium (latest) ----
@@ -265,11 +265,11 @@ class TermPremiumNS:
 
         # expected average short over horizon n:
         tps = {}
-        for n in mats:
+        for n in mats: # type: ignore
             path = self.expected_short_path(horizon_years=float(n))
             exp_avg_short = float(path.mean())
             # observed y(n)
-            fac_last = self.factors_.iloc[-1]
+            fac_last = self.factors_.iloc[-1] # type: ignore
             y_n = float(ns_yield_from_factors(np.array([n]), fac_last["beta0"], fac_last["beta1"], fac_last["beta2"], fac_last["lambda"])[0])
             tps[float(n)] = y_n - exp_avg_short
         return tps
@@ -285,15 +285,15 @@ class TermPremiumNS:
 
         records = []
         fac = self.factors_
-        for i in range(12, len(fac)):  # start after a small burn-in
-            fac_sub = fac.iloc[:i]
+        for i in range(12, len(fac)):  # type: ignore # start after a small burn-in
+            fac_sub = fac.iloc[:i] # type: ignore
             ar = fit_ar1(fac_sub[["beta0", "beta1", "beta2"]])
             last = fac_sub.iloc[-1]
             lam = float(last["lambda"])
             f0 = np.array([last["beta0"], last["beta1"], last["beta2"]], dtype=float)
 
             row = {"date": fac_sub.index[-1]}
-            for n in mats:
+            for n in mats: # type: ignore
                 # build expectations path of short rate
                 H = int(round(float(n) * self.steps_per_year))
                 f = f0.copy()
@@ -304,7 +304,7 @@ class TermPremiumNS:
                 exp_avg_short = float(np.mean(shp))
                 # observed y(n) from NS factors at that date
                 y_n = float(ns_yield_from_factors(np.array([n]), last["beta0"], last["beta1"], last["beta2"], lam)[0])
-                row[float(n)] = y_n - exp_avg_short
+                row[float(n)] = y_n - exp_avg_short # type: ignore
             records.append(row)
 
         out = pd.DataFrame(records).set_index("date")

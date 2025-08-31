@@ -95,10 +95,10 @@ def _hget_price(sym: str) -> Optional[float]:
     if not raw:
         return None
     try:
-        return float(json.loads(raw)["price"])
+        return float(json.loads(raw)["price"])#type:ignore
     except Exception:
         try:
-            return float(raw)
+            return float(raw)#type:ignore
         except Exception:
             return None
 
@@ -106,10 +106,10 @@ def _hgetf(key: str, field: str) -> Optional[float]:
     v = r.hget(key, field)
     if v is None: return None
     try:
-        return float(v)
+        return float(v)#type:ignore
     except Exception:
         try:
-            return float(json.loads(v))
+            return float(json.loads(v))#type:ignore
         except Exception:
             return None
 
@@ -151,7 +151,7 @@ def _load_ewma(alpha: float) -> EwmaMV:
     raw = r.get(_ewma_key())
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw)#type:ignore
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", alpha)))
         except Exception:
             pass
@@ -280,7 +280,7 @@ class EmissionsCreditArbitrage(Strategy):
         if not raw:
             return None
         try:
-            return OpenState(**json.loads(raw))
+            return OpenState(**json.loads(raw)) # pyright: ignore
         except Exception:
             return None
 

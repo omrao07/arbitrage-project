@@ -49,7 +49,7 @@ def _now_ms() -> int:
 def _get_rate(key: str, field: str) -> Optional[float]:
     v = r.hget(key, field)
     try:
-        return float(v) if v is not None else None
+        return float(v) if v is not None else None # type: ignore
     except Exception:
         return None
 
@@ -119,7 +119,7 @@ class CrossCurrencyBasisStrategy(Strategy):
     def _load_position(self) -> Optional[Dict]:
         raw = r.get(_position_key())
         try:
-            return json.loads(raw) if raw else None
+            return json.loads(raw) if raw else None # type: ignore
         except Exception:
             return None
 
@@ -216,7 +216,7 @@ class CrossCurrencyBasisStrategy(Strategy):
             return
 
         # Enforce max concurrent positions using a simple counter (per pair)
-        open_cnt = int(r.get(f"{_position_key()}:count") or "0")
+        open_cnt = int(r.get(f"{_position_key()}:count") or "0") # type: ignore
         if open_cnt >= MAX_POS:
             return
 

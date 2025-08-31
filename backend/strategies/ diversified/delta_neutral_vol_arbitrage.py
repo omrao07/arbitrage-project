@@ -146,7 +146,7 @@ def _load_ewma(alpha: float) -> EwmaMV:
     raw = r.get(_ewma_key())
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return EwmaMV(mean=float(o['m']), var=float(o['v']), alpha=float(o.get('a', alpha)))
         except Exception:
             pass
@@ -159,25 +159,25 @@ def _save_ewma(ew: EwmaMV) -> None:
 def _hget_price(sym: str) -> Optional[float]:
     raw = r.hget(LAST_PRICE_HKEY, sym)
     if not raw: return None
-    try: return float(json.loads(raw)["price"])
+    try: return float(json.loads(raw)["price"]) # type: ignore
     except Exception:
-        try: return float(raw)
+        try: return float(raw) # type: ignore
         except Exception: return None
 
 def _getf(key: str) -> Optional[float]:
     v = r.get(key)
     if v is None: return None
-    try: return float(v)
+    try: return float(v) # type: ignore
     except Exception:
-        try: return float(json.loads(v))
+        try: return float(json.loads(v)) # type: ignore
         except Exception: return None
 
 def _hgetf(key: str, field: str) -> Optional[float]:
     v = r.hget(key, field)
     if v is None: return None
-    try: return float(v)
+    try: return float(v) # type: ignore
     except Exception:
-        try: return float(json.loads(v))
+        try: return float(json.loads(v)) # type: ignore
         except Exception: return None
 
 # ============================ State ============================
@@ -318,7 +318,7 @@ class DeltaNeutralVolArbitrage(Strategy):
         if not raw:
             return None
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return OpenState(**o)
         except Exception:
             return None

@@ -114,10 +114,10 @@ def _hget_last(symbol: str) -> Optional[float]:
     if not raw:
         return None
     try:
-        return float(json.loads(raw)["price"])
+        return float(json.loads(raw)["price"]) # type: ignore
     except Exception:
         try:
-            return float(raw)
+            return float(raw) # type: ignore
         except Exception:
             return None
 
@@ -127,7 +127,7 @@ def _fx(pair: str) -> float:
     v = r.hget(FX_SPOT_HKEY, pair)
     if v:
         try:
-            return float(v)
+            return float(v) # pyright: ignore[reportArgumentType]
         except Exception:
             pass
     # fallback to last_price FX symbol if present
@@ -149,7 +149,7 @@ def _route_dyn_cost(origin: str, dest: str) -> Optional[float]:
     key = f"{ROUTE_COST_KEY}:{origin}-{dest}"
     v = r.hget(key, "cost")
     try:
-        return float(v) if v is not None else None
+        return float(v) if v is not None else None # type: ignore
     except Exception:
         return None
 
@@ -175,7 +175,7 @@ def _load_ewma(origin: str, dest: str, alpha: float) -> EwmaMV:
     raw = r.get(_ewma_key(origin, dest))
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", alpha)))
         except Exception:
             pass
@@ -309,7 +309,7 @@ class CommodityTransportArbitrage(Strategy):
         if not raw:
             return None
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return OpenState(**o)
         except Exception:
             return None

@@ -1,0 +1,92 @@
+# config/features.yaml
+
+enabled: true
+
+# === Core trading features ===
+trading:
+  order_entry: true
+  order_management: true
+  smart_router: true
+  futures_options: true          # enable F&O toggle
+  after_market_orders: false
+  stop_loss_manual: true
+  strategy_execution_one_click: true
+
+# === Risk management ===
+risk:
+  var: true
+  stress_testing: true
+  monte_carlo: true
+  expected_shortfall: true
+  kill_switch: true
+  surveillance: true
+  latency_budget: true
+
+# === Analytics ===
+analytics:
+  pnl_attribution: true
+  pnl_xray: true
+  correlations: true
+  regime_map: true
+  tca_extended: true
+  implementation_shortfall: true
+  hrp_optimizer: true
+
+# === AI Agents ===
+ai:
+  sentiment_ai: true
+  social_sentiment: true
+  analyst_agent: false           # turn on when ready
+  query_agent: true
+  query_copilot: false
+  insight_agent: true
+  rl_execution_agent: true
+  swarm_manager: true
+  explainable_trades: true
+  voice_interface: false
+
+# === Alt-data feeds ===
+altdata:
+  card_spend: true
+  satellite_lights: true
+  shipping_traffic: true
+  geo_spatial: true
+  twitter_stream: false
+  reddit_sentiment: false
+
+# === Market data adapters ===
+market_data:
+  yahoo: true
+  moneycontrol: true
+  uniswap: true
+  bank_feeds: true
+  sovereign_feeds: true
+  fix_gateway: false             # heavy infra, off by default
+
+# === Dashboards & UI ===
+dashboards:
+  hedge_dashboard: true
+  risk_dashboard: true
+  literacy_dashboard: true
+  visual_trade_history: true
+  vol_surface: true
+  corr_matrix: true
+  strategy_builder: true
+  stress_sandbox: true
+  ai_chat: true
+  margin_widget: true
+
+# === Ops / Infra ===
+ops:
+  metrics: true
+  queues: true
+  experiments: true
+  lineage: true
+  report_generator: true
+  hedge_recipes: true
+
+# === Demo / Literacy mode ===
+literacy_mode:
+  enabled: true
+  explain_risk: true
+  simulate_trades: true

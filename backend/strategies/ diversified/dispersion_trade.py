@@ -98,25 +98,25 @@ COMPS: List[Tuple[str, float]] = _parse_components(COMPONENTS_ENV)
 def _hgetf(key: str, field: str) -> Optional[float]:
     v = r.hget(key, field)
     if v is None: return None
-    try: return float(v)
+    try: return float(v) # type: ignore
     except Exception:
-        try: return float(json.loads(v))
+        try: return float(json.loads(v)) # type: ignore
         except Exception: return None
 
 def _getf(key: str) -> Optional[float]:
     v = r.get(key)
     if v is None: return None
-    try: return float(v)
+    try: return float(v) # type: ignore
     except Exception:
-        try: return float(json.loads(v))
+        try: return float(json.loads(v)) # type: ignore
         except Exception: return None
 
 def _last(sym: str) -> Optional[float]:
     raw = r.hget(LAST_PRICE_HKEY, sym)
     if not raw: return None
-    try: return float(json.loads(raw)["price"])
+    try: return float(json.loads(raw)["price"]) # type: ignore
     except Exception:
-        try: return float(raw)
+        try: return float(raw) # type: ignore
         except Exception: return None
 
 def _implied_corr(sigma_I: float, comps: List[Tuple[float, float]]) -> Optional[float]:
@@ -159,7 +159,7 @@ def _load_ewma() -> EwmaMV:
     raw = r.get(_ewma_key())
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", EWMA_ALPHA)))
         except Exception:
             pass
@@ -218,7 +218,7 @@ class DispersionTrade(Strategy):
             return
 
         sigma_I = float(idx_iv)
-        comp_pairs = [(float(w), float(s)) for (_, w, s) in comps]
+        comp_pairs = [(float(w), float(s)) for (_, w, s) in comps] # type: ignore
 
         # V0 (zero‑corr basket variance) and VI
         V0 = sum(w*w*s*s for w, s in comp_pairs)
@@ -299,7 +299,7 @@ class DispersionTrade(Strategy):
         raw = r.get(_poskey(self.ctx.name))
         if not raw: return None
         try:
-            return OpenState(**json.loads(raw))
+            return OpenState(**json.loads(raw)) # type: ignore
         except Exception:
             return None
 

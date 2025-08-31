@@ -97,16 +97,16 @@ r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 def _hgetf(hk: str, field: str) -> Optional[float]:
     v = r.hget(hk, field)
     if v is None: return None
-    try: return float(v)
+    try: return float(v) # type: ignore
     except Exception:
-        try: return float(json.loads(v))
+        try: return float(json.loads(v)) # type: ignore
         except Exception: return None
 
 def _hget_json(hk: str, field: str) -> Optional[dict]:
     raw = r.hget(hk, field)
     if not raw: return None
     try:
-        j = json.loads(raw);  return j if isinstance(j, dict) else None
+        j = json.loads(raw);  return j if isinstance(j, dict) else None # type: ignore
     except Exception:
         return None
 
@@ -139,7 +139,7 @@ def _load_ewma() -> EwmaMV:
     raw = r.get(_ewma_key())
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", EWMA_ALPHA)))
         except Exception: pass
     return EwmaMV(mean=0.0, var=1.0, alpha=EWMA_ALPHA)
@@ -277,19 +277,19 @@ class PowerMarketArbitrage(Strategy):
             charge_mw = min(pmax, max(0.0, (emax - soc)))  # 1h step
             if charge_mw > 0.0:
                 self.order(f"BESS:{BESS_ID}:CHARGE", "buy", qty=charge_mw, order_type="market", venue=ISO,
-                           flags={"price": rt_now, "eff": eff_ch})
+                           flags={"price": rt_now, "eff": eff_ch}) # type: ignore
         elif rt_now >= sell_band and soc > 0:
             discharge_mw = min(pmax, soc)  # 1h step
             if discharge_mw > 0.0:
                 self.order(f"BESS:{BESS_ID}:DISCHARGE", "sell", qty=discharge_mw, order_type="market", venue=ISO,
-                           flags={"price": rt_now, "eff": eff_rt})
+                           flags={"price": rt_now, "eff": eff_rt}) # type: ignore
 
     # ---------------- state I/O ----------------
     def _load_state(self) -> Optional[OpenState]:
         raw = r.get(_poskey(self.ctx.name))
         if not raw: return None
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return OpenState(side=str(o["side"]), mw=float(o["mw"]),
                              entry_spread=float(o["entry_spread"]), entry_z=float(o["entry_z"]),
                              ts_ms=int(o["ts_ms"]))

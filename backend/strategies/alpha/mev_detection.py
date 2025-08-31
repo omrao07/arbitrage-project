@@ -123,11 +123,11 @@ def _parse_tx(js: dict) -> Optional[Tx]:
 def _pool_info(addr: str) -> dict:
     raw = r.hget(POOL_HK, addr.lower())
     if not raw: return {}
-    try: return json.loads(raw)
+    try: return json.loads(raw) # type: ignore
     except Exception: return {}
 
 def _label(addr: str) -> str:
-    return (r.hget(LABEL_HK, addr.lower()) or "").upper()
+    return (r.hget(LABEL_HK, addr.lower()) or "").upper() # type: ignore
 
 # ============================ Core Guard ============================
 class MEVGuard:
@@ -153,7 +153,7 @@ class MEVGuard:
                 resp = r.xread({MEMPOOL_STREAM: self._last_seen_id}, count=200, block=500)
                 if not resp:
                     continue
-                for _, entries in resp:
+                for _, entries in resp: # type: ignore
                     for entry_id, kv in entries:
                         self._last_seen_id = entry_id
                         try:

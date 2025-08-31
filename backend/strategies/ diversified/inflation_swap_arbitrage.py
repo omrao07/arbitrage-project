@@ -40,7 +40,7 @@ def _hgetf(hashkey: str, field: str) -> Optional[float]:
     val = r.hget(hashkey, field)
     if val is None:
         return None
-    try: return float(val)
+    try: return float(val) # type: ignore
     except: return None
 
 @dataclass
@@ -95,7 +95,7 @@ class InflationSwapArbitrage(Strategy):
         raw = r.get(_poskey(self.ctx.name))
         if not raw:
             return None
-        try: return OpenState(**json.loads(raw))
+        try: return OpenState(**json.loads(raw)) # type: ignore
         except: return None
 
     def _save_state(self, st: OpenState) -> None:

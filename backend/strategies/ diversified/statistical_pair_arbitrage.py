@@ -72,7 +72,7 @@ def _hget_json(hk: str, field: str) -> Optional[dict]:
     raw = r.hget(hk, field)
     if not raw: return None
     try: 
-        j = json.loads(raw)
+        j = json.loads(raw) # type: ignore
         return j if isinstance(j, dict) else None
     except Exception: 
         return None
@@ -81,14 +81,14 @@ def _price(sym: str) -> Optional[float]:
     raw = r.hget(LAST_HK, sym)
     if not raw: return None
     try:
-        j = json.loads(raw); return float(j.get("price", 0.0))
+        j = json.loads(raw); return float(j.get("price", 0.0)) # type: ignore
     except Exception:
-        try: return float(raw)
+        try: return float(raw) # type: ignore
         except Exception: return None
 
 def _fees_bps(venue: str) -> float:
     v = r.hget(FEES_HK, venue)
-    try: return float(v) if v is not None else 10.0
+    try: return float(v) if v is not None else 10.0 # type: ignore
     except Exception: return 10.0
 
 def _now_ms() -> int: return int(time.time() * 1000)
@@ -112,7 +112,7 @@ def _load_ewma(tag: str) -> EwmaMV:
     raw = r.get(_ewma_key(tag))
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", EWMA_ALPHA_S)))
         except Exception: pass
     return EwmaMV(mean=0.0, var=1.0, alpha=EWMA_ALPHA_S)
@@ -147,7 +147,7 @@ def _load_kalman(tag: str) -> KalmanBeta:
     raw = r.get(_kalman_key(tag))
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return KalmanBeta(beta=float(o["b"]), P=float(o["P"]), q=float(o["q"]), r=float(o["r"]))
         except Exception: pass
     # defaults
@@ -266,7 +266,7 @@ class StatisticalPairArbitrage(Strategy):
         raw = r.get(_poskey(self.ctx.name, tag))
         if not raw: return None
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return OpenState(side=str(o["side"]), qty1=float(o["qty1"]), qty2=float(o["qty2"]),
                              beta=float(o["beta"]), entry_z=float(o["entry_z"]), ts_ms=int(o["ts_ms"]))
         except Exception:

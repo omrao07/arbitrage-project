@@ -114,7 +114,7 @@ def _s_to_ms(x: float) -> int: return int(x*1000)
 def _hgetall_json(hk: str) -> Dict[str, dict]:
     out: Dict[str, dict] = {}
     raw = r.hgetall(hk) or {}
-    for k,v in raw.items():
+    for k,v in raw.items(): # type: ignore
         try:
             j = json.loads(v)
             if isinstance(j, dict): out[k] = j
@@ -126,10 +126,10 @@ def _px(sym: str) -> Optional[float]:
     raw = r.hget(LAST_HK, sym)
     if not raw: return None
     try:
-        j = json.loads(raw)
+        j = json.loads(raw) # type: ignore
         return float(j.get("price", 0.0))
     except Exception:
-        try: return float(raw)
+        try: return float(raw) # type: ignore
         except Exception: return None
 
 def _qty_for_usd(px: float, usd: float) -> float:
@@ -159,7 +159,7 @@ def _load_macro(ctx: str) -> Optional[MacroState]:
     raw = r.get(_mkey(ctx))
     if not raw: return None
     try:
-        o = json.loads(raw)
+        o = json.loads(raw) # type: ignore
         return MacroState(active=bool(o["active"]), side=str(o["side"]), event_key=str(o["event_key"]),
                           t_enter_ms=int(o["t_enter_ms"]), cooldown_until_ms=int(o.get("cooldown_until_ms", 0)))
     except Exception:
@@ -175,7 +175,7 @@ def _load_earn(ctx: str, sym: str) -> Optional[EarnState]:
     raw = r.get(_ekey(ctx, sym))
     if not raw: return None
     try:
-        o = json.loads(raw)
+        o = json.loads(raw) # type: ignore
         return EarnState(sym=sym, side=str(o["side"]), t_enter_ms=int(o["t_enter_ms"]))
     except Exception:
         return None
@@ -271,14 +271,14 @@ class VolatilityEventDriven(Strategy):
 
             if want and (not mac.active or mac.side != want or mac.event_key != next_key):
                 self._macro_enter(want)
-                _save_macro(self.ctx.name, MacroState(True, want, next_key, tnow, tnow + _s_to_ms(COOLDOWN_SEC)))
+                _save_macro(self.ctx.name, MacroState(True, want, next_key, tnow, tnow + _s_to_ms(COOLDOWN_SEC))) # type: ignore
                 return
 
         # POST‑EVENT EXITS (and opportunistic reversals)
         if in_post and mac and mac.active:
             # simple rule: realize the trade shortly after event
             self._macro_flatten(mac)
-            _save_macro(self.ctx.name, MacroState(False, "flat", next_key, tnow, tnow + _s_to_ms(COOLDOWN_SEC)))
+            _save_macro(self.ctx.name, MacroState(False, "flat", next_key, tnow, tnow + _s_to_ms(COOLDOWN_SEC))) # type: ignore
             return
 
         # Outside window — ensure flat

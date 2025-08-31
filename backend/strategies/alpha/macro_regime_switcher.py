@@ -98,10 +98,10 @@ r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 def _hgetf(hk: str, field: str) -> Optional[float]:
     raw = r.hget(hk, field)
     if raw is None: return None
-    try: return float(raw)
+    try: return float(raw) # type: ignore
     except Exception:
         try:
-            j = json.loads(raw)
+            j = json.loads(raw) # type: ignore
             if isinstance(j, dict) and "price" in j: return float(j["price"])
             if isinstance(j, (int,float)): return float(j)
         except Exception:
@@ -113,7 +113,7 @@ def _px(sym: str) -> Optional[float]:
 
 def _fees_bps(hk: str, venue: str) -> float:
     v = r.hget(hk, venue)
-    try: return float(v) if v is not None else 5.0
+    try: return float(v) if v is not None else 5.0 # type: ignore
     except Exception: return 5.0
 
 def _now_s() -> float: return time.time()
@@ -208,7 +208,7 @@ def _load_state(ctx_name: str) -> Optional[PositionState]:
     raw = r.get(_state_key(ctx_name))
     if not raw: return None
     try:
-        o = json.loads(raw)
+        o = json.loads(raw) # type: ignore
         return PositionState(regime=str(o["regime"]),
                              weights={k: float(v) for k,v in (o.get("weights") or {}).items()},
                              last_rebalance_s=float(o.get("last_rebalance_s", 0.0)))
@@ -236,7 +236,7 @@ class MacroRegimeSwitcher(Strategy):
         self._last = now
 
         # 1) Read factors
-        f = {k: float(v) for k,v in (r.hgetall(FACT_HK) or {}).items() if v is not None}
+        f = {k: float(v) for k,v in (r.hgetall(FACT_HK) or {}).items() if v is not None} # type: ignore
         if not f:
             self.emit_signal(0.0); return
 

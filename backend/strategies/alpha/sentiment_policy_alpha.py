@@ -102,7 +102,7 @@ def _hget_json(hk: str, field: str) -> Optional[dict]:
     raw = r.hget(hk, field)
     if not raw: return None
     try: 
-        j = json.loads(raw); 
+        j = json.loads(raw);  # type: ignore
         return j if isinstance(j, dict) else None
     except Exception: 
         return None
@@ -111,9 +111,9 @@ def _px(sym: str) -> Optional[float]:
     raw = r.hget(LAST_HK, sym)
     if raw is None: return None
     try:
-        j = json.loads(raw)
+        j = json.loads(raw) # type: ignore
         if isinstance(j, dict) and "price" in j: return float(j["price"])
-        return float(raw)
+        return float(raw) # type: ignore
     except Exception:
         return None
 
@@ -172,7 +172,7 @@ def _load_state(ctx: str) -> Optional[SPIState]:
     raw = r.get(_state_key(ctx))
     if not raw: return None
     try:
-        o = json.loads(raw)
+        o = json.loads(raw) # type: ignore
         return SPIState(active=bool(o.get("active", False)),
                         tone=float(o.get("tone", 0.0)),
                         last_rebalance_s=float(o.get("last_rebalance_s", 0.0)))

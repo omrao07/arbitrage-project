@@ -1,558 +1,379 @@
-#!/usr/bin/env python3
-"""
-MiFID II / MiFIR RTS 22 Transaction Reporter
---------------------------------------------
-
-Purpose
-=======
-Convert internal trade/fill records into a MiFID II (RTS 22-style) transaction reporting
-CSV suitable for uploading to an ARM or for internal reconciliation.
-
-This module is **opinionated but pluggable**:
-- Accepts input as CSV or JSON (array of trades)
-- Optionally consumes live fills from a Redis Stream (e.g., STREAM_FILLS) and writes rolling CSVs
-- Validates key identifiers (ISIN, LEI, MIC, currency, timestamp)
-- Normalizes timestamps to UTC (ISO 8601 with "Z")
-- Generates a UTI if not provided (hash of firm LEI + trade id + date)
-- Emits a compact RTS22-style CSV with sane defaults
-
-⚠️ Compliance note
-------------------
-RTS 22 has 65 fields with jurisdiction- and venue-specific nuances. This script outputs a
-useful, commonly required subset that many ARMs accept as CSV inputs for equities/ETDs.
-You MUST review with your compliance team, your ARM specs, and your NCA technical standards
-before using in production. Extend the `RTS22_FIELDS` and `map_trade_to_rts22` as needed.
-
-Quick start
-===========
-1) Validate only (no output):
-   python mifid_reporter.py --input fills.csv --input-format fills_csv --validate-only \
-       --firm-lei 5493001KJTIIGC8Y1R12 --branch-country GB
-
-2) Convert to RTS22 CSV:
-   python mifid_reporter.py --input fills.csv --input-format fills_csv \
-       --output mifid_report_2025-08-25.csv --firm-lei 5493001KJTIIGC8Y1R12 \
-       --branch-country GB --default-currency EUR
-
-3) Generate an input template you can fill in:
-   python mifid_reporter.py --emit-template fills_template.csv --template-format fills_csv
-
-4) Stream from Redis (optional):
-   python mifid_reporter.py --from-redis --redis-stream STREAM_FILLS --firm-lei 5493... \
-       --output mifid_stream_report.csv
-
-Input schemas
-=============
-A) fills_csv (wide, human-friendly) — headers expected:
-   trade_id, exec_time, symbol, isin, price, qty, currency, side, buyer_lei, seller_lei,
-   mic, short_sale, algo, client_id, underlying_isin, maturity_date, delivery_type,
-   notional_ccy1, notional_ccy2, price_notation
-
-B) json (machine-friendly): list of objects with keys similar to above (snake_case).
-
-What we output (default columns)
-================================
-See `RTS22_FIELDS` below. These include: transaction_reference_number, trading_date,
-execution_timestamp_utc, isin, price, quantity, price_currency, buyer_lei, seller_lei,
-short_sale_indicator, algorithmic_indicator, execution_venue_mic, client_id,
-investment_firm_lei, branch_country, trading_capacity, liquidity_provider,
-commodity_derivative_indicator, emission_allowance_indicator, derivative_underlying_isin,
-derivative_maturity_date, derivative_delivery_type, notional_currency_1,
-notional_currency_2, price_notation, publication_mode, uti
-
-Extend/override mapping rules in `map_trade_to_rts22()` as required.
-"""
+# backend/regulatory/mifid_reporter.py
 from __future__ import annotations
 
-import argparse
-import csv
-import datetime as dt
-import hashlib
-import json
-import os
-import re
-import sys
-import time
-from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+import os, csv, json, time, uuid, asyncio, datetime, re
+from dataclasses import dataclass, asdict
+from typing import Any, Dict, List, Optional, Tuple
 
+# -------- Optional deps (graceful) -------------------------------------------
+HAVE_REDIS = True
 try:
-    import redis  # type: ignore
-except Exception:  # pragma: no cover - optional
-    redis = None  # optional dependency
+    from redis.asyncio import Redis as AsyncRedis  # type: ignore
+except Exception:
+    HAVE_REDIS = False
+    AsyncRedis = None  # type: ignore
 
-# ---------------------------
-# Configuration & Constants
-# ---------------------------
+HAVE_YAML = True
+try:
+    import yaml  # type: ignore
+except Exception:
+    HAVE_YAML = False
 
-RTS22_FIELDS: List[str] = [
-    # A compact, common subset of the full RTS22 fields
-    "transaction_reference_number",
-    "trading_date",
-    "execution_timestamp_utc",
-    "isin",
-    "price",
+# -------- Env / Streams / Paths ---------------------------------------------
+REDIS_URL       = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+S_FILLS         = os.getenv("ORDERS_FILLED", "orders.filled")
+OUT_DIR         = os.getenv("MIFID_OUT_DIR", "artifacts/mifid")
+REG_PATH        = os.getenv("INSTRUMENT_REGISTRY", "configs/instruments.yaml")  # symbol -> {isin, cfi, mic}
+
+os.makedirs(OUT_DIR, exist_ok=True)
+
+# -------- Helpers ------------------------------------------------------------
+def now_ms() -> int: return int(time.time() * 1000)
+
+def iso_utc(ts_ms: int) -> str:
+    return datetime.datetime.utcfromtimestamp(ts_ms/1000.0).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+LEI_RE  = re.compile(r"^[A-Z0-9]{20}$")
+ISIN_RE = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}\d$")   # basic check
+MIC_RE  = re.compile(r"^[A-Z0-9]{4}$")
+
+def _num(x: Any, default: float = 0.0) -> float:
+    try: return float(x)
+    except Exception: return default
+
+def _str(x: Any, default: str = "") -> str:
+    return default if x is None else str(x)
+
+# -------- Config -------------------------------------------------------------
+@dataclass
+class MifidConfig:
+    firm_lei: str                          # your firm LEI (20 chars)
+    submitting_entity_lei: Optional[str] = None  # usually same as firm_lei
+    branch_country: Optional[str] = None   # e.g., "GB", "IE" if applicable
+    default_mic: str = "XOFF"              # XOFF for OTC, else venue MIC (e.g., XNSE)
+    currency: str = "USD"                  # price currency
+    short_sale_default: str = "3"          # 1=short,2=short-exempt,3=not-short, per ESMA code list
+    algo_indicator: str = "Y"              # Y/N whether an algo was used
+    algo_id: Optional[str] = None          # optional algorithm identifier
+    buyer_decision_id: Optional[str] = None
+    seller_decision_id: Optional[str] = None
+    arm_mode: str = "file_drop"            # 'file_drop' placeholder
+    batch_rows: int = 5000                 # rotate CSV after N rows
+    filename_prefix: str = "RTS22"
+    include_headers: bool = True
+
+# -------- Minimal RTS 22 fields (subset) ------------------------------------
+# Column order chosen for readability + common ARM templates.
+RTS22_ORDER = [
+    "reportingFirmId",        # LEI of reporting firm
+    "submittingEntityId",     # LEI if submitting on behalf
+    "transactionId",          # internal unique ID
+    "executionDateTime",      # UTC ISO 8601 with ms
+    "instrumentIdType",       # ISIN
+    "instrumentId",
+    "price", "priceCurrency",
     "quantity",
-    "price_currency",
-    "buyer_lei",
-    "seller_lei",
-    "short_sale_indicator",
-    "algorithmic_indicator",
-    "execution_venue_mic",
-    "client_id",
-    "investment_firm_lei",
-    "branch_country",
-    "trading_capacity",  # DEAL, MTCH, AOTC
-    "liquidity_provider",  # Y/N
-    "commodity_derivative_indicator",  # Y/N
-    "emission_allowance_indicator",  # Y/N
-    "derivative_underlying_isin",
-    "derivative_maturity_date",
-    "derivative_delivery_type",  # CASH/PHYS
-    "notional_currency_1",
-    "notional_currency_2",
-    "price_notation",
-    "publication_mode",  # APA/ARM/Internal, set for your workflow
-    "uti",
+    "tradingVenue",           # MIC or XOFF/XOFP
+    "buyerId", "buyerIdType", # LEI|NATN|PRSN (we'll use LEI or 'UNK')
+    "sellerId", "sellerIdType",
+    "shortSaleIndicator",     # 1/2/3 (ESMA code)
+    "algorithmicIndicator",   # Y/N
+    "algorithmId",
+    "buyerDecisionMaker",     # trader ID / algo ID (optional)
+    "sellerDecisionMaker",
+    "branchCountry",          # optional
+    "strategyTag",            # your strategy / book
 ]
 
-FALLBACK_TRADING_CAPACITY = os.getenv("MIFID_TRADING_CAPACITY", "DEAL")
-FALLBACK_LIQUIDITY_PROVIDER = os.getenv("MIFID_LIQUIDITY_PROVIDER", "N")
-FALLBACK_PUBLICATION_MODE = os.getenv("MIFID_PUBLICATION_MODE", "ARM")
-FALLBACK_BRANCH_COUNTRY = os.getenv("MIFID_BRANCH_COUNTRY", "GB")
-FALLBACK_PRICE_CCY = os.getenv("MIFID_DEFAULT_CURRENCY", "EUR")
-
-# Regexes
-_ISIN_RE = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
-_LEI_RE = re.compile(r"^[A-Z0-9]{20}$")
-_MIC_RE = re.compile(r"^[A-Z0-9]{4}$")
-_CCY_RE = re.compile(r"^[A-Z]{3}$")
-
-
-# ---------------------------
-# Utilities
-# ---------------------------
-
-def to_utc_z(ts: str) -> str:
-    """Parse ISO-like timestamp string to UTC ISO8601 with trailing 'Z'.
-
-    Accepts inputs like:
-      - "2025-08-25T10:22:33.123456+05:30"
-      - "2025-08-25T04:52:33Z"
-      - "2025-08-25 04:52:33" (treated as UTC if naive)
+# -------- Instrument registry -----------------------------------------------
+class InstrumentRegistry:
     """
-    ts = ts.strip()
-    # Replace space with T for fromisoformat compatibility
-    ts_norm = ts.replace(" ", "T")
-    try:
-        dt_obj = dt.datetime.fromisoformat(ts_norm)
-    except Exception:
-        # Last-ditch: try without microseconds
-        try:
-            dt_obj = dt.datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
-        except Exception as e:
-            raise ValueError(f"Unparseable timestamp: {ts}") from e
+    symbol -> {isin, cfi, mic?}
+    """
+    def __init__(self, path: str = REG_PATH):
+        self.path = path
+        self.map: Dict[str, Dict[str, str]] = {}
+        if os.path.exists(path):
+            try:
+                if HAVE_YAML and (path.endswith(".yml") or path.endswith(".yaml")):
+                    with open(path, "r") as f:
+                        self.map = yaml.safe_load(f) or {}
+                else:
+                    with open(path, "r") as f:
+                        self.map = json.load(f)
+            except Exception:
+                self.map = {}
 
-    if dt_obj.tzinfo is None:
-        # Assume UTC if naive
-        dt_obj = dt_obj.replace(tzinfo=dt.timezone.utc)
-    dt_utc = dt_obj.astimezone(dt.timezone.utc)
-    # Normalize to milliseconds for CSV friendliness
-    return dt_utc.replace(microsecond=(dt_utc.microsecond // 1000) * 1000).isoformat().replace("+00:00", "Z")
+    def resolve(self, symbol: str) -> Dict[str, str]:
+        sym = symbol.upper()
+        d = self.map.get(sym, {})
+        return {
+            "isin": d.get("isin", ""),
+            "cfi": d.get("cfi", ""),
+            "mic": d.get("mic", ""),
+        }
 
+# -------- Builder / Validator -----------------------------------------------
+class MifidBuilder:
+    def __init__(self, cfg: MifidConfig, registry: Optional[InstrumentRegistry] = None):
+        self.cfg = cfg
+        self.reg = registry or InstrumentRegistry()
 
-def trading_date_from_ts(ts_utc_z: str) -> str:
-    """Extract YYYY-MM-DD trading date from a UTC ISO8601 timestamp string."""
-    # ts_utc_z like '2025-08-25T10:22:33.123Z'
-    date_part = ts_utc_z.split("T", 1)[0]
-    return date_part
+    def from_fill(self, fill: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Transform your internal fill to a minimal RTS22 dict using the field names in RTS22_ORDER.
+        Expected fill keys (from your stack): ts_ms, order_id, symbol, side, qty, price, fee, venue, strategy, account?
+        """
+        ts_ms   = int(fill.get("ts_ms") or now_ms())
+        symbol  = _str(fill.get("symbol")).upper()
+        qty     = abs(_num(fill.get("qty") or fill.get("quantity")))
+        price   = _num(fill.get("price"))
+        venue   = _str(fill.get("venue") or self.cfg.default_mic).upper()
+        side    = _str(fill.get("side")).lower()  # 'buy'/'sell'
+        strategy= _str(fill.get("strategy") or "")
+        account = _str(fill.get("account") or self.cfg.firm_lei)
 
+        inst = self.reg.resolve(symbol)
+        isin = inst.get("isin") or _str(fill.get("isin") or "")
+        mic  = inst.get("mic") or venue or self.cfg.default_mic
 
-def luhn_check_isin(isin: str) -> bool:
-    """Validate ISIN via Luhn algorithm (ISO 6166)."""
-    isin = isin.strip().upper()
-    if not _ISIN_RE.match(isin):
-        return False
-    # Expand letters to numbers (A=10 ... Z=35)
-    digits = ""
-    for ch in isin[:-1]:
-        if ch.isdigit():
-            digits += ch
+        # buyer/seller attribution (very simplified):
+        if side == "buy":
+            buyer_id, seller_id = account, _str(fill.get("counterparty_lei") or "UNK")
         else:
-            digits += str(ord(ch) - 55)  # 'A'->10
-    # Double every second digit from right
-    total = 0
-    reverse = digits[::-1]
-    for i, d in enumerate(reverse):
-        n = int(d)
-        if i % 2 == 0:
-            n *= 2
-        total += n // 10 + n % 10
-    check = (10 - (total % 10)) % 10
-    return check == int(isin[-1])
+            buyer_id, seller_id = _str(fill.get("counterparty_lei") or "UNK"), account
 
+        row = {
+            "reportingFirmId": self.cfg.firm_lei,
+            "submittingEntityId": self.cfg.submitting_entity_lei or self.cfg.firm_lei,
+            "transactionId": _str(fill.get("fill_id") or fill.get("order_id") or f"tx-{uuid.uuid4().hex[:16]}"),
+            "executionDateTime": iso_utc(ts_ms),
+            "instrumentIdType": "ISIN",
+            "instrumentId": isin,
+            "price": f"{price:.10f}",
+            "priceCurrency": self.cfg.currency,
+            "quantity": f"{qty:.8f}",
+            "tradingVenue": mic if mic else self.cfg.default_mic,
+            "buyerId": buyer_id,
+            "buyerIdType": "LEI" if LEI_RE.match(buyer_id) else "UNK",
+            "sellerId": seller_id,
+            "sellerIdType": "LEI" if LEI_RE.match(seller_id) else "UNK",
+            "shortSaleIndicator": _str(fill.get("short_sale_indicator") or self.cfg.short_sale_default),
+            "algorithmicIndicator": _str(fill.get("algo_indicator") or self.cfg.algo_indicator),
+            "algorithmId": _str(fill.get("algo_id") or self.cfg.algo_id or ""),
+            "buyerDecisionMaker": _str(fill.get("buyer_trader_id") or self.cfg.buyer_decision_id or ""),
+            "sellerDecisionMaker": _str(fill.get("seller_trader_id") or self.cfg.seller_decision_id or ""),
+            "branchCountry": _str(self.cfg.branch_country or ""),
+            "strategyTag": strategy,
+        }
+        return row
 
-def is_valid_lei(lei: str) -> bool:
-    return bool(_LEI_RE.match(lei or ""))
-
-
-def is_valid_mic(mic: str) -> bool:
-    return bool(_MIC_RE.match((mic or "").upper()))
-
-
-def is_valid_ccy(ccy: str) -> bool:
-    return bool(_CCY_RE.match((ccy or "").upper()))
-
-
-# ---------------------------
-# Data classes
-# ---------------------------
-
-@dataclass
-class Defaults:
-    investment_firm_lei: str
-    branch_country: str = FALLBACK_BRANCH_COUNTRY
-    trading_capacity: str = FALLBACK_TRADING_CAPACITY
-    liquidity_provider: str = FALLBACK_LIQUIDITY_PROVIDER
-    publication_mode: str = FALLBACK_PUBLICATION_MODE
-    price_currency: str = FALLBACK_PRICE_CCY
-
-
-# ---------------------------
-# Mapping & Validation
-# ---------------------------
-
-def validate_trade(trade: Dict[str, Any], d: Defaults) -> List[str]:
-    """Return a list of validation error messages for a single trade."""
-    errs: List[str] = []
-
-    # Required minimal fields
-    if not trade.get("exec_time"):
-        errs.append("Missing exec_time")
-    else:
+    def validate(self, row: Dict[str, Any]) -> List[str]:
+        errs: List[str] = []
+        # Required: firm LEI
+        if not LEI_RE.match(row.get("reportingFirmId","")):
+            errs.append("reportingFirmId: invalid LEI")
+        # Timestamps
+        if not _str(row.get("executionDateTime")).endswith("Z"):
+            errs.append("executionDateTime: must be UTC ISO with 'Z'")
+        # Instrument
+        if not ISIN_RE.match(row.get("instrumentId","")):
+            errs.append("instrumentId: invalid/missing ISIN")
+        # MIC or XOFF/XOFP
+        mic = _str(row.get("tradingVenue")).upper()
+        if mic not in ("XOFF","XOFP") and not MIC_RE.match(mic):
+            errs.append("tradingVenue: must be MIC or XOFF/XOFP")
+        # Price & qty positive
         try:
-            to_utc_z(str(trade["exec_time"]))
-        except Exception as e:
-            errs.append(f"Bad exec_time: {e}")
-
-    isin = (trade.get("isin") or "").upper()
-    if isin and not luhn_check_isin(isin):
-        errs.append("Invalid ISIN (Luhn)")
-
-    mic = (trade.get("mic") or "").upper()
-    if mic and not is_valid_mic(mic):
-        errs.append("Invalid MIC")
-
-    ccy = (trade.get("currency") or d.price_currency).upper()
-    if not is_valid_ccy(ccy):
-        errs.append("Invalid currency (price_currency)")
-
-    for key in ("price", "qty"):
-        try:
-            val = float(trade.get(key)) # type: ignore
-            if val <= 0:
-                errs.append(f"{key} must be > 0")
+            if float(row.get("price", 0)) <= 0: errs.append("price must be > 0")
         except Exception:
-            errs.append(f"{key} missing or not a number")
-
-    for key in ("buyer_lei", "seller_lei"):
-        lei = trade.get(key)
-        if lei and not is_valid_lei(lei):
-            errs.append(f"{key} not a valid LEI")
-
-    if not is_valid_lei(d.investment_firm_lei):
-        errs.append("Defaults.investment_firm_lei (firm LEI) is invalid")
-
-    return errs
-
-
-def normalize_side(side: Optional[str]) -> str:
-    s = (side or "").strip().upper()
-    if s in {"BUY", "B", "BOT"}:
-        return "BUY"
-    if s in {"SELL", "S", "SLD"}:
-        return "SELL"
-    return ""
-
-
-def derive_uti(firm_lei: str, trade_id: str, exec_date: str) -> str:
-    base = f"{firm_lei}:{trade_id}:{exec_date}"
-    h = hashlib.sha256(base.encode()).hexdigest()[:20].upper()
-    return f"{firm_lei}-{exec_date.replace('-', '')}-{h}"
-
-
-def map_trade_to_rts22(trade: Dict[str, Any], d: Defaults) -> Dict[str, Any]:
-    """Map one internal trade dict to RTS22 CSV row dict.
-
-    Unknown/NA fields are filled with '' (empty) unless a default is specified.
-    Extend this function for your firm/ARM specifics.
-    """
-    ts_utc = to_utc_z(str(trade.get("exec_time")))
-    tdate = trading_date_from_ts(ts_utc)
-
-    # Reference
-    trn = str(trade.get("trade_id") or f"{tdate}-{int(time.time()*1000)}")
-
-    isin = (trade.get("isin") or "").upper()
-    mic = (trade.get("mic") or "").upper()
-
-    # Short sale indicator conventions vary by ARM. We pass through if looks sane.
-    short_sale = str(trade.get("short_sale") or "0")
-    algo_ind = str(trade.get("algo") or trade.get("algorithmic_indicator") or "N").upper()
-    if algo_ind in {"TRUE", "T", "YES", "Y", "1"}:
-        algo_ind = "Y"
-    elif algo_ind in {"FALSE", "F", "NO", "N", "0"}:
-        algo_ind = "N"
-
-    row = {
-        "transaction_reference_number": trn,
-        "trading_date": tdate,
-        "execution_timestamp_utc": ts_utc,
-        "isin": isin,
-        "price": f"{float(trade.get('price')):.10g}", # type: ignore
-        "quantity": f"{float(trade.get('qty')):.10g}", # type: ignore
-        "price_currency": (trade.get("currency") or d.price_currency).upper(),
-        "buyer_lei": (trade.get("buyer_lei") or ""),
-        "seller_lei": (trade.get("seller_lei") or ""),
-        "short_sale_indicator": short_sale,
-        "algorithmic_indicator": algo_ind,
-        "execution_venue_mic": mic,
-        "client_id": str(trade.get("client_id") or ""),
-        "investment_firm_lei": d.investment_firm_lei,
-        "branch_country": (trade.get("branch_country") or d.branch_country).upper(),
-        "trading_capacity": (trade.get("trading_capacity") or d.trading_capacity).upper(),
-        "liquidity_provider": (trade.get("liquidity_provider") or d.liquidity_provider).upper(),
-        "commodity_derivative_indicator": str(trade.get("commodity_derivative_indicator") or "N").upper(),
-        "emission_allowance_indicator": str(trade.get("emission_allowance_indicator") or "N").upper(),
-        "derivative_underlying_isin": (trade.get("underlying_isin") or "").upper(),
-        "derivative_maturity_date": (trade.get("maturity_date") or ""),  # YYYY-MM-DD
-        "derivative_delivery_type": (trade.get("delivery_type") or ""),   # CASH/PHYS
-        "notional_currency_1": (trade.get("notional_ccy1") or ""),
-        "notional_currency_2": (trade.get("notional_ccy2") or ""),
-        "price_notation": (trade.get("price_notation") or ""),           # e.g., CUR, PCT, YLD
-        "publication_mode": (trade.get("publication_mode") or d.publication_mode),
-        "uti": (trade.get("uti")
-                 or derive_uti(d.investment_firm_lei, trn, tdate)),
-    }
-
-    # Optionally enrich with side if your ARM expects it (non-standard in RTS22 CSVs)
-    side = normalize_side(trade.get("side"))
-    if side:
-        row["side"] = side  # non-standard, kept as extra column if you add to RTS22_FIELDS
-
-    return row
-
-
-# ---------------------------
-# I/O helpers
-# ---------------------------
-
-def read_fills_csv(path: str) -> List[Dict[str, Any]]:
-    with open(path, newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        return [dict(row) for row in reader]
-
-
-def read_json_array(path: str) -> List[Dict[str, Any]]:
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    if not isinstance(data, list):
-        raise ValueError("JSON input must be an array of trade objects")
-    return [dict(x) for x in data]
-
-
-def write_csv(rows: List[Dict[str, Any]], path: str, headers: List[str]) -> None:
-    with open(path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=headers, extrasaction="ignore")
-        writer.writeheader()
-        for r in rows:
-            writer.writerow(r)
-
-
-def emit_template(path: str, template_format: str) -> None:
-    if template_format == "fills_csv":
-        headers = [
-            "trade_id","exec_time","symbol","isin","price","qty","currency","side",
-            "buyer_lei","seller_lei","mic","short_sale","algo","client_id",
-            "underlying_isin","maturity_date","delivery_type","notional_ccy1","notional_ccy2",
-            "price_notation","publication_mode","uti"
-        ]
-        with open(path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(headers)
-        print(f"Template written to {path}")
-    else:
-        raise ValueError("Unsupported template format. Use fills_csv")
-
-
-# ---------------------------
-# Redis stream consumer (optional)
-# ---------------------------
-
-def consume_redis_stream(
-    stream: str,
-    start_id: str = "$",
-    host: str = os.getenv("REDIS_HOST", "localhost"),
-    port: int = int(os.getenv("REDIS_PORT", "6379")),
-    block_ms: int = 5000,
-) -> Iterable[Dict[str, Any]]:
-    if redis is None:
-        raise RuntimeError("redis package not installed. pip install redis")
-    r = redis.Redis(host=host, port=port, decode_responses=True)
-    last_id = start_id
-    while True:
-        resp = r.xread({stream: last_id}, block=block_ms, count=100)
-        if not resp:
-            continue
-        # resp: [(stream_name, [(id, {field:value, ...}), ...])]
-        _, entries = resp[0] # type: ignore
-        for msg_id, fields in entries:
-            last_id = msg_id
-            # Expect JSON payload in field 'data' or key-value pairs resembling a trade
-            if "data" in fields:
-                try:
-                    trade = json.loads(fields["data"])  # your engine publishes JSON
-                except Exception:
-                    trade = fields
-            else:
-                trade = fields
-            yield trade
-
-
-# ---------------------------
-# Main workflow
-# ---------------------------
-
-def process_trades(
-    trades: List[Dict[str, Any]],
-    defaults: Defaults,
-    validate_only: bool = False,
-) -> Tuple[List[Dict[str, Any]], List[Tuple[int, List[str]]]]:
-    rows: List[Dict[str, Any]] = []
-    errors: List[Tuple[int, List[str]]] = []
-    for i, t in enumerate(trades):
-        errs = validate_trade(t, defaults)
-        if errs:
-            errors.append((i, errs))
-            continue
-        if not validate_only:
-            rows.append(map_trade_to_rts22(t, defaults))
-    return rows, errors
-
-
-def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="MiFID II (RTS 22) transaction reporter")
-    g_in = p.add_argument_group("Input")
-    g_in.add_argument("--input", help="Input file (CSV or JSON)")
-    g_in.add_argument("--input-format", choices=["fills_csv", "json"], default="fills_csv")
-    g_in.add_argument("--emit-template", help="Write an input template and exit")
-    g_in.add_argument("--template-format", choices=["fills_csv"], default="fills_csv")
-
-    g_out = p.add_argument_group("Output")
-    g_out.add_argument("--output", help="Output CSV path (RTS22 subset)")
-    g_out.add_argument("--validate-only", action="store_true", help="Validate inputs without writing CSV")
-
-    g_def = p.add_argument_group("Defaults")
-    g_def.add_argument("--firm-lei", required=False, help="Investment firm LEI (also from env FIRM_LEI)")
-    g_def.add_argument("--branch-country", default=FALLBACK_BRANCH_COUNTRY)
-    g_def.add_argument("--trading-capacity", default=FALLBACK_TRADING_CAPACITY)
-    g_def.add_argument("--liquidity-provider", default=FALLBACK_LIQUIDITY_PROVIDER)
-    g_def.add_argument("--publication-mode", default=FALLBACK_PUBLICATION_MODE)
-    g_def.add_argument("--default-currency", default=FALLBACK_PRICE_CCY)
-
-    g_r = p.add_argument_group("Redis (optional)")
-    g_r.add_argument("--from-redis", action="store_true", help="Consume live fills from Redis stream")
-    g_r.add_argument("--redis-stream", default=os.getenv("STREAM_FILLS", "STREAM_FILLS"))
-    g_r.add_argument("--redis-host", default=os.getenv("REDIS_HOST", "localhost"))
-    g_r.add_argument("--redis-port", type=int, default=int(os.getenv("REDIS_PORT", "6379")))
-
-    return p.parse_args(argv)
-
-
-def main(argv: Optional[List[str]] = None) -> int:
-    args = parse_args(argv)
-
-    if args.emit_template:
-        emit_template(args.emit_template, args.template_format)
-        return 0
-
-    firm_lei = args.firm_lei or os.getenv("FIRM_LEI") or ""
-    if not firm_lei:
-        print("ERROR: --firm-lei or env FIRM_LEI is required", file=sys.stderr)
-        return 2
-
-    defaults = Defaults(
-        investment_firm_lei=firm_lei,
-        branch_country=args.branch_country,
-        trading_capacity=args.trading_capacity,
-        liquidity_provider=args.liquidity_provider,
-        publication_mode=args.publication_mode,
-        price_currency=args.default_currency,
-    )
-
-    headers = list(RTS22_FIELDS)  # copy
-
-    all_rows: List[Dict[str, Any]] = []
-    all_errors: List[Tuple[int, List[str]]] = []
-
-    if args-redis: # type: ignore
-        # Stream mode: write rows incrementally to --output (required) and print errors to stderr
-        if not args.output:
-            print("ERROR: --output is required in --from-redis mode", file=sys.stderr)
-            return 2
+            errs.append("price not numeric")
         try:
-            for trade in consume_redis_stream(args.redis_stream, host=args.redis_host, port=args.redis_port):
-                errs = validate_trade(trade, defaults)
-                if errs:
-                    print(f"VALIDATION ERROR for trade {trade.get('trade_id')}: {errs}", file=sys.stderr)
+            if float(row.get("quantity", 0)) <= 0: errs.append("quantity must be > 0")
+        except Exception:
+            errs.append("quantity not numeric")
+        # Short sale indicator in {1,2,3}
+        if _str(row.get("shortSaleIndicator")) not in ("1","2","3"):
+            errs.append("shortSaleIndicator must be 1,2,or 3")
+        # Algo Y/N
+        if _str(row.get("algorithmicIndicator")).upper() not in ("Y","N"):
+            errs.append("algorithmicIndicator must be Y/N")
+        return errs
+
+# -------- CSV Writer with rotation ------------------------------------------
+class CsvBatchWriter:
+    def __init__(self, base_dir: str, prefix: str, include_headers: bool, batch_rows: int):
+        self.base_dir = base_dir
+        self.prefix = prefix
+        self.include_headers = include_headers
+        self.batch_rows = int(batch_rows)
+        self._rows_in_file = 0
+        self._f = None
+        self._writer: Optional[csv.DictWriter] = None
+        self._seq = 0
+
+    def _open_new(self):
+        if self._f:
+            try: self._f.close()
+            except Exception: pass
+        ts = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%S")
+        self._seq += 1
+        path = os.path.join(self.base_dir, f"{self.prefix}_{ts}_{self._seq:03d}.csv")
+        self._f = open(path, "w", newline="", encoding="utf-8")
+        self._writer = csv.DictWriter(self._f, fieldnames=RTS22_ORDER, extrasaction="ignore")
+        if self.include_headers:
+            self._writer.writeheader()
+        self._rows_in_file = 0
+        return path
+
+    def write(self, row: Dict[str, Any]) -> str:
+        if not self._f or self._rows_in_file >= self.batch_rows:
+            path = self._open_new()
+        assert self._writer is not None
+        self._writer.writerow({k: row.get(k,"") for k in RTS22_ORDER})
+        self._rows_in_file += 1
+        return self._f.name  # type: ignore
+
+    def close(self):
+        if self._f:
+            try: self._f.close()
+            except Exception: pass
+        self._f, self._writer = None, None
+
+# -------- Reporter (Redis live or file replay) -------------------------------
+class MifidReporter:
+    def __init__(self, cfg: MifidConfig, registry: Optional[InstrumentRegistry] = None):
+        self.cfg = cfg
+        self.builder = MifidBuilder(cfg, registry)
+        self.writer = CsvBatchWriter(OUT_DIR, cfg.filename_prefix, cfg.include_headers, cfg.batch_rows)
+        self.r: Optional[AsyncRedis] = None # type: ignore
+
+    async def connect(self):
+        if not HAVE_REDIS:
+            return
+        try:
+            self.r = AsyncRedis.from_url(REDIS_URL, decode_responses=True)  # type: ignore
+            await self.r.ping() # type: ignore
+        except Exception:
+            self.r = None
+
+    async def run_live(self):
+        """
+        Listen to Redis `orders.filled`, convert to RTS22 rows, validate, and write CSV batches.
+        """
+        await self.connect()
+        last_id = "$"
+        if not self.r:
+            print("[mifid] Redis unavailable; idle. Use --from-jsonl to convert offline.")
+            while True:
+                await asyncio.sleep(1)
+        try:
+            while True:
+                resp = await self.r.xread({S_FILLS: last_id}, count=500, block=1000)  # type: ignore
+                if not resp:
                     continue
-                row = map_trade_to_rts22(trade, defaults)
-                # Append to CSV file incrementally
-                file_exists = os.path.exists(args.output)
-                with open(args.output, "a", newline="", encoding="utf-8") as f:
-                    writer = csv.DictWriter(f, fieldnames=headers, extrasaction="ignore")
-                    if not file_exists:
-                        writer.writeheader()
-                    writer.writerow(row)
-        except KeyboardInterrupt:
-            print("Stopped by user.")
-        return 0
+                for stream, entries in resp:
+                    last_id = entries[-1][0]
+                    for _id, fields in entries:
+                        row = self._row_from_fields(fields)
+                        if not row:
+                            continue
+                        errs = self.builder.validate(row)
+                        if errs:
+                            self._write_error(row, errs)
+                        else:
+                            path = self.writer.write(row)
+                            # You can kick an SFTP uploader to pick files from OUT_DIR
+        finally:
+            self.writer.close()
 
-    # Batch mode: read from file
-    if not args.input:
-        print("ERROR: --input required (or use --from-redis)", file=sys.stderr)
-        return 2
+    async def from_jsonl(self, path: str):
+        """
+        Convert a JSONL of fills (one JSON per line) into batched RTS22 CSV files.
+        """
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line=line.strip()
+                if not line: continue
+                try:
+                    fill = json.loads(line)
+                except Exception:
+                    continue
+                row = self.builder.from_fill(fill)
+                errs = self.builder.validate(row)
+                if errs:
+                    self._write_error(row, errs)
+                else:
+                    self.writer.write(row)
+        self.writer.close()
 
-    if args.input_format == "fills_csv":
-        trades = read_fills_csv(args.input)
-    elif args.input_format == "json":
-        trades = read_json_array(args.input)
-    else:
-        print("Unsupported --input-format", file=sys.stderr)
-        return 2
+    def _row_from_fields(self, fields: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        raw = fields.get("json")
+        if raw:
+            try:
+                fill = json.loads(raw)
+            except Exception:
+                return None
+        else:
+            # flat map
+            fill = {k: fields.get(k) for k in ("ts_ms","order_id","symbol","side","qty","price","fee","venue","strategy","account","counterparty_lei")}
+        return self.builder.from_fill(fill)
 
-    rows, errors = process_trades(trades, defaults, validate_only=args.validate_only)
-    all_rows.extend(rows)
-    all_errors.extend(errors)
+    def _write_error(self, row: Dict[str, Any], errs: List[str]):
+        # write a sidecar .bad file with the offending row + reasons
+        ts = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%S")
+        name = f"{self.cfg.filename_prefix}_errors_{ts}.jsonl"
+        with open(os.path.join(OUT_DIR, name), "a", encoding="utf-8") as f:
+            f.write(json.dumps({"row": row, "errors": errs}, ensure_ascii=False) + "\n")
 
-    # Report validation issues
-    if all_errors:
-        print("Validation errors (index: [issues]):", file=sys.stderr)
-        for idx, errs in all_errors:
-            print(f"  {idx}: {errs}", file=sys.stderr)
+# -------- CLI ----------------------------------------------------------------
+def _cli():
+    import argparse
+    ap = argparse.ArgumentParser("mifid_reporter (RTS 22 minimal)")
+    ap.add_argument("--firm-lei", required=True, help="Your firm LEI (20 chars)")
+    ap.add_argument("--submitting-lei", default=None)
+    ap.add_argument("--branch", default=None, help="Branch country code (e.g., GB, IE)")
+    ap.add_argument("--currency", default="USD")
+    ap.add_argument("--default-mic", default="XOFF")
+    ap.add_argument("--algo-ind", default="Y", choices=["Y","N"])
+    ap.add_argument("--short", default="3", choices=["1","2","3"])
+    ap.add_argument("--algo-id", default=None)
+    ap.add_argument("--buyer-id", default=None)
+    ap.add_argument("--seller-id", default=None)
+    ap.add_argument("--from-jsonl", default=None, help="Convert fills JSONL -> RTS22 CSV")
+    ap.add_argument("--live", action="store_true", help="Read from Redis orders.filled")
+    ap.add_argument("--batch-rows", type=int, default=5000)
+    ap.add_argument("--prefix", default="RTS22")
+    args = ap.parse_args()
 
-    if args.validate_only:
-        print(f"Checked {len(trades)} trades; {len(all_errors)} with errors; {len(all_rows)} ready.")
-        return 0 if not all_errors else 1
+    cfg = MifidConfig(
+        firm_lei=args.firm_lei,
+        submitting_entity_lei=args.submitting_lei or args.firm_lei,
+        branch_country=args.branch,
+        default_mic=args.default_mic,
+        currency=args.currency,
+        short_sale_default=args.short,
+        algo_indicator=args.algo_ind,
+        algo_id=args.algo_id,
+        buyer_decision_id=args.buyer_id,
+        seller_decision_id=args.seller_id,
+        batch_rows=args.batch_rows,
+        filename_prefix=args.prefix,
+    )
+    rep = MifidReporter(cfg)
 
-    if not args.output:
-        print("ERROR: --output path required to write CSV", file=sys.stderr)
-        return 2
+    async def _run():
+        if args.from_jsonl:
+            await rep.from_jsonl(args.from_jsonl)
+        elif args.live:
+            await rep.run_live()
+        else:
+            print("Nothing to do. Use --live or --from-jsonl path.")
 
-    write_csv(all_rows, args.output, headers)
-    print(f"Wrote {len(all_rows)} rows to {args.output}")
-    return 0
-
+    try:
+        asyncio.run(_run())
+    except KeyboardInterrupt:
+        pass
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    _cli()

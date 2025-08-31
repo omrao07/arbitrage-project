@@ -1,0 +1,86 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "description": "Stress scenarios, Monte Carlo simulations, and crisis theaters",
+    "last_updated": "2025-08-29T00:00:00Z",
+    "author": "AI Engine"
+  },
+  "scenarios": [
+    {
+      "id": "gfc2008_replay",
+      "name": "2008 Global Financial Crisis Replay",
+      "type": "historical_replay",
+      "source": "FRED/Quandl",
+      "assets": ["SPX", "TLT", "XLF", "GLD"],
+      "period": {
+        "start": "2007-08-01",
+        "end": "2009-06-30"
+      },
+      "parameters": {
+        "shock_magnitude": 1.0,
+        "replay_speed": "1x",
+        "liquidity_haircut": 0.2
+      }
+    },
+    {
+      "id": "covid2020_shock",
+      "name": "COVID-19 Liquidity Shock",
+      "type": "shock_template",
+      "assets": ["SPX", "US10Y", "VIX", "OIL"],
+      "parameters": {
+        "equity_drop": -0.30,
+        "bond_yield_shift": -0.015,
+        "vol_spike": 0.8,
+        "oil_crash": -0.50,
+        "duration_days": 20
+      }
+    },
+    {
+      "id": "india_rate_hike",
+      "name": "RBI Unexpected 100bps Rate Hike",
+      "type": "macro_event",
+      "region": "IN",
+      "assets": ["NIFTY", "INRUSD", "IND10Y"],
+      "parameters": {
+        "shock_time": "2025-09-01T09:15:00Z",
+        "equity_gap": -0.05,
+        "currency_gap": 0.03,
+        "yield_jump": 0.012
+      }
+    },
+    {
+      "id": "montecarlo_baseline",
+      "name": "Baseline Monte Carlo Simulation",
+      "type": "monte_carlo",
+      "assets": ["AAPL", "MSFT", "SPX"],
+      "parameters": {
+        "n_scenarios": 10000,
+        "horizon_days": 60,
+        "mu": [0.0004, 0.00035, 0.00025],
+        "sigma": [0.02, 0.022, 0.015],
+        "correlation_matrix": [[1,0.65,0.7],[0.65,1,0.6],[0.7,0.6,1]]
+      },
+      "outputs": {
+        "pnl_distribution": {
+          "mean": 0.012,
+          "VaR_95": -0.08,
+          "CVaR_99": -0.15
+        },
+        "paths_saved": "storage/montecarlo/baseline_paths.npy"
+      }
+    },
+    {
+      "id": "black_swan_liquidity_crisis",
+      "name": "Synthetic Black Swan Liquidity Spiral",
+      "type": "synthetic",
+      "assets": ["SPX", "HYG", "EURUSD", "BTCUSD"],
+      "parameters": {
+        "feedback_loop": true,
+        "leverage_trigger": 1.8,
+        "margin_call_wave": 3,
+        "correlation_breakdown": true,
+        "max_drawdown": -0.45
+      }
+    }
+  ]
+}

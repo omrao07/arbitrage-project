@@ -1,0 +1,183 @@
+# =========================================================
+# Namespace (optional)
+# =========================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hedgefund
+---
+# =========================================================
+# ConfigMap — tune scenarios, horizons, and feature toggles
+# =========================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scenario-worker-config
+  namespace: hedgefund
+data:
+  WORKER_CONCURRENCY: "2"
+  MAX_HORIZON_DAYS: "365"
+  DEFAULT_SCENARIOS: "gfc2008_replay,covid2020_shock,india_rate_hike,montecarlo_baseline"
+  STORAGE_PATH: "/data/scenarios"
+  LOG_LEVEL: "INFO"
+  ENABLE_VIZ: "true"
+---
+# =========================================================
+# ServiceAccount + RBAC
+# =========================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: scenario-worker
+  namespace: hedgefund
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: scenario-worker-read
+  namespace: hedgefund
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: scenario-worker-read
+  namespace: hedgefund
+subjects:
+  - kind: ServiceAccount
+    name: scenario-worker
+    namespace: hedgefund
+roleRef:
+  kind: Role
+  name: scenario-worker-read
+  apiGroup: rbac.authorization.k8s.io
+---
+# =========================================================
+# Deployment
+# =========================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scenario-worker
+  namespace: hedgefund
+  labels:
+    app: hedgefund
+    svc: scenario-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hedgefund
+      svc: scenario-worker
+  template:
+    metadata:
+      labels:
+        app: hedgefund
+        svc: scenario-worker
+    spec:
+      serviceAccountName: scenario-worker
+      containers:
+        - name: scenario
+          image: your-registry/hedgefund-scenario:latest
+          imagePullPolicy: Always
+          command: ["python"]
+          args:
+            - "-m"
+            - "backend.workers.scenario_worker"
+            - "--concurrency=$(WORKER_CONCURRENCY)"
+          env:
+            - name: WORKER_CONCURRENCY
+              valueFrom: { configMapKeyRef: { name: scenario-worker-config, key: WORKER_CONCURRENCY } }
+            - name: MAX_HORIZON_DAYS
+              valueFrom: { configMapKeyRef: { name: scenario-worker-config, key: MAX_HORIZON_DAYS } }
+            - name: DEFAULT_SCENARIOS
+              valueFrom: { configMapKeyRef: { name: scenario-worker-config, key: DEFAULT_SCENARIOS } }
+            - name: STORAGE_PATH
+              valueFrom: { configMapKeyRef: { name: scenario-worker-config, key: STORAGE_PATH } }
+            - name: LOG_LEVEL
+              valueFrom: { configMapKeyRef: { name: scenario-worker-config, key: LOG_LEVEL } }
+            - name: ENABLE_VIZ
+              valueFrom: { configMapKeyRef: { name: scenario-worker-config, key: ENABLE_VIZ } }
+
+            # --- Secrets: DB + Redis/Kafka ---
+            - name: REDIS_HOST
+              value: "redis"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: REDIS_PASSWORD
+              valueFrom: { secretKeyRef: { name: redis-secret, key: redis-password } }
+
+            - name: POSTGRES_DSN
+              valueFrom: { secretKeyRef: { name: hedgefund-secrets, key: analytics_db_dsn } }
+
+            - name: KAFKA_BROKERS
+              value: "kafka:9092"
+            - name: KAFKA_USERNAME
+              valueFrom: { secretKeyRef: { name: hedgefund-secrets, key: kafka_user } }
+            - name: KAFKA_PASSWORD
+              valueFrom: { secretKeyRef: { name: hedgefund-secrets, key: kafka_pass } }
+
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+
+          volumeMounts:
+            - name: data
+              mountPath: /data/scenarios
+
+      volumes:
+        - name: data
+          emptyDir: {}   # replace with PVC for persistence
+
+      restartPolicy: Always
+---
+# =========================================================
+# Optional: Autoscaler
+# =========================================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: scenario-worker-hpa
+  namespace: hedgefund
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: scenario-worker
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+# =========================================================
+# Optional Service (only if you expose /health or /metrics)
+# =========================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: scenario-worker
+  namespace: hedgefund
+  labels:
+    app: hedgefund
+    svc: scenario-worker
+spec:
+  type: ClusterIP
+  selector:
+    app: hedgefund
+    svc: scenario-worker
+  ports:
+    - name: http
+      port: 8081
+      targetPort: 8081

@@ -97,21 +97,21 @@ def _hget_json(hk: str, field: str) -> Optional[dict]:
     raw = r.hget(hk, field)
     if not raw: return None
     try:
-        j = json.loads(raw);  return j if isinstance(j, dict) else None
+        j = json.loads(raw);  return j if isinstance(j, dict) else None # type: ignore
     except Exception: return None
 
 def _px(sym: str) -> Optional[float]:
     raw = r.hget(LAST_HK, f"EQ:{sym}")
     if not raw: return None
     try:
-        j = json.loads(raw);  return float(j.get("price", 0.0))
+        j = json.loads(raw);  return float(j.get("price", 0.0)) # type: ignore
     except Exception:
-        try: return float(raw)
+        try: return float(raw) # type: ignore
         except Exception: return None
 
 def _fees_bps(venue: str="EXCH") -> float:
     v = r.hget(FEES_HK, venue)
-    try: return float(v) if v is not None else 10.0
+    try: return float(v) if v is not None else 10.0 # type: ignore
     except Exception: return 10.0
 
 def _now_ms() -> int: return int(time.time()*1000)
@@ -145,12 +145,12 @@ class ESGAlpha(Strategy):
         if now - self._last < RECHECK_SECS: return
         self._last = now
 
-        syms: List[str] = list(r.smembers(UNIV_KEY) or [])
+        syms: List[str] = list(r.smembers(UNIV_KEY) or []) # type: ignore
         if not syms: 
             self.emit_signal(0.0); 
             return
 
-        excl = set(r.smembers(EXCL_SET) or [])
+        excl = set(r.smembers(EXCL_SET) or []) # type: ignore
         raw_scores: Dict[str, float] = {}
         sectors: Dict[str, str] = {}
         sins: Dict[str, str] = {}
@@ -185,8 +185,8 @@ class ESGAlpha(Strategy):
             score = (W_SCORE_MOM*score_mom) + (W_GOV*gov) + (W_GREEN_REV*green) + (W_EMI_TREND*emi_trend)
 
             raw_scores[s] = score
-            sectors[s] = (r.hget(SECTOR_HK, s) or "UNKNOWN").upper()
-            sins[s] = (r.hget(SIN_HK, s) or "").upper()
+            sectors[s] = (r.hget(SECTOR_HK, s) or "UNKNOWN").upper() # type: ignore
+            sins[s] = (r.hget(SIN_HK, s) or "").upper() # type: ignore
 
         if not raw_scores:
             self.emit_signal(0.0)
@@ -272,7 +272,7 @@ class ESGAlpha(Strategy):
         raw = r.get(_poskey(self.ctx.name, sym))
         if not raw: return None
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return OpenState(side=str(o["side"]), qty=float(o["qty"]), z_at_entry=float(o["z_at_entry"]),
                              sector=str(o.get("sector","UNKNOWN")), ts_ms=int(o["ts_ms"]))
         except Exception:

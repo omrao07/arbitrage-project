@@ -79,7 +79,7 @@ def _hget_json(hk: str, field: str) -> Optional[dict]:
     raw = r.hget(hk, field)
     if not raw: return None
     try:
-        j = json.loads(raw)
+        j = json.loads(raw) # type: ignore
         return j if isinstance(j, dict) else None
     except Exception:
         return None
@@ -89,7 +89,7 @@ def _fees_bps(venue: str, ob: Optional[dict]) -> float:
         try: return float(ob["fee_bps"])
         except Exception: pass
     v = r.hget(FEES_VENUE_HK, venue)
-    try: return float(v) if v is not None else 100.0
+    try: return float(v) if v is not None else 100.0 # type: ignore
     except Exception: return 100.0
 
 def _now_ms() -> int: return int(time.time()*1000)
@@ -114,7 +114,7 @@ def _load_ewma(tag: str) -> EwmaMV:
     raw = r.get(_ewma_key(tag))
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", EWMA_ALPHA)))
         except Exception: pass
     return EwmaMV(mean=0.0, var=1.0, alpha=EWMA_ALPHA)
@@ -206,8 +206,8 @@ class PredictionMarketArbitrage(Strategy):
         # place legs: BUY cheap, SELL rich (limitable around quotes)
         sym_c = f"PM:{VENUE_CHEAP}:{MARKET_ID}:{OUTCOME_ID}"
         sym_r = f"PM:{VENUE_RICH}:{MARKET_ID}:{OUTCOME_ID}"
-        self.order(sym_c, "buy",  qty=qty, price=ask_c, order_type="limit", venue=VENUE_CHEAP)
-        self.order(sym_r, "sell", qty=qty, price=bid_r, order_type="limit", venue=VENUE_RICH)
+        self.order(sym_c, "buy",  qty=qty, price=ask_c, order_type="limit", venue=VENUE_CHEAP) # type: ignore
+        self.order(sym_r, "sell", qty=qty, price=bid_r, order_type="limit", venue=VENUE_RICH) # type: ignore
 
         legs = [
             {"sym": sym_c, "side": "buy",  "qty": qty, "price": ask_c},
@@ -273,7 +273,7 @@ class PredictionMarketArbitrage(Strategy):
             if shares * ask_i < MIN_TICKET_USD * 0.2:  # tiny guard
                 continue
             sym = f"PM:{DB_VENUE}:{DB_MARKET}:{oid}"
-            self.order(sym, "buy", qty=shares, price=ask_i, order_type="limit", venue=DB_VENUE)
+            self.order(sym, "buy", qty=shares, price=ask_i, order_type="limit", venue=DB_VENUE) # type: ignore
             legs.append({"sym": sym, "side": "buy", "qty": shares, "price": ask_i})
 
         if not legs: return
@@ -294,7 +294,7 @@ class PredictionMarketArbitrage(Strategy):
         raw = r.get(_poskey(self.ctx.name, tag))
         if not raw: return None
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return OpenState(mode=str(o["mode"]),
                              legs=list(o.get("legs") or []),
                              edge_bps=float(o["edge_bps"]),

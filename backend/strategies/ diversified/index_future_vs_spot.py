@@ -113,17 +113,17 @@ def _years_to_expiry() -> float:
 def _hget_price(sym: str) -> Optional[float]:
     raw = r.hget(LAST_PRICE_HKEY, sym)
     if not raw: return None
-    try: return float(json.loads(raw)["price"])
+    try: return float(json.loads(raw)["price"]) # type: ignore
     except Exception:
-        try: return float(raw)
+        try: return float(raw) # type: ignore
         except Exception: return None
 
 def _hgetf(hashkey: str, field: str) -> Optional[float]:
     v = r.hget(hashkey, field)
     if v is None: return None
-    try: return float(v)
+    try: return float(v) # type: ignore
     except Exception:
-        try: return float(json.loads(v))
+        try: return float(json.loads(v)) # type: ignore
         except Exception: return None
 
 def _rate(ccy: str) -> float:
@@ -160,7 +160,7 @@ def _load_ewma() -> EwmaMV:
     raw = r.get(_ewma_key())
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", EWMA_ALPHA)))
         except Exception:
             pass
@@ -276,7 +276,7 @@ class IndexFutureVsSpot(Strategy):
         raw = r.get(_poskey(self.ctx.name))
         if not raw: return None
         try:
-            return OpenState(**json.loads(raw))
+            return OpenState(**json.loads(raw)) # type: ignore
         except Exception:
             return None
 

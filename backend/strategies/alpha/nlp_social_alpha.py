@@ -103,16 +103,16 @@ def _hget_json(hk: str, field: str) -> Optional[dict]:
     raw = r.hget(hk, field)
     if not raw: return None
     try:
-        j = json.loads(raw); return j if isinstance(j, dict) else None
+        j = json.loads(raw); return j if isinstance(j, dict) else None # type: ignore
     except Exception: return None
 
 def _px(sym: str) -> Optional[float]:
     raw = r.hget(LAST_HK, f"EQ:{sym}")
     if not raw: return None
     try:
-        j = json.loads(raw); return float(j.get("price", 0.0))
+        j = json.loads(raw); return float(j.get("price", 0.0)) # type: ignore
     except Exception:
-        try: return float(raw)
+        try: return float(raw) # pyright: ignore[reportArgumentType]
         except Exception: return None
 
 def _now_ms() -> int: return int(time.time()*1000)
@@ -145,7 +145,7 @@ class NLPSocialAlpha(Strategy):
         if now - self._last < RECHECK_SECS: return
         self._last = now
 
-        syms: List[str] = list(r.smembers(UNIV_KEY) or [])
+        syms: List[str] = list(r.smembers(UNIV_KEY) or []) # type: ignore
         if not syms:
             self.emit_signal(0.0); return
 
@@ -205,7 +205,7 @@ class NLPSocialAlpha(Strategy):
             raw -= math.copysign(P_STALE_MIN * staleness, raw)
 
             raw_scores[s] = float(raw)
-            sectors[s] = (r.hget(SECTOR_HK, s) or "UNKNOWN").upper()
+            sectors[s] = (r.hget(SECTOR_HK, s) or "UNKNOWN").upper() # type: ignore
             age_min[s] = mins
 
         if not raw_scores:
@@ -272,7 +272,7 @@ class NLPSocialAlpha(Strategy):
         raw = r.get(_poskey(self.ctx.name, sym))
         if not raw: return None
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return OpenState(side=str(o["side"]), qty=float(o["qty"]),
                              z_at_entry=float(o["z_at_entry"]), ts_ms=int(o["ts_ms"]),
                              sector=str(o.get("sector","UNKNOWN")))

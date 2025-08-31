@@ -73,7 +73,7 @@ def _hget_json(hk: str, field: str) -> Optional[dict]:
     raw = r.hget(hk, field)
     if not raw: return None
     try:
-        j = json.loads(raw)
+        j = json.loads(raw) # type: ignore
         return j if isinstance(j, dict) else None
     except Exception:
         return None
@@ -83,7 +83,7 @@ def _meta(event: str) -> Optional[dict]:
 
 def _guard_bps() -> float:
     v = r.hget(FEES_HK, "guard_bps")
-    try: return float(v) if v is not None else 30.0
+    try: return float(v) if v is not None else 30.0 # type: ignore
     except Exception: return 30.0
 
 def _now_ms() -> int: return int(time.time() * 1000)
@@ -128,7 +128,7 @@ def _load_ewma(tag: str) -> EwmaMV:
     raw = r.get(_ewma_key(tag))
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", EWMA_ALPHA)))
         except Exception: pass
     return EwmaMV(mean=0.0, var=1.0, alpha=EWMA_ALPHA)
@@ -232,8 +232,8 @@ class SportsBettingMarketArb(Strategy):
         # Place legs
         sym1 = f"SB:{leg1[0]}:{EVENT_ID}:{leg1[1]}"
         sym2 = f"SB:{leg2[0]}:{EVENT_ID}:{leg2[1]}"
-        self.order(sym1, "back", qty=s1, price=leg1[2], order_type="market", venue=leg1[0])
-        self.order(sym2, "back", qty=s2, price=leg2[2], order_type="market", venue=leg2[0])
+        self.order(sym1, "back", qty=s1, price=leg1[2], order_type="market", venue=leg1[0]) # type: ignore
+        self.order(sym2, "back", qty=s2, price=leg2[2], order_type="market", venue=leg2[0]) # type: ignore
 
         legs = [
             {"book": leg1[0], "outcome": leg1[1], "odds": leg1[2], "stake": s1, "sym": sym1},
@@ -257,7 +257,7 @@ class SportsBettingMarketArb(Strategy):
             hk = ODDS_HK.format(event=EVENT_ID)
             fields = r.hkeys(hk)
             top = None
-            for f in fields:
+            for f in fields: # type: ignore
                 if not f or "|" not in f: continue
                 book, outcome = f.split("|",1)
                 if outcome != o: continue
@@ -295,7 +295,7 @@ class SportsBettingMarketArb(Strategy):
             s = min(max(MIN_STAKE, stk), float(j.get("max_stake", stk)))
             used += s
             sym = f"SB:{book}:{EVENT_ID}:{outcome}"
-            self.order(sym, "back", qty=s, price=odds, order_type="market", venue=book)
+            self.order(sym, "back", qty=s, price=odds, order_type="market", venue=book) # type: ignore
             legs.append({"book":book, "outcome":outcome, "odds":odds, "stake":s, "sym":sym})
 
         # realized edge:
@@ -344,8 +344,8 @@ class SportsBettingMarketArb(Strategy):
 
         sym_u = f"SBLINE:{BOOK_A}:{EVENT_ID}:TOTAL:UNDER"
         sym_o = f"SBLINE:{BOOK_B}:{EVENT_ID}:TOTAL:OVER"
-        self.order(sym_u, "back", qty=s_u, price=odds_u, order_type="market", venue=BOOK_A, flags={"line": line_under})
-        self.order(sym_o, "back", qty=s_o, price=odds_o, order_type="market", venue=BOOK_B, flags={"line": line_over})
+        self.order(sym_u, "back", qty=s_u, price=odds_u, order_type="market", venue=BOOK_A, flags={"line": line_under}) # type: ignore
+        self.order(sym_o, "back", qty=s_o, price=odds_o, order_type="market", venue=BOOK_B, flags={"line": line_over}) # type: ignore
 
         legs = [
             {"book":BOOK_A, "market":"TOTAL:UNDER", "line":line_under, "odds":odds_u, "stake":s_u, "sym":sym_u},
@@ -359,7 +359,7 @@ class SportsBettingMarketArb(Strategy):
         raw = r.get(_poskey(self.ctx.name, tag))
         if not raw: return None
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return OpenState(mode=str(o["mode"]), tag=str(o["tag"]),
                              legs=list(o.get("legs") or []),
                              edge_bps=float(o["edge_bps"]), entry_z=float(o["entry_z"]),

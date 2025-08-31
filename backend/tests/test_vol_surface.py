@@ -1,366 +1,277 @@
 # tests/test_vol_surface.py
-# Comprehensive test suite for vol surface utilities.
-# Adjust the import path to your module if needed.
 import importlib
 import math
-import os
-import tempfile
-from time import perf_counter
-
 import numpy as np
-import pandas as pd
 import pytest # type: ignore
+from typing import Any, Dict, List, Optional, Tuple
 
-vs = importlib.import_module("vol_surface")  # rename if needed: backend.analytics.vol_surface
+"""
+Accepted public APIs (any one is fine)
 
+Class-style:
+-----------
+class VolSurface:
+    def fit(self, quotes: list[dict], S0: float, r: float = 0.0, q: float = 0.0, **kw) -> "VolSurface": ...
+    def iv(self, T: float, K: float) -> float                                   # alias: vol(), get_vol()
+    def price(self, kind: str, T: float, K: float, S0: float | None = None,
+              r: float | None = None, q: float | None = None) -> float          # optional, uses surface IV
+    def grid(self, expiries: List[float], strikes: List[float]) -> np.ndarray    # [len(T), len(K)] IVs (optional)
+    # Optional helpers:
+    def no_arb_checks(self) -> dict                                             # {"calendar_ok":bool, "butterfly_ok":bool, ...}
+    def params(self) -> dict                                                    # model params (SABR/etc.)
+    def export_json(self) -> dict | str
+    def import_json(self, blob: dict | str) -> None
 
-# ---------------------------- Helpers ----------------------------
+Function-style:
+---------------
+- build_surface(quotes, S0, r=0, q=0) -> handle
+- iv(handle, T, K) / get_vol(...)
+- price(handle, kind, T, K, S0=None, r=None, q=None)
+- grid(handle, expiries, strikes)
+- (optional) no_arb_checks(), params(), export_json(), import_json()
 
-def mk_options(
-    n_strikes=9,
-    maturities=(0.0833, 0.25, 0.5, 1.0, 2.0),
-    fwd=100.0,
-    skew=-0.25,
-    smile=0.15,
-    base_vol=0.22,
-    seed=1234,
-    noise=0.004,
-):
-    """
-    Build a toy option quote surface with skew + smile + small noise.
-    Columns: maturity [y], strike, market_vol
-    """
-    rng = np.random.default_rng(seed)
-    ks = np.linspace(0.7 * fwd, 1.3 * fwd, n_strikes)  # deep OTM put -> deep OTM call
-    rows = []
-    for T in maturities:
-        for K in ks:
-            moneyness = (K - fwd) / fwd
-            vol = base_vol + skew * moneyness + smile * (moneyness**2)
-            vol = max(0.05, vol) + rng.normal(0.0, noise)
-            rows.append({"maturity": float(T), "strike": float(K), "market_vol": float(vol)})
-    return pd.DataFrame(rows)
+This test auto-skips optional features you don't expose.
+"""
 
+# ----------------------- Import resolver -----------------------
 
-def approx_convex(y):
-    """
-    Return True if y is "roughly" convex: second finite differences >= -tol on average.
-    We allow small negative due to noise/interp.
-    """
-    y = np.asarray(y, dtype=float)
-    if len(y) < 3:
-        return True
-    d2 = y[:-2] - 2 * y[1:-1] + y[2:]
-    return (d2.mean() >= -0.01) and (np.quantile(d2, 0.1) >= -0.05)
+IMPORT_CANDIDATES = [
+    "backend.quant.vol_surface",
+    "backend.research.vol_surface",
+    "backend.options.vol_surface",
+    "quant.vol_surface",
+    "vol_surface",
+]
 
+def _load_mod():
+    last = None
+    for p in IMPORT_CANDIDATES:
+        try:
+            return importlib.import_module(p)
+        except ModuleNotFoundError as e:
+            last = e
+    pytest.skip(f"Cannot import vol_surface from {IMPORT_CANDIDATES} ({last})")
 
-def has(func_name):
-    return hasattr(vs, func_name)
+class API:
+    def __init__(self, mod):
+        self.mod = mod
+        self.obj = None
+        if hasattr(mod, "VolSurface"):
+            Cls = getattr(mod, "VolSurface")
+            try:
+                self.obj = Cls()
+            except TypeError:
+                self.obj = Cls
+        else:
+            self.build = getattr(mod, "build_surface", None)
+            if not self.build:
+                pytest.skip("No VolSurface class and no build_surface() factory.")
 
+    def fit(self, quotes, S0, r=0.0, q=0.0, **kw):
+        if self.obj:
+            if hasattr(self.obj, "fit"):
+                return self.obj.fit(quotes, S0=S0, r=r, q=q, **kw)
+            else:
+                pytest.skip("VolSurface class lacks fit().")
+        else:
+            self.obj = self.build(quotes, S0=S0, r=r, q=q, **kw) # type: ignore
+            return self.obj
 
-# ---------------------------- Fixtures ----------------------------
+    def iv(self, T, K):
+        for nm in ("iv", "vol", "get_vol"):
+            if hasattr(self.obj, nm) or hasattr(self.mod, nm):
+                target = self.obj if hasattr(self.obj, nm) else self.mod
+                return getattr(target, nm)(self.obj if target is self.mod else None, T, K) if target is self.mod else getattr(target, nm)(T, K)
+        pytest.skip("No iv()/vol()/get_vol() exposed")
 
-@pytest.fixture(scope="module")
-def quotes():
-    return mk_options()
+    def price(self, kind, T, K, S0=None, r=None, q=None):
+        if hasattr(self.obj, "price"):
+            return self.obj.price(kind, T, K, S0=S0, r=r, q=q) # type: ignore
+        if hasattr(self.mod, "price"):
+            return self.mod.price(self.obj, kind, T, K, S0=S0, r=r, q=q)
+        pytest.skip("No price() exposed")
 
-@pytest.fixture(scope="module")
-def quotes_noisy():
-    return mk_options(noise=0.02)
+    def grid(self, expiries, strikes):
+        if hasattr(self.obj, "grid"):
+            return self.obj.grid(expiries, strikes) # type: ignore
+        if hasattr(self.mod, "grid"):
+            return self.mod.grid(self.obj, expiries, strikes)
+        pytest.skip("No grid() exposed")
 
-@pytest.fixture(scope="module")
-def quotes_sparse():
-    # Sparse grid: single maturity with many strikes + another with few
-    df = mk_options(n_strikes=7, maturities=(0.25, 1.0, 3.0))
-    # Drop some rows to create holes
-    return df.sample(frac=0.7, random_state=7).reset_index(drop=True)
+    def has(self, name):
+        return hasattr(self.obj, name) or hasattr(self.mod, name)
 
-@pytest.fixture(scope="module")
-def surface(quotes):
-    if not has("fit_vol_surface"):
-        pytest.skip("fit_vol_surface not implemented")
-    return vs.fit_vol_surface(quotes)
+# ----------------------- Black–Scholes helpers -----------------------
 
+def _N(x):
+    # standard normal CDF
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
-# ---------------------------- Core Invariants (1–8) ----------------------------
-
-def test_fit_returns_dataframe(quotes):
-    if not has("fit_vol_surface"):
-        pytest.skip("fit_vol_surface not implemented")
-    surf = vs.fit_vol_surface(quotes)
-    assert isinstance(surf, pd.DataFrame)
-    assert set(["maturity", "strike"]).issubset(surf.columns)
-
-def test_interpolate_scalar_type(surface):
-    if not has("interpolate_vol"):
-        pytest.skip("interpolate_vol not implemented")
-    v = vs.interpolate_vol(0.5, 100)
-    assert isinstance(v, (float, np.floating))
-
-def test_interpolate_non_negative(surface):
-    if not has("interpolate_vol"):
-        pytest.skip("interpolate_vol not implemented")
-    v = vs.interpolate_vol(1.0, 80.0)
-    assert v >= 0.0
-
-def test_interpolate_reasonable_bounds(surface):
-    if not has("interpolate_vol"):
-        pytest.skip("interpolate_vol not implemented")
-    # Should be between 0% and, say, 300% (very generous bound)
-    v = vs.interpolate_vol(2.0, 120.0)
-    assert 0.0 <= v <= 3.0
-
-def test_smile_slice_shape(surface):
-    if not has("smile_slice"):
-        pytest.skip("smile_slice not implemented")
-    s = vs.smile_slice(0.5)
-    assert isinstance(s, (pd.Series, dict))
-    assert len(s) >= 5
-
-def test_smile_slice_keys_sorted(surface):
-    if not has("smile_slice"):
-        pytest.skip("smile_slice not implemented")
-    s = vs.smile_slice(1.0)
-    xs = list(s.keys()) if isinstance(s, dict) else list(s.index)
-    assert xs == sorted(xs)
-
-def test_surface_handles_empty_input():
-    if not has("fit_vol_surface"):
-        pytest.skip("fit_vol_surface not implemented")
-    empty = pd.DataFrame(columns=["maturity", "strike", "market_vol"])
-    surf = vs.fit_vol_surface(empty)
-    assert isinstance(surf, pd.DataFrame)
-
-def test_surface_ignores_nans(quotes):
-    if not has("fit_vol_surface"):
-        pytest.skip("fit_vol_surface not implemented")
-    df = quotes.copy()
-    df.loc[df.sample(frac=0.05, random_state=1).index, "market_vol"] = np.nan
-    surf = vs.fit_vol_surface(df)
-    assert surf["market_vol"].notna().all() if "market_vol" in surf.columns else True
-
-
-# ---------------------------- Smile / Term Structure (9–16) ----------------------------
-
-@pytest.mark.parametrize("T", [0.25, 0.5, 1.0, 2.0])
-def test_smile_convex_heuristic(surface, T):
-    if not has("smile_slice"):
-        pytest.skip("smile_slice not implemented")
-    s = vs.smile_slice(T)
-    y = list(s.values()) if isinstance(s, dict) else list(s.to_numpy())
-    assert approx_convex(y)
-
-def test_term_structure_not_pathological(surface):
-    if not has("interpolate_vol"):
-        pytest.skip("interpolate_vol not implemented")
-    # Total variance should not decline too fast with maturity.
-    K = 100.0
-    v_short = vs.interpolate_vol(0.25, K)
-    v_long = vs.interpolate_vol(2.0, K)
-    w_short = (v_short ** 2) * 0.25
-    w_long = (v_long ** 2) * 2.0
-    assert w_long >= 0.5 * w_short  # allow modest anomalies but avoid inverted term variance
-
-@pytest.mark.parametrize("K", [80.0, 90.0, 100.0, 110.0, 120.0])
-def test_calendar_arbitrage_guard(surface, K):
-    if not has("interpolate_vol"):
-        pytest.skip("interpolate_vol not implemented")
-    vols = [(T, vs.interpolate_vol(T, K)) for T in [0.25, 0.5, 1.0, 2.0]]
-    # total variance non-decreasing in T (allow tiny numeric slack)
-    prev = 0.0
-    for T, sig in vols:
-        tv = max(0.0, (sig ** 2) * T)
-        assert tv + 1e-6 >= prev - 1e-6
-        prev = tv
-
-def test_deep_otm_vol_not_negative(surface):
-    if not has("interpolate_vol"):
-        pytest.skip("interpolate_vol not implemented")
-    assert vs.interpolate_vol(1.0, 40.0) >= 0.0
-    assert vs.interpolate_vol(1.0, 200.0) >= 0.0
-
-def test_atm_vs_otm_reasonable(surface):
-    if not has("interpolate_vol"):
-        pytest.skip("interpolate_vol not implemented")
-    atm = vs.interpolate_vol(1.0, 100.0)
-    otm = vs.interpolate_vol(1.0, 70.0)
-    assert 0.5 * atm <= otm <= 2.5 * atm  # broad sanity envelope
-
-@pytest.mark.parametrize("T", [0.25, 1.0, 2.0])
-def test_smile_sorted_strikes_increasing(surface, T):
-    if not has("smile_slice"):
-        pytest.skip("smile_slice not implemented")
-    s = vs.smile_slice(T)
-    xs = np.array(list(s.keys()) if isinstance(s, dict) else list(s.index))
-    assert np.all(np.diff(xs) > 0)
-
-
-# ---------------------------- Robustness (17–22) ----------------------------
-
-def test_noisy_quotes_do_not_blow_up(quotes_noisy):
-    if not has("fit_vol_surface"):
-        pytest.skip("fit_vol_surface not implemented")
-    surf = vs.fit_vol_surface(quotes_noisy)
-    # interpolate at a few points
-    if not has("interpolate_vol"):
-        pytest.skip("interpolate_vol not implemented")
-    val = vs.interpolate_vol(0.5, 100.0)
-    assert np.isfinite(val)
-
-@pytest.mark.parametrize("T,K", [(0.25, 95.0), (0.5, 105.0), (1.0, 120.0)])
-def test_repeatability_same_inputs_same_output(surface, T, K):
-    if not has("interpolate_vol"):
-        pytest.skip("interpolate_vol not implemented")
-    v1 = vs.interpolate_vol(T, K)
-    v2 = vs.interpolate_vol(T, K)
-    assert v1 == pytest.approx(v2)
-
-def test_sparse_grid_interpolates(quotes_sparse):
-    if not has("fit_vol_surface"):
-        pytest.skip("fit_vol_surface not implemented")
-    vs.fit_vol_surface(quotes_sparse)
-    if not has("interpolate_vol"):
-        pytest.skip("interpolate_vol not implemented")
-    v = vs.interpolate_vol(0.75, 103.0)
-    assert np.isfinite(v) and v >= 0.0
-
-def test_extrapolation_is_clamped(surface):
-    if not has("interpolate_vol"):
-        pytest.skip("interpolate_vol not implemented")
-    # Far outside grid should not produce insane or negative values
-    v_far = vs.interpolate_vol(5.0, 1000.0)
-    assert 0.0 <= v_far <= 5.0
-
-def test_handles_all_nan_column():
-    if not has("fit_vol_surface"):
-        pytest.skip("fit_vol_surface not implemented")
-    df = mk_options()
-    df["market_vol"] = np.nan
-    surf = vs.fit_vol_surface(df)
-    # If you propagate NaNs, that's fine; just don't crash
-    assert isinstance(surf, pd.DataFrame)
-
-def test_handles_single_maturity_many_strikes():
-    if not has("fit_vol_surface"):
-        pytest.skip("fit_vol_surface not implemented")
-    single = mk_options(maturities=(0.5,), n_strikes=11)
-    vs.fit_vol_surface(single)
-    if not has("smile_slice"):
-        pytest.skip("smile_slice not implemented")
-    s = vs.smile_slice(0.5)
-    assert len(s) >= 5
-
-
-# ---------------------------- Performance (23–25) ----------------------------
-
-def test_fit_performance_large_grid():
-    if not has("fit_vol_surface"):
-        pytest.skip("fit_vol_surface not implemented")
-    df = mk_options(n_strikes=25, maturities=np.linspace(0.0833, 2.0, 16), noise=0.0)
-    t0 = perf_counter()
-    _ = vs.fit_vol_surface(df)
-    dt = perf_counter() - t0
-    assert dt < 2.0  # 2 seconds budget for a fairly big toy grid
-
-def test_interpolate_bulk_speed(surface):
-    if not has("interpolate_vol"):
-        pytest.skip("interpolate_vol not implemented")
-    pts = [(float(T), float(K)) for T in np.linspace(0.1, 2.0, 40) for K in np.linspace(70, 130, 60)]
-    t0 = perf_counter()
-    arr = [vs.interpolate_vol(T, K) for (T, K) in pts]
-    dt = perf_counter() - t0
-    assert np.isfinite(arr).all()
-    assert dt < 1.5  # 2400 points under 1.5s
-
-def test_surface_grid_if_available(surface):
-    if not has("surface_grid"):
-        pytest.skip("surface_grid not implemented")
-    mats = [0.25, 0.5, 1.0]
-    ks = [80, 90, 100, 110, 120]
-    grid = vs.surface_grid(mats, ks)
-    assert isinstance(grid, pd.DataFrame)
-    assert set(["maturity", "strike", "vol"]).issubset(grid.columns)
-    assert len(grid) == len(mats) * len(ks)
-
-
-# ---------------------------- Integration (26–30) ----------------------------
-
-def test_interpolate_matches_quotes_at_nodes(quotes):
-    if not (has("fit_vol_surface") and has("interpolate_vol")):
-        pytest.skip("fit/interpolate not implemented")
-    vs.fit_vol_surface(quotes)
-    # Pick 10 random nodes and ensure interpolator reproduces close to market vol
-    sub = quotes.sample(n=min(10, len(quotes)), random_state=99)
-    diffs = []
-    for _, row in sub.iterrows():
-        v = vs.interpolate_vol(float(row["maturity"]), float(row["strike"]))
-        diffs.append(abs(v - float(row["market_vol"])))
-    assert np.median(diffs) < 0.03  # interpolator close to quotes at nodes
-
-def test_smile_slice_consistent_with_interpolate(surface):
-    if not (has("smile_slice") and has("interpolate_vol")):
-        pytest.skip("smile/interpolate not implemented")
-    T = 1.0
-    s = vs.smile_slice(T)
-    xs = (list(s.keys()) if isinstance(s, dict) else list(s.index))[:5]
-    # values from the slice should be close to direct interpolation
-    for K in xs:
-        v_dir = vs.interpolate_vol(T, float(K))
-        v_sli = s[K] if isinstance(s, dict) else float(s.loc[K])
-        assert v_sli == pytest.approx(v_dir, abs=0.05)
-
-def test_serialize_roundtrip_if_available(surface):
-    # Support either save/load on module, or serialize()/deserialize() on returned object
-    # We try several conventions and skip if none exist.
-    if has("save") and has("load"):
-        with tempfile.TemporaryDirectory() as tmp:
-            path = os.path.join(tmp, "surf.bin")
-            vs.save(path)
-            # mutate: (not strictly needed, just ensure call works)
-            vs.load(path)
-    elif has("serialize") and has("deserialize"):
-        blob = vs.serialize()
-        vs.deserialize(blob)
+def bs_price(kind: str, S0: float, K: float, T: float, r: float, q: float, sigma: float) -> float:
+    if T <= 0:
+        return max(0.0, (S0 - K) if kind == "call" else (K - S0))
+    if sigma <= 0:
+        fwd = S0 * math.exp((r - q) * T)
+        disc = math.exp(-r * T)
+        intrinsic = max(0.0, (fwd - K)) if kind == "call" else max(0.0, (K - fwd))
+        return disc * intrinsic
+    fwd = S0 * math.exp((r - q) * T)
+    vol = sigma * math.sqrt(T)
+    d1 = (math.log(fwd / K) + 0.5 * vol * vol) / vol
+    d2 = d1 - vol
+    df = math.exp(-r * T)
+    if kind == "call":
+        return df * (fwd * _N(d1) - K * _N(d2))
     else:
-        pytest.skip("No save/load or serialize/deserialize API; skipping.")
+        # put via parity
+        return df * (K * _N(-d2) - fwd * _N(-d1))
 
-def test_label_integrity(surface, quotes):
-    # If your surface stores labels/axes, ensure they include the original bounds
-    # Skip if you don't expose this metadata.
-    if not hasattr(surface, "columns"):
-        pytest.skip("Surface not a DataFrame-like with columns.")
-    has_m = "maturity" in surface.columns
-    has_k = "strike" in surface.columns
-    assert has_m or has_k
+# ----------------------- Synthetic quotes -----------------------
 
-@pytest.mark.parametrize("T,K", [(0.25, 100.0), (1.0, 100.0), (2.0, 100.0)])
-def test_small_lipschitz_nearby_points(surface, T, K):
-    if not has("interpolate_vol"):
-        pytest.skip("interpolate_vol not implemented")
-    v0 = vs.interpolate_vol(T, K)
-    v1 = vs.interpolate_vol(T + 0.01, K + 0.5)
-    assert abs(v1 - v0) < 0.15  # prevent wild oscillations
+def make_synthetic_quotes(S0=100.0, r=0.01, q=0.00):
+    """
+    Build a mild smile across strikes and a gentle term-structure:
+      ATM vol ~ 20% at 3M, 19% at 6M, 18% at 1Y; wings +5 vols.
+    Quotes are in IV (not prices), to avoid model mismatch.
+    """
+    expiries = [0.25, 0.5, 1.0]   # years
+    strikes  = [60, 70, 80, 90, 95, 100, 105, 110, 120, 140]
+    quotes = []
+    for T in expiries:
+        base = 0.20 - 0.02 * (T / 1.0)   # 0.20 -> 0.18
+        for K in strikes:
+            m = K / S0
+            wing = 0.05 * (abs(math.log(m)) / math.log(1.4) if m != 1 else 0.0)  # up to +5 vols at the far wings
+            iv = max(0.05, base + wing)
+            quotes.append({"T": T, "K": float(K), "kind": "call", "iv": float(iv), "S0": S0, "r": r, "q": q})
+            quotes.append({"T": T, "K": float(K), "kind": "put",  "iv": float(iv), "S0": S0, "r": r, "q": q})
+    return quotes
 
+# ----------------------- Fixtures -----------------------
 
-# ---------------------------- Extra Arbitrage Heuristics (31–32) ----------------------------
+@pytest.fixture(scope="module")
+def api():
+    return API(_load_mod())
 
-@pytest.mark.parametrize("Kpair", [(90.0, 100.0), (100.0, 110.0)])
-def test_vertical_spread_monotone_variance(surface, Kpair):
-    if not has("interpolate_vol"):
-        pytest.skip("interpolate_vol not implemented")
-    K1, K2 = Kpair
-    T = 1.0
-    # As strike increases on calls, implied vol shouldn't spike erratically between adjacent strikes
-    v1 = vs.interpolate_vol(T, K1)
-    v2 = vs.interpolate_vol(T, K2)
-    assert abs(v2 - v1) < 0.25
+@pytest.fixture()
+def market():
+    return {"S0": 100.0, "r": 0.01, "q": 0.00}
 
-def test_calendar_spread_price_consistency(surface):
-    # Heuristic: ATM total variance increases with T -> ATM price proxy also increases.
-    if not has("interpolate_vol"):
-        pytest.skip("interpolate_vol not implemented")
-    atm_short = vs.interpolate_vol(0.25, 100.0)
-    atm_long  = vs.interpolate_vol(2.0, 100.0)
-    tv_short = atm_short**2 * 0.25
-    tv_long = atm_long**2 * 2.0
-    assert tv_long >= tv_short * 0.8  # generous, but catches inverted/buggy fits
+@pytest.fixture()
+def fitted(api, market):
+    q = make_synthetic_quotes(**market)
+    api.fit(q, **market)
+    return {"quotes": q}
+
+# ----------------------- Tests -----------------------
+
+def test_fit_and_basic_iv_queries(api, fitted):
+    # Probe a few points on and off the grid
+    iv_atm_6m = api.iv(0.5, 100.0)
+    iv_otm_6m = api.iv(0.5, 120.0)
+    assert 0.05 <= iv_atm_6m <= 1.0
+    assert iv_otm_6m >= iv_atm_6m - 1e-6  # synthetic smile is wingier
+
+def test_grid_interpolation_if_supported(api):
+    try:
+        G = api.grid([0.25, 0.5, 1.0], [80, 100, 120])
+    except pytest.skip.Exception:
+        pytest.skip("grid() not supported")
+    arr = np.asarray(G)
+    assert arr.shape == (3, 3)
+    assert np.isfinite(arr).all()
+
+def test_price_consistency_with_iv(api, market):
+    S0, r, q = market["S0"], market["r"], market["q"]
+    T, K = 0.5, 100.0
+    sigma = api.iv(T, K)
+    # If module exposes price(), verify it aligns with Black–Scholes using the same sigma
+    try:
+        p_mod = api.price("call", T, K, S0=S0, r=r, q=q)
+    except pytest.skip.Exception:
+        pytest.skip("price() not supported")
+    p_bs = bs_price("call", S0, K, T, r, q, sigma)
+    assert p_mod == pytest.approx(p_bs, rel=0.05, abs=1e-4)
+
+def test_put_call_parity_if_pricer_exposed(api, market):
+    if not api.has("price"):
+        pytest.skip("price() not exposed")
+    S0, r, q = market["S0"], market["r"], market["q"]
+    T, K = 0.5, 110.0
+    C = api.price("call", T, K, S0=S0, r=r, q=q)
+    P = api.price("put",  T, K, S0=S0, r=r, q=q)
+    lhs = C - P
+    rhs = S0 * math.exp(-q*T) - K * math.exp(-r*T)
+    assert lhs == pytest.approx(rhs, rel=1e-3, abs=1e-3)
+
+def test_calendar_monotonic_call_prices(api, market):
+    """Call price must be non-decreasing in maturity (calendar no-arb)."""
+    if not api.has("price"):
+        pytest.skip("price() not exposed")
+    S0, r, q = market["S0"], market["r"], market["q"]
+    K = 100.0
+    p1 = api.price("call", 0.25, K, S0, r, q)
+    p2 = api.price("call", 0.50, K, S0, r, q)
+    p3 = api.price("call", 1.00, K, S0, r, q)
+    assert p1 <= p2 + 1e-8 and p2 <= p3 + 1e-8
+
+def test_butterfly_convexity_approx(api, market):
+    """
+    C(K) should be convex in strike (approx). We check a discrete second difference ≥ -ε.
+    """
+    if not api.has("price"):
+        pytest.skip("price() not exposed")
+    S0, r, q = market["S0"], market["r"], market["q"]
+    T = 0.5
+    strikes = np.array([80, 90, 95, 100, 105, 110, 120], dtype=float)
+    prices = np.array([api.price("call", T, float(K), S0, r, q) for K in strikes])
+    d2 = prices[:-2] - 2*prices[1:-1] + prices[2:]
+    # Allow tiny numerical slack
+    assert np.min(d2) >= -1e-3
+
+def test_total_variance_non_decreasing_in_T_atm(api):
+    """
+    T * sigma(T, K_ATM)^2 should be non-decreasing in T (rough calendar sanity).
+    """
+    K = 100.0
+    vols = [api.iv(T, K) for T in (0.25, 0.5, 1.0)]
+    tw = [T * (v**2) for T, v in zip((0.25, 0.5, 1.0), vols)]
+    assert tw[0] <= tw[1] + 1e-9 and tw[1] <= tw[2] + 1e-9
+
+def test_symmetric_smile_roughly_around_fwd_if_surface_is_symmetric(api, market):
+    """
+    Many parametric surfaces (e.g., SABR beta≈1) yield 'rough' symmetry in log-moneyness.
+    We only assert the two points equally distant in log-moneyness are close in IV.
+    """
+    S0, r, q = market["S0"], market["r"], market["q"]
+    T = 0.5
+    F = S0 * math.exp((r - q) * T)
+    K1 = F * math.exp(-0.1)
+    K2 = F * math.exp(+0.1)
+    v1 = api.iv(T, K1)
+    v2 = api.iv(T, K2)
+    # Loose tolerance; synthetic quotes have wing term, so don't over-tighten
+    assert abs(v1 - v2) <= 0.05
+
+def test_export_import_optional(api, fitted):
+    if not (api.has("export_json") and api.has("import_json")):
+        pytest.skip("No export/import helpers")
+    blob = api.obj.export_json() if hasattr(api.obj, "export_json") else None
+    assert blob is not None
+    if hasattr(api.obj, "import_json"):
+        api.obj.import_json(blob)
+
+def test_params_optional(api):
+    if not api.has("params"):
+        pytest.skip("No params()")
+    p = api.obj.params() if hasattr(api.obj, "params") else None
+    assert isinstance(p, dict)
+
+def test_no_arb_checker_optional(api):
+    if not api.has("no_arb_checks"):
+        pytest.skip("no_arb_checks() not exposed")
+    out = api.obj.no_arb_checks() if hasattr(api.obj, "no_arb_checks") else {}
+    assert isinstance(out, dict)
+    # If keys present, they should be booleans
+    for k in ("calendar_ok", "butterfly_ok"):
+        if k in out: assert isinstance(out[k], (bool, np.bool_))

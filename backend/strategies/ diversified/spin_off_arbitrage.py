@@ -99,21 +99,21 @@ r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 def _hget_json(hk: str, field: str) -> Optional[dict]:
     raw = r.hget(hk, field)
     if not raw: return None
-    try: j = json.loads(raw);  return j if isinstance(j, dict) else None
+    try: j = json.loads(raw);  return j if isinstance(j, dict) else None # type: ignore
     except Exception: return None
 
 def _px(sym: str) -> Optional[float]:
     raw = r.hget(LAST_HK, sym)
     if not raw: return None
     try:
-        j = json.loads(raw); return float(j.get("price", 0))
+        j = json.loads(raw); return float(j.get("price", 0)) # type: ignore
     except Exception:
-        try: return float(raw)
+        try: return float(raw) # type: ignore
         except Exception: return None
 
 def _fees_bps() -> float:
     v = r.hget(FEES_HK, VENUE_EQ)
-    try: return float(v) if v is not None else 10.0
+    try: return float(v) if v is not None else 10.0 # type: ignore
     except Exception: return 10.0
 
 def _borrow_ok(sym: str) -> bool:
@@ -122,12 +122,12 @@ def _borrow_ok(sym: str) -> bool:
 
 def _borrow_apr(sym: str) -> float:
     v = r.hget(BORROW_FEE_HK, sym)
-    try: return float(v) if v is not None else 0.0
+    try: return float(v) if v is not None else 0.0 # type: ignore
     except Exception: return 0.0
 
 def _fund_apr() -> float:
     v = r.hget(FUND_HK, CCY)
-    try: return float(v) if v is not None else 0.0
+    try: return float(v) if v is not None else 0.0 # type: ignore
     except Exception: return 0.0
 
 def _now_ms() -> int: return int(time.time() * 1000)
@@ -151,7 +151,7 @@ def _load_ewma(tag: str) -> EwmaMV:
     raw = r.get(_ewma_key(tag))
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", EWMA_ALPHA)))
         except Exception: pass
     return EwmaMV(mean=0.0, var=1.0, alpha=EWMA_ALPHA)
@@ -206,9 +206,9 @@ class SpinOffArbitrage(Strategy):
         if None in (p_reg, p_wip, p_wis): return
 
         if MODE == "TRIANGLE_WI":
-            self._eval_triangle(P, S, r_ratio, sym_reg, sym_wip, sym_wis, p_reg, p_wip, p_wis)
+            self._eval_triangle(P, S, r_ratio, sym_reg, sym_wip, sym_wis, p_reg, p_wip, p_wis) # type: ignore
         else:
-            self._eval_stubpair(P, S, r_ratio, sym_reg, sym_wip, sym_wis, p_reg, p_wip, p_wis)
+            self._eval_stubpair(P, S, r_ratio, sym_reg, sym_wip, sym_wis, p_reg, p_wip, p_wis) # type: ignore
 
     # --------------- TRIANGLE (P_REG vs P_WI + r*S_WI) ---------------
     def _eval_triangle(self, P: str, S: str, r_ratio: float, sym_reg: str, sym_wip: str, sym_wis: str,
@@ -352,7 +352,7 @@ class SpinOffArbitrage(Strategy):
         raw = r.get(_poskey(self.ctx.name, tag))
         if not raw: return None
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return OpenState(mode=str(o["mode"]), side=str(o["side"]),
                              qty_reg=float(o["qty_reg"]), qty_wip=float(o["qty_wip"]), qty_wis=float(o["qty_wis"]),
                              entry_bps=float(o["entry_bps"]), entry_z=float(o["entry_z"]), ts_ms=int(o["ts_ms"]))

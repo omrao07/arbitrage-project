@@ -86,7 +86,7 @@ def _now_ms() -> int:
 def _get_last(symbol: str) -> Optional[float]:
     raw = r.hget(LAST_PRICE_KEY, symbol)
     if not raw: return None
-    try: return float(json.loads(raw)["price"])
+    try: return float(json.loads(raw)["price"]) # type: ignore
     except Exception: return None
 
 def _fx(symbol_prefix: str) -> float:
@@ -96,7 +96,7 @@ def _fx(symbol_prefix: str) -> float:
     # Try dedicated FX key then fallback to last_price of FX symbol in your feed
     v = r.hget(RATES_FX_HKEY, pair)
     if v:
-        try: return float(v)
+        try: return float(v) # type: ignore
         except Exception: pass
     return float(_get_last(pair) or 1.0)
 
@@ -129,7 +129,7 @@ def _load_ewma(pair: Tuple[str,str], alpha: float = 0.02) -> EwmaMV:
     raw = r.get(_ewma_key(pair))
     if raw:
         try:
-            obj = json.loads(raw)
+            obj = json.loads(raw) # type: ignore
             return EwmaMV(mean=float(obj["m"]), var=float(obj["v"]), alpha=float(obj.get("a", alpha)))
         except Exception:
             pass
@@ -177,7 +177,7 @@ class CarbonCreditArbitrage(Strategy):
 
     def _load_state(self, a: str, b: str) -> Optional[Dict]:
         raw = r.get(self._poskey(a,b))
-        try: return json.loads(raw) if raw else None
+        try: return json.loads(raw) if raw else None # type: ignore
         except Exception: return None
 
     def _save_state(self, a: str, b: str, state: Optional[Dict]) -> None:

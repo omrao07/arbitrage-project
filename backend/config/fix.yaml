@@ -1,0 +1,58 @@
+# config/fix.yaml
+
+enabled: true
+
+# === FIX session connection ===
+connection:
+  host: "fix.broker.com"
+  port: 9876
+  sender_comp_id: "MYFUND01"
+  target_comp_id: "BROKERX"
+  heartbeat_sec: 30
+  ssl: true
+  reconnect_interval_sec: 5
+  max_retries: 10
+
+# === Logon credentials ===
+auth:
+  username: "api_user"
+  password: "super_secret_password"
+
+# === Message settings ===
+messages:
+  default_version: "FIX.4.4"
+  reset_seq_on_connect: true
+  persist_messages: true
+  store_path: "./data/fix_store/"
+  max_msg_size: 10240
+
+# === Order routing ===
+orders:
+  default_tif: "DAY"                # TIME IN FORCE: DAY | GTC | IOC
+  default_ord_type: "LIMIT"         # LIMIT | MARKET
+  allow_short_selling: false
+  max_order_qty: 10000
+  max_order_notional: 5_000_000
+  venues:
+    - name: "NYSE"
+      enabled: true
+    - name: "NASDAQ"
+      enabled: true
+    - name: "CME_FUTURES"
+      enabled: false
+
+# === Risk checks (pre-trade) ===
+risk:
+  max_position_usd: 10_000_000
+  max_position_pct_nav: 0.15
+  max_daily_loss_usd: 500_000
+  price_band_pct: 10.0              # reject if order >10% from ref price
+
+# === Monitoring / Alerts ===
+monitoring:
+  log_level: "INFO"
+  audit_log_path: "./logs/fix_audit.log"
+  alert_on_disconnect: true
+  alert_channels:
+    - slack
+    - email

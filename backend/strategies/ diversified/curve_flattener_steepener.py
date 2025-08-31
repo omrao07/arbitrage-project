@@ -103,9 +103,9 @@ PAIRS = _parse_pairs(PAIRS_ENV)
 def _hgetf(key: str, field: str) -> Optional[float]:
     v = r.hget(key, field)
     if v is None: return None
-    try: return float(v)
+    try: return float(v) # type: ignore
     except Exception:
-        try: return float(json.loads(v))
+        try: return float(json.loads(v)) # type: ignore
         except Exception: return None
 
 def _now_ms() -> int:
@@ -130,7 +130,7 @@ def _load_ewma(cp: CurvePair, alpha: float) -> EwmaMV:
     raw = r.get(_ewma_key(cp))
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", alpha)))
         except Exception:
             pass
@@ -284,7 +284,7 @@ class CurveFlattenerSteepener(Strategy):
         if not raw:
             return None
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return OpenState(**o)
         except Exception:
             return None

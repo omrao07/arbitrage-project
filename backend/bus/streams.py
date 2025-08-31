@@ -15,7 +15,7 @@ try:
         if _is_pydantic(obj):
             return obj.model_dump()
         if is_dataclass(obj):
-            return asdict(obj)
+            return asdict(obj) # type: ignore
         if isinstance(obj, dict):
             return obj
         raise TypeError(f"Cannot serialize type: {type(obj)}")
@@ -23,7 +23,7 @@ except Exception:
     BaseModel = object  # fallback
     def _is_pydantic(obj: Any) -> bool: return False
     def _to_dict(obj: Any) -> dict:
-        if is_dataclass(obj): return asdict(obj)
+        if is_dataclass(obj): return asdict(obj) # type: ignore
         if isinstance(obj, dict): return obj
         raise TypeError(f"Cannot serialize type: {type(obj)}")
 
@@ -59,7 +59,7 @@ def publish_stream(stream: str, item: Union[dict, Any]) -> str:
     Add an entry to a Redis Stream.
     Returns the Redis stream entry ID.
     """
-    return _r.xadd(stream, {"json": _dumps(item)})
+    return _r.xadd(stream, {"json": _dumps(item)}) # type: ignore
 
 def consume_stream(
     stream: str,
@@ -78,7 +78,7 @@ def consume_stream(
         res = _r.xread({stream: last_id}, block=block_ms, count=count)
         if not res:
             continue
-        _, entries = res[0]
+        _, entries = res[0] # type: ignore
         for entry_id, fields in entries:
             payload = _loads(fields.get("json", "{}"))
             yield entry_id, payload
@@ -111,14 +111,14 @@ def subscribe_pubsub(channel: str) -> Generator[Any, None, None]:
 # State KV (positions, pnl)
 # =========================
 def hgetall(name: str) -> dict:
-    return _r.hgetall(name) or {}
+    return _r.hgetall(name) or {} # type: ignore
 
 def hset(name: str, key: str, value: Union[str, dict, Any]) -> None:
     _r.hset(name, key, _dumps(value) if not isinstance(value, str) else value)
 
 def get(name: str, default: Optional[str] = None) -> Optional[str]:
     val = _r.get(name)
-    return val if val is not None else default
+    return val if val is not None else default # type: ignore
 
 def set(name: str, value: Union[str, dict, Any]) -> None:
     _r.set(name, _dumps(value) if not isinstance(value, str) else value)

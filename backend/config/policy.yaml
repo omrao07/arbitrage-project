@@ -1,0 +1,59 @@
+# config/policy.yaml
+
+enabled: true
+
+# === Pre-trade compliance ===
+pre_trade:
+  allow_short_selling: false
+  restricted_symbols: ["TSLA", "GME"]       # disallow trading these
+  restricted_sectors: ["Defense", "Tobacco"]
+  min_esg_score: 0.5                        # block trades below ESG threshold
+  max_order_notional: 1_000_000
+  max_order_pct_nav: 0.05                   # max order size = 5% NAV
+
+# === Capital allocation policies ===
+capital:
+  max_leverage: 2.0
+  per_strategy_limit_pct: 0.20              # each strategy ≤20% NAV
+  region_limits:
+    US: 0.50
+    EU: 0.30
+    IN: 0.20
+  liquidity_min_adv_pct: 0.02               # cannot exceed 2% ADV
+
+# === Risk overrides ===
+risk:
+  daily_loss_limit_usd: 250_000
+  weekly_loss_limit_usd: 750_000
+  var_limit_pct_nav: 0.05                   # 5% NAV VaR max
+  stress_scenarios_required: true
+
+# === Market microstructure policies ===
+market:
+  dark_pool_access: true
+  high_freq_trading: false
+  allowed_order_types: ["LIMIT", "MARKET", "STOP"]
+  min_tick_size_pct: 0.001                  # no sub-pennying
+  fair_order_allocation: true               # avoid internalization bias
+
+# === Post-trade / surveillance ===
+post_trade:
+  audit_trails: true
+  retain_days: 365
+  suspicious_pattern_alerts: true
+  wash_trade_detection: true
+  layering_spoofing_detection: true
+
+# === Emergency controls ===
+emergency:
+  enable_kill_switch: true
+  auto_trigger_drawdown_pct: 0.12           # auto halt at 12% drawdown
+  auto_trigger_latency_ms: 1000             # halt if latency > 1s
+  auto_trigger_reject_rate_pct: 10          # halt if >10% orders rejected
+
+# === Reporting & notifications ===
+reporting:
+  enabled: true
+  path: "./reports/policy/"
+  formats: ["json", "pdf"]
+  notify_channels: ["slack", "email"]

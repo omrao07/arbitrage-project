@@ -117,10 +117,10 @@ def _hget_last(symbol: str) -> Optional[float]:
     if not raw:
         return None
     try:
-        return float(json.loads(raw)["price"])
+        return float(json.loads(raw)["price"]) # type: ignore
     except Exception:
         try:
-            return float(raw)
+            return float(raw) # type: ignore
         except Exception:
             return None
 
@@ -131,8 +131,8 @@ def _depth_px(sym: str, venue: str) -> Tuple[Optional[float], Optional[float]]:
     b = r.hget(key, "bid")
     a = r.hget(key, "ask")
     try:
-        bid = float(b) if b is not None else None
-        ask = float(a) if a is not None else None
+        bid = float(b) if b is not None else None # type: ignore
+        ask = float(a) if a is not None else None # type: ignore
         return bid, ask
     except Exception:
         return None, None
@@ -163,7 +163,7 @@ def _coolkey(name: str, sym: str) -> str:
 def _inv_usd(name: str, sym: str) -> float:
     v = r.hget(_poskey(name, sym), "inv_usd")
     try:
-        return float(v) if v is not None else 0.0
+        return float(v) if v is not None else 0.0 # type: ignore
     except Exception:
         return 0.0
 
@@ -265,19 +265,19 @@ class CrossExchangeArbitrage(Strategy):
         # Fire paired orders
         if side == "AB":
             # buy on A
-            self.order(_qkey(p.sym, p.va), "buy",  qty=qty_base, order_type=ORDER_TYPE, tif=TIME_IN_FORCE, venue=p.va)
+            self.order(_qkey(p.sym, p.va), "buy",  qty=qty_base, order_type=ORDER_TYPE, tif=TIME_IN_FORCE, venue=p.va) # type: ignore
             # sell on B
-            self.order(_qkey(p.sym, p.vb), "sell", qty=qty_base, order_type=ORDER_TYPE, tif=TIME_IN_FORCE, venue=p.vb)
+            self.order(_qkey(p.sym, p.vb), "sell", qty=qty_base, order_type=ORDER_TYPE, tif=TIME_IN_FORCE, venue=p.vb) # type: ignore
         else:
             # buy on B
-            self.order(_qkey(p.sym, p.vb), "buy",  qty=qty_base, order_type=ORDER_TYPE, tif=TIME_IN_FORCE, venue=p.vb)
+            self.order(_qkey(p.sym, p.vb), "buy",  qty=qty_base, order_type=ORDER_TYPE, tif=TIME_IN_FORCE, venue=p.vb) # type: ignore
             # sell on A
-            self.order(_qkey(p.sym, p.va), "sell", qty=qty_base, order_type=ORDER_TYPE, tif=TIME_IN_FORCE, venue=p.va)
+            self.order(_qkey(p.sym, p.va), "sell", qty=qty_base, order_type=ORDER_TYPE, tif=TIME_IN_FORCE, venue=p.va) # type: ignore
 
         # simple inventory bookkeeping (net USD notionals, +long base asset):
         inv_key = _poskey(self.ctx.name, p.sym)
         cur = r.hgetall(inv_key) or {}
-        inv_usd = float(cur.get("inv_usd", 0.0))
+        inv_usd = float(cur.get("inv_usd", 0.0)) # type: ignore
         # Buy increases USD exposure (long base), Sell decreases; use average of px_a/px_b
         delta = qty_base * (0.5 * (px_a + px_b))
         if side == "AB":

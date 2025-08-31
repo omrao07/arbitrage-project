@@ -98,14 +98,14 @@ r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 def _hgetf(hk: str, field: str) -> Optional[float]:
     v = r.hget(hk, field)
     if v is None: return None
-    try: return float(v)
+    try: return float(v) # type: ignore
     except Exception:
-        try: return float(json.loads(v))
+        try: return float(json.loads(v)) # type: ignore
         except Exception: return None
 
 def _hget_json(hk: str) -> Optional[dict]:
     raw = r.hgetall(hk)
-    return {k: (float(v) if v.replace(".","",1).isdigit() else v) for k,v in raw.items()} if raw else None
+    return {k: (float(v) if v.replace(".","",1).isdigit() else v) for k,v in raw.items()} if raw else None # type: ignore
 
 def _now_ms() -> int: return int(time.time()*1000)
 
@@ -136,7 +136,7 @@ def _load_ewma(tag: str) -> EwmaMV:
     raw = r.get(_ewma_key(tag))
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", EWMA_ALPHA)))
         except Exception: pass
     return EwmaMV(mean=0.0, var=1.0, alpha=EWMA_ALPHA)
@@ -216,10 +216,10 @@ class RepoRateArbitrage(Strategy):
         # place paper legs: lend in reverse repo (GC), fund by borrowing cash
         self.order(f"REPO:REV:GC:{ISO}", "lend",
                    qty=usd, order_type="term", venue=VENUE_REPO,
-                   flags={"rate_apr": repo_gc_bid, "tenor_days": TENOR_DAYS})
+                   flags={"rate_apr": repo_gc_bid, "tenor_days": TENOR_DAYS}) # type: ignore
         self.order(f"CASH:{CCY}", "borrow",
                    qty=usd, order_type="term", venue=VENUE_CASH,
-                   flags={"rate_apr": fund_ask, "tenor_days": TENOR_DAYS})
+                   flags={"rate_apr": fund_ask, "tenor_days": TENOR_DAYS}) # type: ignore
 
         self._save_state(tag, OpenState(mode="GC_SPREAD", side="lend_gc_borrow_cash",
                                         usd=usd, entry_apr=net_apr, entry_z=z, ts_ms=_now_ms()))
@@ -238,7 +238,7 @@ class RepoRateArbitrage(Strategy):
         if None in (repo_gc_bid, repo_spc_bid) or not meta or fut_dv01 is None:
             return
 
-        specialness = max(0.0, repo_gc_bid - repo_spc_bid)  # how much richer GC is vs special
+        specialness = max(0.0, repo_gc_bid - repo_spc_bid)  # type: ignore # how much richer GC is vs special
         fees = _fees_guard_apr()
 
         # Hedge cost: very small for short future; model as 0 here or add tiny carry guard if needed
@@ -280,7 +280,7 @@ class RepoRateArbitrage(Strategy):
         # 2) Lend the bond in specials repo
         self.order(f"REPO:REV:SPECIAL:{CUSIP}", "lend",
                    qty=par_qty, order_type="term", venue=VENUE_REPO,
-                   flags={"rate_apr": repo_spc_bid, "tenor_days": TENOR_DAYS})
+                   flags={"rate_apr": repo_spc_bid, "tenor_days": TENOR_DAYS}) # type: ignore
         # 3) Hedge duration (sell future if long bond DV01)
         self.order(CTD_FUT, "sell", qty=fut_qty, order_type="market", venue=VENUE_FUT)
 
@@ -299,7 +299,7 @@ class RepoRateArbitrage(Strategy):
         raw = r.get(_poskey(self.ctx.name, tag))
         if not raw: return None
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return OpenState(mode=str(o["mode"]), side=str(o["side"]),
                              usd=float(o["usd"]), entry_apr=float(o["entry_apr"]),
                              entry_z=float(o["entry_z"]), ts_ms=int(o["ts_ms"]),

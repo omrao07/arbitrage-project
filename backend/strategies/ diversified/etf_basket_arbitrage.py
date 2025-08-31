@@ -96,9 +96,9 @@ r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 def _hget_price(sym: str) -> Optional[float]:
     raw = r.hget(LAST_PRICE_HKEY, sym)
     if not raw: return None
-    try: return float(json.loads(raw)["price"])
+    try: return float(json.loads(raw)["price"]) # type: ignore
     except Exception:
-        try: return float(raw)
+        try: return float(raw) # type: ignore
         except Exception: return None
 
 def _fx_map_from_env() -> Dict[str, str]:
@@ -116,15 +116,15 @@ FX_MAP = _fx_map_from_env()  # per-symbol -> fx pair (e.g., "SONY" -> "JPYEUR")
 def _fx(pair: str) -> Optional[float]:
     v = r.hget(FX_HASH, pair.upper())
     if v is None: return None
-    try: return float(v)
+    try: return float(v) # type: ignore
     except Exception:
-        try: return float(json.loads(v))
+        try: return float(json.loads(v)) # type: ignore
         except Exception: return None
 
 def _weights() -> List[Tuple[str, float]]:
     wmap = r.hgetall(WEIGHT_HASH) or {}
     items: List[Tuple[str, float]] = []
-    for k, v in wmap.items():
+    for k, v in wmap.items(): # type: ignore
         try:
             items.append((k.upper(), float(v)))
         except Exception:
@@ -180,7 +180,7 @@ def _load_ewma(etf: str) -> EwmaMV:
     raw = r.get(_ewma_key(etf))
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", EWMA_ALPHA)))
         except Exception:
             pass
@@ -240,7 +240,7 @@ class EtfBasketArbitrage(Strategy):
         nav = None
         if nav_inav is not None:
             try:
-                nav = float(nav_inav)
+                nav = float(nav_inav) # type: ignore
             except Exception:
                 nav = None
         if nav is None:
@@ -296,7 +296,7 @@ class EtfBasketArbitrage(Strategy):
                 return
             # Convert component price to base if FX mapped
             pair = FX_MAP.get(sym)
-            px_base = px * (_fx(pair) if pair else 1.0)
+            px_base = px * (_fx(pair) if pair else 1.0) # type: ignore
             if px_base is None or px_base <= 0:
                 return
             notional = USD_BASKET_SIDE * abs(w)  # proportional by |w|
@@ -336,7 +336,7 @@ class EtfBasketArbitrage(Strategy):
         raw = r.get(_poskey(self.ctx.name, ETF_SYMBOL))
         if not raw: return None
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             if isinstance(o.get("basket_qty"), list):
                 o["basket_qty"] = dict(o["basket_qty"])
             return OpenState(**o)

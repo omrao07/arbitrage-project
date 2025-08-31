@@ -91,10 +91,10 @@ def _price_underlier(sym: str) -> Optional[float]:
     if not raw:
         return None
     try:
-        return float(json.loads(raw)["price"])
+        return float(json.loads(raw)["price"]) # type: ignore
     except Exception:
         try:
-            return float(raw)
+            return float(raw) # type: ignore
         except Exception:
             return None
 
@@ -104,10 +104,10 @@ def _opt_mid(sym: str, K: float, cp: str) -> Optional[float]:
     if v is None:
         return None
     try:
-        return float(v)
+        return float(v) # type: ignore
     except Exception:
         try:
-            return float(json.loads(v))
+            return float(json.loads(v)) # type: ignore
         except Exception:
             return None
 
@@ -119,7 +119,7 @@ def _load_payoff_knots() -> Optional[List[Tuple[float, float]]]:
     if not raw:
         return None
     try:
-        arr = json.loads(raw)
+        arr = json.loads(raw) # type: ignore
         pts = [(float(s), float(y)) for s, y in arr]
         pts.sort(key=lambda x: x[0])
         return pts

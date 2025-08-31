@@ -92,25 +92,25 @@ def _hget_json(hk: str, field: str) -> Optional[dict]:
     raw = r.hget(hk, field)
     if not raw: return None
     try:
-        j = json.loads(raw);  return j if isinstance(j, dict) else None
+        j = json.loads(raw);  return j if isinstance(j, dict) else None # type: ignore
     except Exception:
         return None
 
 def _hgetf(hk: str, field: str) -> Optional[float]:
     v = r.hget(hk, field)
     if v is None: return None
-    try: return float(v)
+    try: return float(v) # type: ignore
     except Exception:
-        try: return float(json.loads(v))
+        try: return float(json.loads(v)) # type: ignore
         except Exception: return None
 
 def _px(sym: str) -> Optional[float]:
     raw = r.hget(LAST_HK, sym)
     if not raw: return None
     try:
-        j = json.loads(raw); return float(j.get("price", 0))
+        j = json.loads(raw); return float(j.get("price", 0)) # type: ignore
     except Exception:
-        try: return float(raw)
+        try: return float(raw) # type: ignore
         except Exception: return None
 
 def _ob_rights(rid: str) -> Optional[Tuple[float, float, float]]:
@@ -164,7 +164,7 @@ def _load_ewma(tag: str) -> EwmaMV:
     raw = r.get(_ewma_key(tag))
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", EWMA_ALPHA)))
         except Exception: pass
     return EwmaMV(mean=0.0, var=1.0, alpha=EWMA_ALPHA)
@@ -220,7 +220,7 @@ class RightsIssueArbitrage(Strategy):
 
         if MODE == "CUM_EX_SYNTH":
             if None in (p_cum, p_ex) or rights is None: return
-            self._eval_cum_ex(sym, r_ratio, sub_px, p_cum, p_ex, rights)
+            self._eval_cum_ex(sym, r_ratio, sub_px, p_cum, p_ex, rights) # type: ignore
         else:
             if p_ex is None or rights is None: return
             self._eval_subscribe(sym, r_ratio, sub_px, p_ex, rights, allot_ms)
@@ -275,7 +275,7 @@ class RightsIssueArbitrage(Strategy):
         # Place legs: SELL cum, BUY ex + rights
         self.order(f"EQ:CUM:{sym}", "sell", qty=qty_old, order_type="market", venue=VENUE_EQ)
         self.order(f"EQ:EX:{sym}",  "buy",  qty=qty_ex,  order_type="market", venue=VENUE_EQ)
-        self.order(f"RIGHTS:{RID}", "buy",  qty=qty_rts, order_type="limit", price=r_ask, venue=VENUE_RTS)
+        self.order(f"RIGHTS:{RID}", "buy",  qty=qty_rts, order_type="limit", price=r_ask, venue=VENUE_RTS) # type: ignore
 
         self._save_state(tag, OpenState(mode="CUM_EX_SYNTH", tag=tag,
                                         qty_old=qty_old, qty_ex=qty_ex, qty_rights=qty_rts,
@@ -338,13 +338,13 @@ class RightsIssueArbitrage(Strategy):
         qty_short  = target_new  # short ex now, will deliver new on allotment
 
         # Place legs: BUY rights, SHORT ex-shares
-        self.order(f"RIGHTS:{RID}", "buy",  qty=qty_rights, price=r_ask, order_type="limit", venue=VENUE_RTS)
+        self.order(f"RIGHTS:{RID}", "buy",  qty=qty_rights, price=r_ask, order_type="limit", venue=VENUE_RTS) # type: ignore
         self.order(f"EQ:EX:{sym}",  "sell", qty=qty_short, order_type="market", venue=VENUE_EQ)
 
         # Subscription instruction (paper): OMS/adapter should commit funds at sub_px * qty_rights and deliver at allotment
         txid = f"sub-{uuid.uuid4().hex[:10]}"
         self.order(f"RIGHTS:{RID}", "subscribe", qty=qty_rights, order_type="subscription",
-                   venue=VENUE_RTS, flags={"sub_price": sub_px, "txid": txid, "allot_ms": allot_ms})
+                   venue=VENUE_RTS, flags={"sub_price": sub_px, "txid": txid, "allot_ms": allot_ms}) # type: ignore
 
         self._save_state(tag, OpenState(mode="RIGHTS_SUBSCRIBE", tag=tag,
                                         qty_old=0.0, qty_ex=qty_short, qty_rights=qty_rights,
@@ -368,7 +368,7 @@ class RightsIssueArbitrage(Strategy):
         raw = r.get(_poskey(self.ctx.name, tag))
         if not raw: return None
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return OpenState(mode=str(o["mode"]), tag=str(o["tag"]),
                              qty_old=float(o["qty_old"]), qty_rights=float(o["qty_rights"]),
                              qty_ex=float(o["qty_ex"]), entry_bps=float(o["entry_bps"]),

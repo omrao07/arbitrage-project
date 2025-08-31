@@ -1,0 +1,56 @@
+# config/sentiment.yaml
+
+enabled: true
+
+# === Data sources ===
+sources:
+  news:
+    yahoo: true
+    moneycontrol: true
+    reuters: false
+    bloomberg: false
+  social:
+    twitter: true
+    reddit: true
+    linkedin: false
+  altdata:
+    google_trends: true
+    sentiment_index: false
+
+# === Scoring model ===
+model:
+  type: "transformer"        # transformer | lexicon | hybrid
+  name: "finbert"            # e.g. finbert, roberta-fin, custom
+  confidence_threshold: 0.6  # min prob to count as signal
+  aggregation: "weighted_avg" # weighted_avg | median | vote
+
+# === Weighting scheme ===
+weights:
+  news: 0.5
+  social: 0.3
+  altdata: 0.2
+
+# === Signal processing ===
+processing:
+  smoothing: "ema"           # none | ema | rolling_mean
+  window: 7                  # days for smoothing
+  decay: 0.9                 # EMA decay factor
+
+# === Alert thresholds ===
+alerts:
+  extreme_positive:
+    threshold: 0.75
+    severity: info
+  extreme_negative:
+    threshold: -0.75
+    severity: warn
+  sentiment_spike:
+    zscore_threshold: 2.5
+    severity: critical
+
+# === Output ===
+output:
+  publish_to_stream: true
+  redis_channel: "sentiment.signals"
+  save_path: "./data/sentiment/"
+  formats: ["json", "csv"]

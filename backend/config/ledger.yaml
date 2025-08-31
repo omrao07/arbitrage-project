@@ -1,0 +1,74 @@
+# config/ledger.yaml
+
+enabled: true
+
+# === General settings ===
+base_currency: "USD"
+persistence:
+  type: "sqlite"          # sqlite | postgres | memory
+  path: "./data/ledger.db"
+auto_reconcile: true
+reconcile_interval_min: 15
+
+# === Accounts ===
+accounts:
+  main:
+    description: "Master trading account"
+    base_currency: "USD"
+  strat_alpha:
+    description: "Alpha strategies sub-ledger"
+    base_currency: "USD"
+  strat_beta:
+    description: "Beta / hedge sub-ledger"
+    base_currency: "USD"
+
+# === Asset classes supported ===
+assets:
+  equities: true
+  futures: true
+  options: true
+  crypto: true
+  fx: true
+  fixed_income: false
+
+# === Posting rules ===
+posting:
+  realized_pnl: "daily"       # daily | intraday | on_close
+  unrealized_pnl: "mark_to_market"  # none | mark_to_market
+  fees: "on_trade"
+  funding: "on_settlement"
+
+# === Reconciliation rules ===
+reconciliation:
+  brokers:
+    - name: "IBKR"
+      enabled: true
+      api: true
+    - name: "Zerodha"
+      enabled: true
+      api: true
+    - name: "Coinbase"
+      enabled: false
+      api: false
+  tolerance_usd: 5.0           # ignore minor rounding errors
+  alert_on_mismatch: true
+
+# === Alerts ===
+alerts:
+  large_withdrawal:
+    enabled: true
+    threshold_usd: 100_000
+    severity: critical
+  position_mismatch:
+    enabled: true
+    severity: warn
+  funding_gap:
+    enabled: true
+    severity: warn
+
+# === Reporting ===
+reporting:
+  daily_report: true
+  weekly_summary: true
+  report_path: "./reports/ledger/"
+  formats: ["csv", "pdf"]

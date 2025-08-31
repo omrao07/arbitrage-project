@@ -1,0 +1,59 @@
+# ws_depl.yaml
+# Deployment + Service for WebSocket API (live analyst/sentiment/scenario streams)
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ws-server
+  labels:
+    app: ws-server
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ws-server
+  template:
+    metadata:
+      labels:
+        app: ws-server
+    spec:
+      containers:
+        - name: ws-server
+          image: myregistry/ws-server:latest   # <-- replace with your WebSocket server image
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8765   # typical ws port (FastAPI/uvicorn can also run here)
+          env:
+            - name: REDIS_HOST
+              value: "redis"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: WS_CHANNEL
+              value: "CHAN_ANALYST"   # Redis pub/sub channel for UI bus
+          readinessProbe:
+            tcpSocket:
+              port: 8765
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 8765
+            initialDelaySeconds: 10
+            periodSeconds: 15
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ws-server-svc
+  labels:
+    app: ws-server
+spec:
+  type: ClusterIP   # change to LoadBalancer or NodePort for external access
+  selector:
+    app: ws-server
+  ports:
+    - port: 80
+      targetPort: 8765
+      protocol: TCP

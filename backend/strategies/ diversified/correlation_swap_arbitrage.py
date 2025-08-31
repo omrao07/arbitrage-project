@@ -114,27 +114,27 @@ def _hgetf(key: str, field: str) -> Optional[float]:
     if v is None:
         return None
     try:
-        return float(v)
+        return float(v) # type: ignore
     except Exception:
         try:
-            return float(json.loads(v))
+            return float(json.loads(v)) # type: ignore
         except Exception:
             return None
 
 def _getf(key: str) -> Optional[float]:
     v = r.get(key)
     if v is None: return None
-    try: return float(v)
+    try: return float(v) # type: ignore
     except Exception:
-        try: return float(json.loads(v))
+        try: return float(json.loads(v)) # type: ignore
         except Exception: return None
 
 def _last_price(sym: str) -> Optional[float]:
     raw = r.hget(LAST_PRICE_HKEY, sym)
     if not raw: return None
-    try: return float(json.loads(raw)["price"])
+    try: return float(json.loads(raw)["price"]) # type: ignore
     except Exception:
-        try: return float(raw)
+        try: return float(raw) # type: ignore
         except Exception: return None
 
 def _implied_corr(index_iv: float, comp_ivs: List[Tuple[float, float]]) -> Optional[float]:
@@ -183,7 +183,7 @@ def _load_ewma(alpha: float) -> EwmaMV:
     raw = r.get(_ewma_key())
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", alpha)))
         except Exception:
             pass
@@ -247,7 +247,7 @@ class CorrelationSwapArbitrage(Strategy):
         idx_rv = _hgetf(IV_REAL_KEY, INDEX)
         rv_comps = [(w, _hgetf(IV_REAL_KEY, s)) for (s, w, _) in comps_imp]
         if idx_rv is not None and all((s is not None and s > 0) for _, s in rv_comps if _ is not None):
-            rho_real = _implied_corr(idx_rv, rv_comps)  # use same formula with realized vols
+            rho_real = _implied_corr(idx_rv, rv_comps)  # type: ignore # use same formula with realized vols
             if rho_real is not None:
                 return rho_real
         # Fallback: light historical anchor via EWMA mean of Δρ + current implied
@@ -268,7 +268,7 @@ class CorrelationSwapArbitrage(Strategy):
             # insufficient data
             return
 
-        comp_list = [(w, float(sigma)) for (_, w, sigma) in comps]
+        comp_list = [(w, float(sigma)) for (_, w, sigma) in comps] # type: ignore
         rho_imp = _implied_corr(float(idx_iv), comp_list)
         if rho_imp is None:
             return
@@ -346,7 +346,7 @@ class CorrelationSwapArbitrage(Strategy):
         if not raw:
             return None
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return OpenState(**o)
         except Exception:
             return None

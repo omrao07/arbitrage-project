@@ -90,7 +90,7 @@ def _hget_json(hk: str, field: str) -> Optional[dict]:
     raw = r.hget(hk, field)
     if not raw: return None
     try:
-        j = json.loads(raw)
+        j = json.loads(raw) # type: ignore
         return j if isinstance(j, dict) else None
     except Exception:
         return None
@@ -98,16 +98,16 @@ def _hget_json(hk: str, field: str) -> Optional[dict]:
 def _hgetf(hk: str, field: str) -> Optional[float]:
     v = r.hget(hk, field)
     if v is None: return None
-    try: return float(v)
+    try: return float(v) # type: ignore
     except Exception:
         try:
-            j = json.loads(v)
+            j = json.loads(v) # type: ignore
             return float(j) if isinstance(j, (int,float)) else None
         except Exception: return None
 
 def _fees_bps(venue: str="OTC") -> float:
     v = r.hget(FEES_HK, venue)
-    try: return float(v) if v is not None else 8.0
+    try: return float(v) if v is not None else 8.0 # type: ignore
     except Exception: return 8.0
 
 def _now_ms() -> int: return int(time.time() * 1000)
@@ -129,7 +129,7 @@ def _load_ewma(tag: str) -> EwmaMV:
     raw = r.get(_ewma_key(tag))
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", EWMA_ALPHA)))
         except Exception: pass
     return EwmaMV(mean=0.0, var=1.0, alpha=EWMA_ALPHA)
@@ -310,7 +310,7 @@ class WaterRightsArbitrage(Strategy):
         raw = r.get(_poskey(self.ctx.name, tag))
         if not raw: return None
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return OpenState(mode=str(o["mode"]), side=str(o["side"]),
                              qty_af=float(o["qty_af"]), entry_edge_usd_af=float(o["entry_edge_usd_af"]),
                              entry_z=float(o["entry_z"]), ts_ms=int(o["ts_ms"]))

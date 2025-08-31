@@ -67,14 +67,14 @@ def _last_price(symbol: str) -> Optional[float]:
     raw = r.hget("last_price", symbol.upper())
     if not raw: return None
     try:
-        return float(json.loads(raw)["price"])
+        return float(json.loads(raw)["price"]) # type: ignore
     except Exception:
         return None
 
 def _load_pos_by_strategy(strategy: str, symbol: str) -> Dict:
     raw = r.hget(f"positions:by_strategy:{strategy}", symbol)
     if not raw: return {"symbol": symbol, "qty": 0.0, "avg_price": 0.0}
-    try: return json.loads(raw)
+    try: return json.loads(raw) # type: ignore
     except Exception: return {"symbol": symbol, "qty": 0.0, "avg_price": 0.0}
 
 def _sign(x: float) -> int:

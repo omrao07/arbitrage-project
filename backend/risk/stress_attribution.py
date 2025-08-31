@@ -1,402 +1,317 @@
-# backend/analytics/stress_attribution.py
-"""
-Stress Attribution: attribute portfolio PnL to shock components (Rates / Credit / Equity / FX)
-and roll it up by any dimensions (strategy, sector, region, book, symbol, tenor, …).
-
-Design notes
-------------
-- Rates/credit use DV01-style sensitivities (currency P&L per 1bp). By convention:
-    price change ≈ - DV01 * Δy_bps       (so a +10bp move loses DV01*10)
-    spread PnL   ≈ - SpreadDV01 * Δs_bps
-- Equity uses beta * index_return * notional (direction embedded in notional sign).
-- FX uses foreign_notional * fx_return_to_base (direction embedded in notional sign).
-- Tenor-level DV01 can be given as a dict, e.g. {"2y": 12.3, "5y": 25.1} (units: base CCY per bp).
-- Everything is dependency-light; pandas is optional for pretty DataFrames.
-"""
-
+# backend/risk/stress_attribution.py
 from __future__ import annotations
 
-import json
+import math
+import random
 from dataclasses import dataclass, field, asdict
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Iterable
 
-# ----------------------------- Optional deps ---------------------------------
-try:
-    import pandas as pd  # type: ignore
-except Exception:
-    pd = None  # type: ignore
-
-# Soft link to your policy & curve shocks (if available)
-try:
-    from backend.macro.central_bank_ai import RateShock  # type: ignore
-except Exception:
-    @dataclass
-    class RateShock:  # fallback shape-compatible
-        parallel_bp: float = 0.0
-        steepen_bp: float = 0.0
-        butterfly_bp: float = 0.0
-        twist_pivot_yrs: float = 5.0
-        custom_tenor_bp: Dict[float, float] = field(default_factory=dict)  # tenor_yrs -> bps
-
-
-# =============================================================================
+# ---------------------------------------------------------------------
 # Data models
-# =============================================================================
+# ---------------------------------------------------------------------
 
 @dataclass
-class Exposure:
+class Asset:
     """
-    One position or bucketed position.
-    Notional sign convention: + for long, - for short.
+    Asset meta used for stress P&L decomposition.
+    - price: current mid (in local currency)
+    - fx: FX rate to base currency (e.g., USD per local; 1.0 if base)
+    - spread_bps: effective half-spread for taking (per side) used as cost proxy
+    - adv_qty: average daily volume (for impact capacity)
+    - impact_k_sqrt: square-root-law impact coefficient (bps * sqrt(q/ADV))
+    - vega: P&L per +1.00 absolute vol (100 vol points). If your vega is per +0.01, scale accordingly.
+    - gamma: P&L per (ΔS)^2 with S in price units (i.e., 0.5*gamma*(ΔS)^2 used)
     """
     symbol: str
-    strategy: str = ""
-    sector: str = ""
-    region: str = ""
-    book: str = ""
-    currency: str = "USD"         # base CCY for PnL
-    notional: float = 0.0         # base CCY exposure used for equity beta calc
-    # Rates/credit greeks:
-    dv01_tenor: Dict[str, float] = field(default_factory=dict)    # e.g. {"2y": 12.3, "5y": 25.1}  ($/bp)
-    credit_dv01: float = 0.0                                      # spread DV01 ($/bp)
-    # Equity factor:
-    beta: float = 0.0                                              # to chosen equity factor/index
-    # FX:
-    fx_ccy: Optional[str] = None                                   # currency vs base (e.g., "EUR" if base is USD)
-    fx_notional_foreign: float = 0.0                               # notional in foreign currency units (signed)
-
+    price: float
+    fx: float = 1.0
+    spread_bps: float = 6.0
+    adv_qty: float = 1_000_000.0
+    impact_k_sqrt: float = 20.0
+    vega: float = 0.0
+    gamma: float = 0.0
 
 @dataclass
-class Shock:
+class Position:
+    symbol: str
+    qty: float  # signed (+ long, - short)
+
+@dataclass
+class Scenario:
     """
-    Unified shock container. All fields optional; zeros mean no shock.
-    - rates_by_tenor: map "2y","5y","10y",... -> Δbps
-      (you can also pass a RateShock via from_rate_shock)
-    - credit_spread_bps: Δbps for credit spreads (positive = widening)
-    - eq_factor_rets: map factor/index name -> return (e.g., {"SPX": -0.04})
-      The engine will use 'beta' from exposures; you can choose any factor key you like.
-    - fx_rets_to_base: map CCY -> return vs base CCY (e.g., {"EUR": -0.02} means EURUSD -2%)
+    Scenario inputs (all optional; missing keys default to 0).
+    - price_rets: symbol -> return (fraction), applied on local price.
+    - fx_rets:    ccy symbol or "*" -> return (fraction) for FX to base.
+    - vol_shift:  absolute change in vol (e.g., +0.10 = +10 vol pts) per symbol or "*".
+    - spread_widen_mult: multiply spread costs.
+    - adv_drop_mult: haircut ADV (e.g., 0.5 = 50% liquidity).
     """
-    rates_by_tenor: Dict[str, float] = field(default_factory=dict)     # tenor -> Δbps
-    credit_spread_bps: float = 0.0
-    eq_factor_rets: Dict[str, float] = field(default_factory=dict)     # use key that matches 'factor_key' at run()
-    fx_rets_to_base: Dict[str, float] = field(default_factory=dict)    # CCY -> return vs base
-
-    @staticmethod
-    def from_rate_shock(rs: RateShock, *, tenors: Iterable[float] = (0.25, 0.5, 1, 2, 3, 5, 7, 10)) -> "Shock":
-        m: Dict[str, float] = {}
-        # Start with custom
-        for T, bp in (rs.custom_tenor_bp or {}).items():
-            m[_tenor_key(float(T))] = float(bp)
-        # Add parametric components (very simple mapping)
-        for T in tenors:
-            k = _tenor_key(float(T))
-            base = m.get(k, 0.0)
-            # parallel
-            base += rs.parallel_bp
-            # steepen: +bps*(T - pivot>?) sign across curve; assume pivot at 5y
-            base += rs.steepen_bp * _signed_slope(float(T), pivot=getattr(rs, "twist_pivot_yrs", 5.0))
-            # butterfly: bump wings, fade belly (toy shape)
-            base += rs.butterfly_bp * _butterfly_shape(float(T))
-            m[k] = base
-        return Shock(rates_by_tenor=m)
-
+    name: str
+    price_rets: Dict[str, float] = field(default_factory=dict)
+    fx_rets: Dict[str, float] = field(default_factory=dict)
+    vol_shift: Dict[str, float] = field(default_factory=dict)
+    spread_widen_mult: float = 1.0
+    adv_drop_mult: float = 1.0
 
 @dataclass
-class Row:
-    """Aggregated attribution row."""
-    pnl_total: float = 0.0
-    pnl_rates: float = 0.0
-    pnl_credit: float = 0.0
-    pnl_equity: float = 0.0
-    pnl_fx: float = 0.0
-    # Optional breakdowns
-    rates_by_tenor: Dict[str, float] = field(default_factory=dict)
-    meta: Dict[str, Any] = field(default_factory=dict)
-
+class FactorModel:
+    """
+    Linear factor model for Euler/Shapley attribution.
+    - factors: list of factor names
+    - exposures: symbol -> {factor: loading}
+    - factor_shocks: factor -> return shock (fraction)
+    """
+    factors: List[str]
+    exposures: Dict[str, Dict[str, float]] = field(default_factory=dict)
+    factor_shocks: Dict[str, float] = field(default_factory=dict)
 
 @dataclass
-class Result:
-    """Return object of a stress run."""
-    group_by: Tuple[str, ...]
-    rows: List[Dict[str, Any]]
-    totals: Dict[str, float]
-    details: Dict[str, Any] = field(default_factory=dict)
+class SymbolBreakdown:
+    symbol: str
+    base_notional: float
+    d_price_cash: float
+    d_fx_cash: float
+    gamma_cash: float
+    vega_cash: float
+    liquidity_cost_cash: float
+    total_cash: float
 
-    def to_json(self) -> str:
-        return json.dumps({"group_by": self.group_by, "rows": self.rows, "totals": self.totals, "details": self.details}, indent=2)
+@dataclass
+class FactorBreakdown:
+    by_factor_cash: Dict[str, float]  # Euler factor contributions (cash)
+    total_cash: float
 
-    def to_dataframe(self):
-        if pd is None:
-            raise RuntimeError("pandas not installed")
-        return pd.DataFrame(self.rows)
+@dataclass
+class StressReport:
+    scenario: str
+    base_value: float
+    total_pnl_cash: float
+    by_symbol: Dict[str, SymbolBreakdown]
+    by_factor: Optional[FactorBreakdown]
+    waterfall: List[Tuple[str, float]]             # [(label, cash_delta), ...]
+    flags: List[str]                                # e.g., losses above thresholds
 
 
-# =============================================================================
+# ---------------------------------------------------------------------
 # Engine
-# =============================================================================
+# ---------------------------------------------------------------------
 
 class StressAttributor:
     """
-    Add exposures, then run shocks and get PnL attribution rolled up by any dimensions.
+    P&L decomposition under a stress:
+      - Symbol-level: Price, FX, Gamma, Vega, Liquidity/Costs → Total
+      - Factor-level (optional): Euler contributions from factor shocks
+      - Waterfall suitable for UI
 
-    Example:
-        sa = StressAttributor(base_ccy="USD")
-        sa.add(Exposure("AAPL", strategy="alpha", notional=1_000_000, beta=1.1))
-        sa.add(Exposure("UST10", strategy="hedge", dv01_tenor={"10y": 85.0}))
-        shock = Shock(rates_by_tenor={"10y": +25}, eq_factor_rets={"SPX": -0.05})
-        res = sa.run(shock, group_by=("strategy","sector"), factor_key="SPX", detail_rates_by_tenor=True)
+    Design notes:
+      * Price P&L holds FX constant; FX P&L uses shocked price for cross-term clarity.
+      * Gamma uses 0.5 * gamma * (ΔS)^2; Vega uses absolute vol shift.
+      * Liquidity cost combines spread widening and a coarse sqrt-law impact on the *minimum* size
+        required to reduce risk (here we proxy with |qty|; swap with your TCA if available).
     """
-    def __init__(self, *, base_ccy: str = "USD"):
-        self.base_ccy = base_ccy.upper()
-        self._exposures: List[Exposure] = []
 
-    # ---------------- API ----------------
+    def __init__(self, base_ccy: str = "USD"):
+        self.base_ccy = base_ccy
+        self.assets: Dict[str, Asset] = {}
+        self.pos: Dict[str, Position] = {}
 
-    def add(self, exp: Exposure) -> None:
-        self._exposures.append(exp)
+    # ------------ registry ------------
+    def upsert_asset(self, a: Asset) -> None:
+        self.assets[a.symbol] = a
 
-    def add_many(self, exps: Iterable[Exposure]) -> None:
-        for e in exps:
-            self.add(e)
+    def upsert_position(self, p: Position) -> None:
+        if p.symbol not in self.assets:
+            raise ValueError(f"Unknown asset for position: {p.symbol}")
+        self.pos[p.symbol] = p
 
-    def run(
-        self,
-        shock: Shock,
-        *,
-        group_by: Iterable[str] = ("strategy", "sector"),
-        factor_key: Optional[str] = None,
-        detail_rates_by_tenor: bool = False,
-    ) -> Result:
-        """
-        Compute component PnL per exposure, aggregate by group_by, and return a table.
-        """
-        dims = tuple(group_by)
-        table: Dict[Tuple[str, ...], Row] = {}
-        totals = Row()
-
-        for e in self._exposures:
-            # ---- Rates ----
-            pr_rates, per_tenor = _pnl_rates(e.dv01_tenor, shock.rates_by_tenor)
-
-            # ---- Credit ----
-            pr_credit = - float(e.credit_dv01) * float(shock.credit_spread_bps)
-
-            # ---- Equity factor ----
-            r_eq = 0.0
-            if factor_key is not None:
-                r_eq = float(shock.eq_factor_rets.get(factor_key, 0.0))
-            pr_equity = float(e.beta) * r_eq * float(e.notional)
-
-            # ---- FX ----
-            pr_fx = 0.0
-            if e.fx_ccy:
-                r_fx = float(shock.fx_rets_to_base.get(e.fx_ccy.upper(), 0.0))
-                pr_fx = float(e.fx_notional_foreign) * r_fx
-
-            # ---- Aggregate for this exposure ----
-            pnl_total = pr_rates + pr_credit + pr_equity + pr_fx
-
-            key = _make_gid(e, dims)
-            row = table.setdefault(key, Row())
-            row.pnl_rates += pr_rates
-            row.pnl_credit += pr_credit
-            row.pnl_equity += pr_equity
-            row.pnl_fx += pr_fx
-            row.pnl_total += pnl_total
-            if detail_rates_by_tenor and per_tenor:
-                for t, v in per_tenor.items():
-                    row.rates_by_tenor[t] = row.rates_by_tenor.get(t, 0.0) + v
-
-            # update totals
-            totals.pnl_rates += pr_rates
-            totals.pnl_credit += pr_credit
-            totals.pnl_equity += pr_equity
-            totals.pnl_fx += pr_fx
-            totals.pnl_total += pnl_total
-            if detail_rates_by_tenor and per_tenor:
-                for t, v in per_tenor.items():
-                    totals.rates_by_tenor[t] = totals.rates_by_tenor.get(t, 0.0) + v
-
-        # Pretty rows
-        rows = []
-        for gid, r in table.items():
-            row_dict = {dims[i]: gid[i] for i in range(len(dims))}
-            row_dict.update({
-                "pnl_total": _round(r.pnl_total),
-                "pnl_rates": _round(r.pnl_rates),
-                "pnl_credit": _round(r.pnl_credit),
-                "pnl_equity": _round(r.pnl_equity),
-                "pnl_fx": _round(r.pnl_fx),
-            }) # type: ignore
-            if detail_rates_by_tenor and r.rates_by_tenor:
-                # include as nested dict
-                row_dict["rates_by_tenor"] = {k: _round(v) for k, v in sorted(r.rates_by_tenor.items(), key=lambda kv: _tenor_sort_key(kv[0]))} # type: ignore
-            rows.append(row_dict)
-
-        rows.sort(key=lambda d: -d["pnl_total"])
-        totals_dict = {
-            "pnl_total": _round(totals.pnl_total),
-            "pnl_rates": _round(totals.pnl_rates),
-            "pnl_credit": _round(totals.pnl_credit),
-            "pnl_equity": _round(totals.pnl_equity),
-            "pnl_fx": _round(totals.pnl_fx),
-        }
-        if detail_rates_by_tenor and totals.rates_by_tenor:
-            totals_dict["rates_by_tenor"] = {k: _round(v) for k, v in sorted(totals.rates_by_tenor.items(), key=lambda kv: _tenor_sort_key(kv[0]))} # type: ignore
-
-        details = {"base_ccy": self.base_ccy}
-        return Result(group_by=dims, rows=rows, totals=totals_dict, details=details)
-
-    # ---------------- Convenience ----------------
-
-    @staticmethod
-    def from_positions(
-        positions: Iterable[Dict[str, Any]],
-        *,
-        default_ccy: str = "USD",
-        rates_tenor_key: str = "dv01_tenor",
-    ) -> "StressAttributor":
-        """
-        Build a StressAttributor from a list of dict-like positions.
-        Keys recognized per item (missing default to harmless zeros):
-            symbol, strategy, sector, region, book, currency, notional,
-            beta, credit_dv01, fx_ccy, fx_notional_foreign, dv01_tenor (dict)
-        """
-        sa = StressAttributor(base_ccy=default_ccy)
+    def set_positions(self, positions: Iterable[Position]) -> None:
+        self.pos.clear()
         for p in positions:
-            sa.add(Exposure(
-                symbol=str(p.get("symbol","")),
-                strategy=str(p.get("strategy","")),
-                sector=str(p.get("sector","")),
-                region=str(p.get("region","")),
-                book=str(p.get("book","")),
-                currency=str(p.get("currency", default_ccy)).upper(),
-                notional=float(p.get("notional", 0.0)),
-                beta=float(p.get("beta", 0.0)),
-                credit_dv01=float(p.get("credit_dv01", 0.0)),
-                fx_ccy=(str(p["fx_ccy"]).upper() if p.get("fx_ccy") else None),
-                fx_notional_foreign=float(p.get("fx_notional_foreign", 0.0)),
-                dv01_tenor=dict(p.get(rates_tenor_key, {})),
-            ))
-        return sa
+            self.upsert_position(p)
+
+    # ------------ core calc ------------
+    def run(self,
+            scenario: Scenario,
+            *,
+            factor_model: Optional[FactorModel] = None,
+            loss_warn_bps: float = 150.0,
+            loss_crit_bps: float = 300.0) -> StressReport:
+
+        # Base portfolio value (cash)
+        base_val = 0.0
+        for s, p in self.pos.items():
+            a = self.assets[s]
+            base_val += p.qty * a.price * a.fx
+
+        by_symbol: Dict[str, SymbolBreakdown] = {}
+
+        # Symbol effects
+        total_price = total_fx = total_gamma = total_vega = total_liq = 0.0
+
+        for s, p in self.pos.items():
+            a = self.assets[s]
+            r_p = scenario.price_rets.get(s, scenario.price_rets.get("*", 0.0))
+            r_fx = scenario.fx_rets.get(s, scenario.fx_rets.get("*", 0.0))
+            dv = scenario.vol_shift.get(s, scenario.vol_shift.get("*", 0.0))
+
+            S0 = a.price
+            FX0 = a.fx
+            dS = S0 * r_p
+            dFX = FX0 * r_fx
+
+            # Decompose:
+            d_price_cash = p.qty * dS * FX0                      # price move at base FX
+            d_fx_cash    = p.qty * (S0 + dS) * dFX               # FX move on shocked price
+            gamma_cash   = 0.5 * a.gamma * (dS ** 2) * (FX0)     # 2nd order price
+            vega_cash    = a.vega * (dv or 0.0) * (FX0)          # vol shift to cash
+            # Liquidity/impact (very coarse): take |qty| * price with widened spread + sqrt impact
+            spread_bps = a.spread_bps * max(1.0, scenario.spread_widen_mult)
+            adv = max(1e-9, a.adv_qty * max(1e-6, scenario.adv_drop_mult or 1.0))
+            impact_bps = a.impact_k_sqrt * math.sqrt(min(abs(p.qty), adv) / adv)
+            liq_cost = (spread_bps + impact_bps) / 1e4 * abs(p.qty) * S0 * FX0
+
+            total = d_price_cash + d_fx_cash + gamma_cash + vega_cash - liq_cost
+
+            by_symbol[s] = SymbolBreakdown(
+                symbol=s,
+                base_notional=p.qty * S0 * FX0,
+                d_price_cash=d_price_cash,
+                d_fx_cash=d_fx_cash,
+                gamma_cash=gamma_cash,
+                vega_cash=vega_cash,
+                liquidity_cost_cash=liq_cost,
+                total_cash=total
+            )
+
+            total_price += d_price_cash
+            total_fx    += d_fx_cash
+            total_gamma += gamma_cash
+            total_vega  += vega_cash
+            total_liq   += liq_cost
+
+        total_pnl = total_price + total_fx + total_gamma + total_vega - total_liq
+
+        # Factor (Euler) attribution if provided
+        by_factor: Optional[FactorBreakdown] = None
+        if factor_model and factor_model.factors:
+            f_contrib: Dict[str, float] = {f: 0.0 for f in factor_model.factors}
+            for s, p in self.pos.items():
+                a = self.assets[s]
+                fx = a.fx
+                S0 = a.price
+                expo = factor_model.exposures.get(s, {})
+                for f in factor_model.factors:
+                    beta = float(expo.get(f, 0.0))
+                    shock = float(factor_model.factor_shocks.get(f, 0.0))
+                    # Euler contribution: cash ≈ qty * price * beta * shock * fx
+                    f_contrib[f] += p.qty * S0 * beta * shock * fx
+            by_factor = FactorBreakdown(by_factor_cash=f_contrib, total_cash=sum(f_contrib.values()))
+
+        # Waterfall (portfolio)
+        waterfall: List[Tuple[str, float]] = [
+            ("Price", total_price),
+            ("FX", total_fx),
+            ("Gamma", total_gamma),
+            ("Vega", total_vega),
+            ("Liquidity/Costs", -total_liq),
+            ("Total", total_pnl),
+        ]
+
+        # Flags vs base value (in bps)
+        flags: List[str] = []
+        loss_bps = (-total_pnl / max(1e-9, base_val)) * 1e4 if total_pnl < 0 else 0.0
+        if loss_bps >= loss_warn_bps:
+            flags.append(f"Stress loss warning: {loss_bps:.0f} bps")
+        if loss_bps >= loss_crit_bps:
+            flags.append(f"Stress loss CRITICAL: {loss_bps:.0f} bps")
+
+        return StressReport(
+            scenario=scenario.name,
+            base_value=base_val,
+            total_pnl_cash=total_pnl,
+            by_symbol=by_symbol,
+            by_factor=by_factor,
+            waterfall=waterfall,
+            flags=flags
+        )
+
+    # ------------ optional Shapley-lite for factors ------------
+    @staticmethod
+    def shapley_factors(factors: List[str],
+                        factor_shocks: Dict[str, float],
+                        factor_to_cash: Dict[str, float],
+                        *,
+                        n_perms: int = 64,
+                        seed: int = 7) -> Dict[str, float]:
+        """
+        Shapley-lite: average marginal cash contribution over random orderings.
+        Input factor_to_cash should be the *Euler* cash mapping or any linearized map
+        (we treat interactions as negligible in this approximation).
+        """
+        if not factors:
+            return {}
+        rng = random.Random(seed)
+        attributions = {f: 0.0 for f in factors}
+        # With linear map the Shapley equals Euler; we still compute perms to mimic generality.
+        for _ in range(max(1, n_perms)):
+            order = factors[:]
+            rng.shuffle(order)
+            accum = 0.0
+            for f in order:
+                contrib = factor_to_cash.get(f, 0.0)
+                attributions[f] += contrib
+                accum += contrib
+        # Normalize by number of permutations
+        m = float(max(1, n_perms))
+        return {f: v / m for f, v in attributions.items()}
 
 
-# =============================================================================
-# Internals
-# =============================================================================
-
-def _pnl_rates(dv01_tenor: Dict[str, float], shock_tenor: Dict[str, float]) -> Tuple[float, Dict[str, float]]:
-    """
-    Combine tenor DV01 map with tenor shock map (bps) → PnL and per-tenor breakdown.
-    """
-    if not dv01_tenor or not shock_tenor:
-        return 0.0, {}
-    pnl = 0.0
-    per: Dict[str, float] = {}
-    for k, dv01 in dv01_tenor.items():
-        dk = _normalize_tenor_key(k)
-        # match by normalized key if present, else try exact
-        bp = shock_tenor.get(dk, shock_tenor.get(k, 0.0))
-        # price change ≈ - DV01 * Δy_bps
-        contrib = - float(dv01) * float(bp)
-        pnl += contrib
-        if abs(contrib) > 0:
-            per[dk] = per.get(dk, 0.0) + contrib
-    return pnl, per
-
-
-def _tenor_key(T: float) -> str:
-    if T < 1.0:
-        # quarters
-        if abs(T - 0.25) < 1e-9: return "3m"
-        if abs(T - 0.5) < 1e-9:  return "6m"
-        return f"{int(round(T*12))}m"
-    return f"{int(round(T))}y"
-
-
-def _normalize_tenor_key(k: str) -> str:
-    k = k.strip().lower()
-    if k.endswith("y"):
-        return f"{int(round(float(k[:-1])))}y"
-    if k.endswith("m"):
-        return f"{int(round(float(k[:-1])))}m"
-    # try numeric years
-    try:
-        v = float(k)
-        return _tenor_key(v)
-    except Exception:
-        return k
-
-
-def _tenor_sort_key(k: str) -> float:
-    k = _normalize_tenor_key(k)
-    if k.endswith("y"):
-        return float(k[:-1])
-    if k.endswith("m"):
-        return float(k[:-1]) / 12.0
-    return 999.0
-
-
-def _signed_slope(T: float, pivot: float = 5.0) -> float:
-    # negative before pivot, positive after
-    return (T - pivot) / max(1e-9, pivot)
-
-
-def _butterfly_shape(T: float, belly: float = 5.0, wings: Tuple[float, float] = (2.0, 10.0)) -> float:
-    # +1 on wings, -1 in belly (very simple)
-    if abs(T - belly) < 1e-6:
-        return -1.0
-    if T <= wings[0] or T >= wings[1]:
-        return +1.0
-    # linear between
-    if T < belly:
-        return (T - wings[0]) / max(1e-9, (belly - wings[0]))  # from +1 to -1
-    return (wings[1] - T) / max(1e-9, (wings[1] - belly))      # from -1 to +1
-
-
-def _make_gid(e: Exposure, dims: Tuple[str, ...]) -> Tuple[str, ...]:
-    # map dimension name -> attribute on Exposure
-    lookup = {
-        "strategy": e.strategy, "sector": e.sector, "region": e.region,
-        "book": e.book, "symbol": e.symbol, "currency": e.currency,
-    }
-    return tuple(str(lookup.get(d, "")) for d in dims)
-
-
-def _round(x: float) -> float:
-    return float(round(float(x), 6))
-
-
-# =============================================================================
-# Tiny demo
-# =============================================================================
+# ---------------------------------------------------------------------
+# Demo
+# ---------------------------------------------------------------------
 
 if __name__ == "__main__":
-    # Build sample exposures
-    exps = [
-        # Equity book (USD base)
-        {"symbol":"AAPL", "strategy":"alpha.eqt", "sector":"Tech", "region":"US", "notional": 2_000_000, "beta": 1.2},
-        {"symbol":"RELIANCE.NS", "strategy":"alpha.eqt", "sector":"Energy", "region":"IN", "notional": 1_000_000, "beta": 0.9},
-        # Rates hedge (DV01 in $/bp)
-        {"symbol":"UST_5Y_HEDGE", "strategy":"hedge.rates", "sector":"Rates", "dv01_tenor":{"5y": 250.0}},
-        {"symbol":"UST_10Y_HEDGE", "strategy":"hedge.rates", "sector":"Rates", "dv01_tenor":{"10y": 420.0}},
-        # Credit book
-        {"symbol":"IG_CDS", "strategy":"credit", "sector":"Credit", "credit_dv01": 300.0},
-        # FX: long EUR assets (1,000,000 EUR)
-        {"symbol":"EUR_ASSETS", "strategy":"alpha.fx", "sector":"FX", "fx_ccy":"EUR", "fx_notional_foreign": 1_000_000},
-    ]
-    sa = StressAttributor.from_positions(exps)
+    # Universe
+    AAPL = Asset(symbol="AAPL", price=190.0, fx=1.0, spread_bps=4.0, adv_qty=80_000_000, impact_k_sqrt=12.0, gamma=0.0, vega=0.0)
+    MSFT = Asset(symbol="MSFT", price=420.0, fx=1.0, spread_bps=3.0, adv_qty=30_000_000, impact_k_sqrt=12.0, gamma=0.0, vega=0.0)
+    SPY  = Asset(symbol="SPY",  price=520.0, fx=1.0, spread_bps=1.0, adv_qty=80_000_000, impact_k_sqrt=8.0,  gamma=0.0, vega=0.0)
 
-    # Build a shock: +25bp at 10y, +10bp at 5y, SPX -5%, EURUSD -2%, credit +40bp
-    shock = Shock(
-        rates_by_tenor={"5y": +10.0, "10y": +25.0},
-        credit_spread_bps=+40.0,
-        eq_factor_rets={"SPX": -0.05},
-        fx_rets_to_base={"EUR": -0.02},
+    eng = StressAttributor()
+    for a in (AAPL, MSFT, SPY):
+        eng.upsert_asset(a)
+    eng.set_positions([
+        Position("AAPL", 1_000),
+        Position("MSFT", 800),
+        Position("SPY", -500),
+    ])
+
+    # Scenario: equities -4%, USD flat; liquidity worse
+    scen = Scenario(
+        name="Equity -4% / Liquidity Tight",
+        price_rets={"*": -0.04},
+        fx_rets={"*": 0.0},
+        vol_shift={},                # no option greeks in this demo
+        spread_widen_mult=1.5,
+        adv_drop_mult=0.6
     )
 
-    res = sa.run(shock, group_by=("strategy","sector"), factor_key="SPX", detail_rates_by_tenor=True)
-    print(res.to_json())
-    if pd:
-        print(res.to_dataframe())
+    # Simple 2-factor model: {MKT, TECH} shocks for Euler attribution
+    fmodel = FactorModel(
+        factors=["MKT", "TECH"],
+        exposures={
+            "AAPL": {"MKT": 1.2, "TECH": 0.8},
+            "MSFT": {"MKT": 1.1, "TECH": 0.7},
+            "SPY":  {"MKT": 1.0, "TECH": 0.0},
+        },
+        factor_shocks={"MKT": -0.04, "TECH": -0.02}
+    )
+
+    rpt = eng.run(scenario=scen, factor_model=fmodel)
+    print("--- Stress Report ---")
+    print("Scenario:", rpt.scenario)
+    print("Base value:", round(rpt.base_value, 2))
+    print("Total PnL (cash):", round(rpt.total_pnl_cash, 2))
+    print("Waterfall:", [(k, round(v, 2)) for k, v in rpt.waterfall])
+    if rpt.by_factor:
+        print("Factors:", {k: round(v, 2) for k, v in rpt.by_factor.by_factor_cash.items()})
+    print("Flags:", rpt.flags)

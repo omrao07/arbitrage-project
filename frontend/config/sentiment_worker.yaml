@@ -1,0 +1,200 @@
+# sentiment_worker.yaml
+# Worker focused on NLP sentiment/intel from news, tweets, transcripts, filings.
+# Publishes entity- and ticker-level sentiment, themes, and alerts.
+
+version: 1
+
+worker:
+  name: sentiment
+  role: nlp_sentiment
+  runtime: python3.11
+  entrypoint: backend/workers/sentiment_worker.py
+  args: ["--log-level=INFO"]
+  resources:
+    cpu: "2"
+    memory: "4Gi"
+  concurrency:
+    max_tasks: 4
+    per_queue: 2
+  retry_policy:
+    max_retries: 3
+    backoff_seconds: 10
+
+io:
+  redis:
+    host: ${REDIS_HOST:-localhost}
+    port: ${REDIS_PORT:-6379}
+    db: ${REDIS_DB:-0}
+    consumer_group: sentiment_v1
+    consumer_name: ${HOSTNAME:-sentiment-1}
+
+streams:
+  inbound:
+    news:
+      name: ${STREAM_NEWS:-STREAM_NEWS}
+      start: ">"
+      batch_max: 256
+      block_ms: 5000
+    social:
+      name: ${STREAM_SOCIAL:-STREAM_SOCIAL}
+      start: ">"
+      batch_max: 256
+      block_ms: 5000
+    transcripts:
+      name: ${STREAM_TRANSCRIPTS:-STREAM_TRANSCRIPTS}
+      start: ">"
+      batch_max: 128
+      block_ms: 5000
+    filings:
+      name: ${STREAM_FILINGS:-STREAM_FILINGS}
+      start: ">"
+      batch_max: 128
+      block_ms: 5000
+    signals:
+      name: ${STREAM_SIGNALS:-STREAM_SIGNALS}
+      start: ">"
+      batch_max: 128
+      block_ms: 5000
+
+  outbound:
+    sentiment:
+      name: ${STREAM_SENTIMENT:-STREAM_SENTIMENT}
+    alerts:
+      name: ${STREAM_ALERTS:-STREAM_ALERTS}
+    research:
+      name: ${STREAM_RESEARCH:-STREAM_RESEARCH}
+
+pubsub:
+  channels:
+    ui_bus: ${CHAN_SENTIMENT:-CHAN_SENTIMENT}
+
+storage:
+  local_root: ${SENTIMENT_DATA_ROOT:-/var/data/sentiment}
+  s3:
+    enabled: false
+    bucket: ${S3_BUCKET:-}
+    prefix: ${S3_PREFIX:-sentiment/}
+    region: ${S3_REGION:-ap-south-1}
+    access_key: ${S3_ACCESS_KEY:-}
+    secret_key: ${S3_SECRET_KEY:-}
+
+routing:
+  routes:
+    - match: {stream: news, topic: article}
+      task: analyze_news
+    - match: {stream: social, topic: post}
+      task: analyze_social
+    - match: {stream: transcripts, topic: earnings_call}
+      task: analyze_transcript
+    - match: {stream: filings, topic: filing}
+      task: analyze_filing
+    - match: {stream: signals, topic: sentiment_request}
+      task: on_demand_sentiment
+
+tasks:
+  analyze_news:
+    module: research.sentiment.news_runner
+    entry: run
+    timeout_sec: 90
+    rate_limit_per_min: 120
+    params:
+      lang: ${SENT_LANG:-en}
+      model: ${SENT_MODEL:-finbert}
+      granular: ["doc", "sentence", "entity"]
+      emit_entities: true
+      dedupe_window_sec: 900
+
+  analyze_social:
+    module: research.sentiment.social_runner
+    entry: run
+    timeout_sec: 60
+    rate_limit_per_min: 240
+    params:
+      lang: ${SENT_LANG:-en}
+      model: ${SENT_MODEL:-roberta-finance}
+      spam_filter: true
+      min_followers: ${SOC_MIN_FOLLOWERS:-100}
+      hashtag_themes: true
+
+  analyze_transcript:
+    module: research.sentiment.transcript_runner
+    entry: run
+    timeout_sec: 180
+    rate_limit_per_min: 30
+    params:
+      diarize: false
+      section_scores: ["prepared_remarks", "qa"]
+      cues: ["guidance", "margin", "revenue", "capex", "buyback", "layoffs"]
+
+  analyze_filing:
+    module: research.sentiment.filing_runner
+    entry: run
+    timeout_sec: 150
+    rate_limit_per_min: 30
+    params:
+      sections: ["MD&A", "Risk Factors", "Liquidity", "Legal Proceedings"]
+      highlight_keywords: ["impairment", "restatement", "going concern", "material weakness"]
+
+  on_demand_sentiment:
+    module: research.sentiment.dispatch
+    entry: run
+    timeout_sec: 120
+    rate_limit_per_min: 60
+    params:
+      fallback_model: ${SENT_FALLBACK_MODEL:-distilbert}
+      return_chunks: true
+
+enrichment:
+  # Optional: map tickers/entities via your knowledge base; used by runners.
+  entity_linker:
+    provider: ${ENTITY_PROVIDER:-local}
+    kb_path: ${ENTITY_KB_PATH:-/var/data/kb/entities.parquet}
+    fuzzy: true
+
+scheduling:
+  cron:
+    - name: premarket_news_sweep
+      cron: "0 6 * * 1-5"
+      signal:
+        topic: sentiment_request
+        stream: signals
+        payload: {scope: "premarket", lookback_min: 240}
+    - name: hourly_social_scan
+      cron: "0 * * * *"
+      signal:
+        topic: sentiment_request
+        stream: signals
+        payload: {scope: "social_last_hour", lookback_min: 60}
+
+logging:
+  level: ${LOG_LEVEL:-INFO}
+  format: json
+  stdout: true
+  file:
+    enabled: true
+    path: ${SENTIMENT_LOG_FILE:-/var/log/sentiment/worker.log}
+    rotate_mb: 100
+    backups: 5
+
+health:
+  liveness:
+    type: redis_ping
+    interval_sec: 15
+    timeout_sec: 2
+  readiness:
+    checks:
+      - type: redis_stream_read
+        stream: ${STREAM_NEWS:-STREAM_NEWS}
+      - type: redis_stream_write
+        stream: ${STREAM_SENTIMENT:-STREAM_SENTIMENT}
+
+metrics:
+  prometheus:
+    enabled: true
+    bind: 0.0.0.0
+    port: ${METRICS_PORT:-9095}
+
+security:
+  allowlist_topics: ["article", "post", "filing", "earnings_call", "sentiment_request"]
+  denylist_topics: []
+  redact_fields: ["api_key", "secret", "password", "access_token"]

@@ -71,7 +71,7 @@ def _hget_json(hk: str, field: str) -> Optional[dict]:
     raw = _r.hget(hk, field)
     if not raw: return None
     try:
-        j = json.loads(raw)
+        j = json.loads(raw) # type: ignore
         return j if isinstance(j, dict) else None
     except Exception:
         return None

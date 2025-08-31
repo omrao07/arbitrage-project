@@ -42,9 +42,9 @@ class OptionPutCallParity(Strategy):
             return
         self.last_check = now
 
-        call = _hget_json(self.ctx.redis, f"opt:call:{SYM}:{STRIKE}:{EXP_DAYS}")
-        put  = _hget_json(self.ctx.redis, f"opt:put:{SYM}:{STRIKE}:{EXP_DAYS}")
-        spot = _hget_json(self.ctx.redis, f"spot:{SYM}")
+        call = _hget_json(self.ctx.redis, f"opt:call:{SYM}:{STRIKE}:{EXP_DAYS}") # type: ignore
+        put  = _hget_json(self.ctx.redis, f"opt:put:{SYM}:{STRIKE}:{EXP_DAYS}") # type: ignore
+        spot = _hget_json(self.ctx.redis, f"spot:{SYM}") # type: ignore
 
         if not (call and put and spot):
             return
@@ -63,13 +63,13 @@ class OptionPutCallParity(Strategy):
         if diff_bps > THRESH_BPS:
             if diff > 0:
                 # LHS > parity → short call, long put, long stock
-                self.order(f"OPT_CALL:{SYM}:{STRIKE}:{EXP_DAYS}", "sell", qty=QTY, price=call["bid"], order_type="limit")
-                self.order(f"OPT_PUT:{SYM}:{STRIKE}:{EXP_DAYS}", "buy", qty=QTY, price=put["ask"], order_type="limit")
-                self.order(f"SPOT:{SYM}", "buy", qty=QTY, price=spot["ask"], order_type="market")
+                self.order(f"OPT_CALL:{SYM}:{STRIKE}:{EXP_DAYS}", "sell", qty=QTY, price=call["bid"], order_type="limit") # type: ignore
+                self.order(f"OPT_PUT:{SYM}:{STRIKE}:{EXP_DAYS}", "buy", qty=QTY, price=put["ask"], order_type="limit") # type: ignore
+                self.order(f"SPOT:{SYM}", "buy", qty=QTY, price=spot["ask"], order_type="market") # type: ignore
             else:
                 # RHS > parity → long call, short put, short stock
-                self.order(f"OPT_CALL:{SYM}:{STRIKE}:{EXP_DAYS}", "buy", qty=QTY, price=call["ask"], order_type="limit")
-                self.order(f"OPT_PUT:{SYM}:{STRIKE}:{EXP_DAYS}", "sell", qty=QTY, price=put["bid"], order_type="limit")
-                self.order(f"SPOT:{SYM}", "sell", qty=QTY, price=spot["bid"], order_type="market")
+                self.order(f"OPT_CALL:{SYM}:{STRIKE}:{EXP_DAYS}", "buy", qty=QTY, price=call["ask"], order_type="limit") # type: ignore
+                self.order(f"OPT_PUT:{SYM}:{STRIKE}:{EXP_DAYS}", "sell", qty=QTY, price=put["bid"], order_type="limit") # type: ignore
+                self.order(f"SPOT:{SYM}", "sell", qty=QTY, price=spot["bid"], order_type="market") # type: ignore
 
             self.emit_signal(min(1.0, diff_bps / THRESH_BPS))

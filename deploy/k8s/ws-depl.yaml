@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hedgefund-ws
+  labels:
+    app: hedgefund
+    tier: websocket
+spec:
+  replicas: 2   # scale horizontally for real-time feeds
+  selector:
+    matchLabels:
+      app: hedgefund
+      tier: websocket
+  template:
+    metadata:
+      labels:
+        app: hedgefund
+        tier: websocket
+    spec:
+      containers:
+        - name: ws-gateway
+          image: your-docker-registry/hedgefund-ws:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8765   # typical WS port
+          env:
+            - name: REDIS_HOST
+              value: "redis"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-secret
+                  key: redis-password
+            - name: API_HOST
+              value: "hedgefund-api-service"
+            - name: API_PORT
+              value: "80"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+          readinessProbe:
+            tcpSocket:
+              port: 8765
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 8765
+            initialDelaySeconds: 10
+            periodSeconds: 20
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hedgefund-ws-service
+  labels:
+    app: hedgefund
+    tier: websocket
+spec:
+  type: ClusterIP
+  selector:
+    app: hedgefund
+    tier: websocket
+  ports:
+    - port: 80
+      targetPort: 8765
+      protocol: TCP
+      name: ws

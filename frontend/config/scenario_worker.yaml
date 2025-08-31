@@ -1,0 +1,142 @@
+# scenario_worker.yaml
+# Worker that handles scenario analysis requests:
+#   - Shock scenarios (volatility ↑, correlation breaks, liquidity crunch)
+#   - Historical stress (2008, COVID, taper tantrum)
+#   - Custom Monte Carlo paths
+# Publishes results (loss distributions, charts, PnL impacts) back to Redis streams.
+
+version: 1
+
+worker:
+  name: scenario
+  role: stress_testing
+  runtime: python3.11
+  entrypoint: backend/workers/scenario_worker.py
+  args: ["--log-level=INFO"]
+  resources:
+    cpu: "2"
+    memory: "4Gi"
+  concurrency:
+    max_tasks: 3
+    per_queue: 1
+  retry_policy:
+    max_retries: 3
+    backoff_seconds: 10
+
+io:
+  redis:
+    host: ${REDIS_HOST:-localhost}
+    port: ${REDIS_PORT:-6379}
+    db: ${REDIS_DB:-0}
+    consumer_group: scenario_v1
+    consumer_name: ${HOSTNAME:-scenario-1}
+
+streams:
+  inbound:
+    signals:
+      name: ${STREAM_SIGNALS:-STREAM_SIGNALS}
+      start: ">"
+      batch_max: 128
+      block_ms: 5000
+    portfolios:
+      name: ${STREAM_PORTFOLIOS:-STREAM_PORTFOLIOS}
+      start: ">"
+      batch_max: 64
+      block_ms: 5000
+
+  outbound:
+    scenarios:
+      name: ${STREAM_SCENARIOS:-STREAM_SCENARIOS}
+    alerts:
+      name: ${STREAM_ALERTS:-STREAM_ALERTS}
+    research:
+      name: ${STREAM_RESEARCH:-STREAM_RESEARCH}
+
+pubsub:
+  channels:
+    ui_bus: ${CHAN_SCENARIO:-CHAN_SCENARIO}
+
+routing:
+  routes:
+    - match: {stream: signals, topic: scenario_request}
+      task: run_scenario
+    - match: {stream: signals, topic: stress_request}
+      task: stress_test
+    - match: {stream: portfolios, topic: portfolio_snapshot}
+      task: portfolio_scenarios
+
+tasks:
+  run_scenario:
+    module: research.scenario.runner
+    entry: run
+    timeout_sec: 180
+    rate_limit_per_min: 10
+    params:
+      default_shocks: ["vol_up", "mean_down", "crash_10pct"]
+
+  stress_test:
+    module: research.scenario.stress_runner
+    entry: stress
+    timeout_sec: 240
+    rate_limit_per_min: 6
+    params:
+      regimes: ["2008", "covid", "taper_tantrum"]
+      metrics: ["VaR", "ES", "drawdown"]
+
+  portfolio_scenarios:
+    module: research.scenario.portfolio_runner
+    entry: evaluate
+    timeout_sec: 300
+    rate_limit_per_min: 4
+    params:
+      horizon_days: 30
+      mc_sims: 50000
+      dist: student_t
+      nu: 5
+
+scheduling:
+  cron:
+    - name: nightly_scenario_pack
+      cron: "30 21 * * 1-5"
+      signal:
+        topic: scenario_request
+        stream: signals
+        payload: {reason: "nightly_refresh"}
+    - name: weekly_stress_check
+      cron: "0 10 * * MON"
+      signal:
+        topic: stress_request
+        stream: signals
+        payload: {reason: "weekly_stress"}
+
+logging:
+  level: ${LOG_LEVEL:-INFO}
+  format: json
+  stdout: true
+  file:
+    enabled: true
+    path: ${SCENARIO_LOG_FILE:-/var/log/scenario/worker.log}
+    rotate_mb: 100
+    backups: 5
+
+health:
+  liveness:
+    type: redis_ping
+    interval_sec: 15
+    timeout_sec: 2
+  readiness:
+    checks:
+      - type: redis_stream_read
+        stream: ${STREAM_SIGNALS:-STREAM_SIGNALS}
+      - type: redis_stream_write
+        stream: ${STREAM_SCENARIOS:-STREAM_SCENARIOS}
+
+metrics:
+  prometheus:
+    enabled: true
+    bind: 0.0.0.0
+    port: ${METRICS_PORT:-9094}
+
+security:
+  allowlist_topics: ["scenario_request", "stress_request", "portfolio_snapshot"]
+  redact_fields: ["secret", "password", "api_key"]

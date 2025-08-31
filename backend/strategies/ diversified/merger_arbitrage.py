@@ -98,23 +98,23 @@ r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 def _hget_price(sym: str) -> Optional[float]:
     raw = r.hget(LAST_PRICE_HKEY, sym)
     if not raw: return None
-    try: return float(json.loads(raw)["price"])
+    try: return float(json.loads(raw)["price"]) # type: ignore
     except Exception:
-        try: return float(raw)
+        try: return float(raw) # type: ignore
         except Exception: return None
 
 def _hgetf(hk: str, field: str) -> Optional[float]:
     v = r.hget(hk, field)
     if v is None: return None
-    try: return float(v)
+    try: return float(v) # type: ignore
     except Exception:
-        try: return float(json.loads(v))
+        try: return float(json.loads(v)) # type: ignore
         except Exception: return None
 
 def _hget_json(hk: str, field: str) -> Optional[dict]:
     raw = r.hget(hk, field)
     if not raw: return None
-    try: return json.loads(raw)
+    try: return json.loads(raw) # type: ignore
     except Exception: return None
 
 def _now_ms() -> int:
@@ -182,7 +182,7 @@ def _load_ewma() -> EwmaMV:
     raw = r.get(_ewma_key())
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", EWMA_ALPHA)))
         except Exception: pass
     return EwmaMV(mean=0.0, var=1.0, alpha=EWMA_ALPHA)
@@ -237,9 +237,9 @@ class MergerArbitrage(Strategy):
         ratio     = _hgetf(DEAL_RATIO_HKEY, PAIR) or 0.0
         collar    = _hget_json(DEAL_COLLAR_HK, PAIR)
         deadline  = r.hget(DEAL_DEADLINE_HK, PAIR)
-        deadline  = int(deadline) if deadline and str(deadline).isdigit() else None
+        deadline  = int(deadline) if deadline and str(deadline).isdigit() else None # type: ignore
 
-        cons = _consideration(pa, deal_type, cash_per, ratio, collar)
+        cons = _consideration(pa, deal_type, cash_per, ratio, collar) # type: ignore
         if cons <= 0:
             return
 
@@ -250,7 +250,7 @@ class MergerArbitrage(Strategy):
         # friction guards (borrow on acquirer if we short; turnover fee roughness)
         fee_apr = _fees_apr(VENUE_EQ)
         borrow_apr_acq = 0.0
-        require_short = deal_type.upper() in ("STOCK", "MIXED") and (ratio > 0 or (collar is not None))
+        require_short = deal_type.upper() in ("STOCK", "MIXED") and (ratio > 0 or (collar is not None)) # type: ignore
         if require_short:
             borrow_apr_acq = _borrow_apr(f"EQ:{ACQ}")
             if borrow_apr_acq > BORROW_MAX_APR:
@@ -321,7 +321,7 @@ class MergerArbitrage(Strategy):
         raw = r.get(_poskey(self.ctx.name))
         if not raw: return None
         try:
-            return OpenState(**json.loads(raw))
+            return OpenState(**json.loads(raw)) # type: ignore
         except Exception:
             return None
 

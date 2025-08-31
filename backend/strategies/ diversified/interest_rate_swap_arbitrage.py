@@ -66,9 +66,9 @@ r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 def _hgetf(hk: str, field: str) -> Optional[float]:
     v = r.hget(hk, field)
     if v is None: return None
-    try: return float(v)
+    try: return float(v) # type: ignore
     except Exception:
-        try: return float(json.loads(v))
+        try: return float(json.loads(v)) # type: ignore
         except Exception: return None
 
 def _tenor_years(t: str) -> float:
@@ -104,7 +104,7 @@ def _load_ewma() -> EwmaMV:
     raw = r.get(_ewma_key())
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", EWMA_ALPHA)))
         except Exception: pass
     return EwmaMV(mean=0.0, var=1.0, alpha=EWMA_ALPHA)
@@ -219,7 +219,7 @@ class InterestRateSwapArbitrage(Strategy):
     def _load_state(self) -> Optional[OpenState]:
         raw = r.get(_poskey(self.ctx.name))
         if not raw: return None
-        try: return OpenState(**json.loads(raw))
+        try: return OpenState(**json.loads(raw)) # type: ignore
         except Exception: return None
 
     def _save_state(self, st: Optional[OpenState]) -> None:

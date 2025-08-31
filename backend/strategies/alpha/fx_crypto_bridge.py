@@ -103,10 +103,10 @@ r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 def _hgetf(hk: str, field: str) -> Optional[float]:
     raw = r.hget(hk, field)
     if raw is None: return None
-    try: return float(raw)
+    try: return float(raw) # type: ignore
     except Exception:
         try:
-            j = json.loads(raw)
+            j = json.loads(raw) # type: ignore
             if isinstance(j, dict) and "price" in j: return float(j["price"])
             if isinstance(j, (int,float)): return float(j)
         except Exception:
@@ -140,7 +140,7 @@ def _load_ewma(tag: str, alpha: float=0.08) -> EwmaMV:
     raw = r.get(_ewma_key(tag))
     if raw:
         try:
-            o = json.loads(raw); return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", alpha)))
+            o = json.loads(raw); return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", alpha))) # type: ignore
         except Exception: pass
     return EwmaMV(mean=0.0, var=1.0, alpha=alpha)
 def _save_ewma(tag: str, ew: EwmaMV) -> None:
@@ -304,7 +304,7 @@ class FxCryptoBridge(Strategy):
         raw = r.get(_poskey(self.ctx.name, tag))
         if not raw: return None
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return OpenState(mode=str(o["mode"]), side=str(o["side"]),
                              qty_usdt=float(o.get("qty_usdt", 0.0)), qty_btc=float(o.get("qty_btc", 0.0)),
                              entry_bps=float(o["entry_bps"]), entry_z=float(o["entry_z"]), ts_ms=int(o["ts_ms"]))

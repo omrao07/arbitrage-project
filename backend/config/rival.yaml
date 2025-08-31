@@ -1,0 +1,56 @@
+# config/rivals.yaml
+
+enabled: true
+
+# === Rival profiles ===
+rivals:
+  - name: "MarketMaker_X"
+    type: "mm"                     # mm = market maker
+    capital_usd: 500_000_000
+    style: "high_freq"
+    behavior:
+      spread_bps: 2
+      inventory_limit_pct: 0.05
+      latency_ms: 5
+      dark_pool_access: true
+
+  - name: "HedgeFund_Y"
+    type: "hf"
+    capital_usd: 2_000_000_000
+    style: "macro"
+    behavior:
+      leverage: 5.0
+      stop_loss_pct: 0.08
+      position_concentration_pct: 0.15
+      esg_focus: false
+
+  - name: "CryptoArb_Z"
+    type: "arb"
+    capital_usd: 200_000_000
+    style: "stat_arb"
+    behavior:
+      latency_ms: 15
+      exchanges: ["Binance", "Coinbase", "Kraken"]
+      max_open_positions: 50
+      preferred_pairs: ["BTC/USDT", "ETH/USDT"]
+
+# === Simulation settings ===
+simulation:
+  max_steps: 10_000
+  record_interactions: true
+  save_path: "./data/rival_sims/"
+  shock_events:
+    - type: "liquidity_drain"
+      trigger_step: 5000
+      severity: high
+    - type: "regulatory_announcement"
+      trigger_step: 7000
+      severity: medium
+
+# === Metrics to monitor ===
+metrics:
+  spreads: true
+  impact: true
+  pnl_competition: true
+  latency_race: true
+  dark_pool_share: true

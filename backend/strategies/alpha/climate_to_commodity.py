@@ -94,7 +94,7 @@ def _hget_json(hk: str, field: str) -> Optional[dict]:
     raw = r.hget(hk, field)
     if not raw: return None
     try:
-        j = json.loads(raw); return j if isinstance(j, dict) else None
+        j = json.loads(raw); return j if isinstance(j, dict) else None # type: ignore
     except Exception:
         return None
 
@@ -102,14 +102,14 @@ def _px(sym: str) -> Optional[float]:
     raw = r.hget(LAST_HK, f"CMD:{sym}")
     if not raw: return None
     try:
-        j = json.loads(raw); return float(j.get("price", 0.0))
+        j = json.loads(raw); return float(j.get("price", 0.0)) # type: ignore
     except Exception:
-        try: return float(raw)
+        try: return float(raw) # type: ignore
         except Exception: return None
 
 def _fees_bps(venue: str="EXCH") -> float:
     v = r.hget(FEES_HK, venue)
-    try: return float(v) if v is not None else 3.0
+    try: return float(v) if v is not None else 3.0 # type: ignore
     except Exception: return 3.0
 
 def _now_ms() -> int: return int(time.time()*1000)
@@ -131,7 +131,7 @@ def _load_ewma(tag: str) -> EwmaMV:
     raw = r.get(_ewma_key(tag))
     if raw:
         try:
-            o = json.loads(raw); return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", EWMA_ALPHA)))
+            o = json.loads(raw); return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", EWMA_ALPHA))) # type: ignore
         except Exception: pass
     return EwmaMV(mean=0.0, var=1.0, alpha=EWMA_ALPHA)
 def _save_ewma(tag: str, ew: EwmaMV) -> None:
@@ -161,7 +161,7 @@ def _score_commodity(sym: str) -> Optional[float]:
     gsum = 0.0
     for k, w in (cfg.get("global") or {}).items():
         try:
-            val = float(global_idx.get(k, 0.0)); gsum += float(w) * val
+            val = float(global_idx.get(k, 0.0)); gsum += float(w) * val # type: ignore
         except Exception:
             continue
 
@@ -324,7 +324,7 @@ class ClimateToCommodity(Strategy):
         raw = r.get(_poskey(self.ctx.name, tag))
         if not raw: return None
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return OpenState(side=str(o["side"]), qty1=float(o["qty1"]), qty2=float(o.get("qty2",0.0)),
                              z_at_entry=float(o["z_at_entry"]), ts_ms=int(o["ts_ms"]))
         except Exception:

@@ -111,15 +111,15 @@ def _now_ms() -> int: return int(time.time() * 1000)
 def _hget_json(hk: str, field: str) -> Optional[dict]:
     raw = r.hget(hk, field)
     if not raw: return None
-    try: return json.loads(raw)
+    try: return json.loads(raw) # type: ignore
     except Exception: return None
 
 def _hgetf(hk: str, field: str) -> Optional[float]:
     v = r.hget(hk, field)
     if v is None: return None
-    try: return float(v)
+    try: return float(v) # type: ignore
     except Exception:
-        try: return float(json.loads(v))
+        try: return float(json.loads(v)) # type: ignore
         except Exception: return None
 
 def _ob_cex(sym: str) -> Optional[Tuple[float,float,float]]:
@@ -244,15 +244,15 @@ class OnchainSettlementArbitrage(Strategy):
         txid = f"osa-{uuid.uuid4().hex[:12]}"
         if direction == "DEX_TO_CEX":
             # Enter: BUY on DEX, SHORT perp; then start transfer to CEX
-            self.order(f"DEX:{CHAIN}:{SYM}", "buy",  qty=qty, price=cheap_px, order_type="market", venue=VENUE_DEX, flags={"slippage_bps": MEV_SLIP_BPS_GUARD})
+            self.order(f"DEX:{CHAIN}:{SYM}", "buy",  qty=qty, price=cheap_px, order_type="market", venue=VENUE_DEX, flags={"slippage_bps": MEV_SLIP_BPS_GUARD}) # type: ignore
             self.order(f"PERP:{PERP_EXCH}:{SYM}", "sell", qty=perp_qty, order_type="market", venue=VENUE_PERP)
             # initiate transfer off-chain (adapter will process and publish xfer status)
-            self.order(f"DEX:{CHAIN}:{SYM}", "withdraw_to_cex", qty=qty, order_type="transfer", venue=VENUE_DEX, flags={"txid": txid, "dest": CEX})
+            self.order(f"DEX:{CHAIN}:{SYM}", "withdraw_to_cex", qty=qty, order_type="transfer", venue=VENUE_DEX, flags={"txid": txid, "dest": CEX}) # type: ignore
         else:
             # Enter: BUY on CEX, SHORT perp; then withdraw to DEX
-            self.order(f"CEX:{CEX}:{SYM}", "buy",  qty=qty, price=cheap_px, order_type="market", venue=VENUE_CEX)
+            self.order(f"CEX:{CEX}:{SYM}", "buy",  qty=qty, price=cheap_px, order_type="market", venue=VENUE_CEX) # type: ignore
             self.order(f"PERP:{PERP_EXCH}:{SYM}", "sell", qty=perp_qty, order_type="market", venue=VENUE_PERP)
-            self.order(f"CEX:{CEX}:{SYM}", "withdraw_to_chain", qty=qty, order_type="transfer", venue=VENUE_CEX, flags={"txid": txid, "dest_chain": CHAIN})
+            self.order(f"CEX:{CEX}:{SYM}", "withdraw_to_chain", qty=qty, order_type="transfer", venue=VENUE_CEX, flags={"txid": txid, "dest_chain": CHAIN}) # type: ignore
 
         st = OpenState(state="ENTERED", direction=direction, qty=qty,
                        avg_px_cheap=cheap_px, avg_px_rich=rich_px,
@@ -274,14 +274,14 @@ class OnchainSettlementArbitrage(Strategy):
             raw = r.get(f"{XFER_STATUS_PFX}{st.txid}")
             if raw:
                 try:
-                    o = json.loads(raw); stat = o.get("status")
+                    o = json.loads(raw); stat = o.get("status") # type: ignore
                 except Exception: stat = None
 
-        if (stat or "").lower() == "failed":
+        if (stat or "").lower() == "failed": # type: ignore
             self._abort_and_flatten(st, reason="xfer_failed")
             return
 
-        if (stat or "").lower() != "confirmed":
+        if (stat or "").lower() != "confirmed": # type: ignore
             # still in flight
             time.sleep(CONFIRM_WAIT_SECS)
             # move to INFLIGHT so we don’t re-enter anywhere
@@ -291,9 +291,9 @@ class OnchainSettlementArbitrage(Strategy):
 
         # Received funds → sell rich spot and move to SETTLE
         if st.direction == "DEX_TO_CEX":
-            self.order(f"CEX:{CEX}:{SYM}", "sell", qty=st.qty, price=st.avg_px_rich, order_type="market", venue=VENUE_CEX)
+            self.order(f"CEX:{CEX}:{SYM}", "sell", qty=st.qty, price=st.avg_px_rich, order_type="market", venue=VENUE_CEX) # type: ignore
         else:
-            self.order(f"DEX:{CHAIN}:{SYM}", "sell", qty=st.qty, price=st.avg_px_rich, order_type="market", venue=VENUE_DEX, flags={"slippage_bps": MEV_SLIP_BPS_GUARD})
+            self.order(f"DEX:{CHAIN}:{SYM}", "sell", qty=st.qty, price=st.avg_px_rich, order_type="market", venue=VENUE_DEX, flags={"slippage_bps": MEV_SLIP_BPS_GUARD}) # type: ignore
 
         st.state = "SETTLE"
         self._save_state(st)
@@ -309,7 +309,7 @@ class OnchainSettlementArbitrage(Strategy):
         # Undo spot leg on the venue we entered; close hedge
         if st.direction == "DEX_TO_CEX":
             # we hold tokens on-chain (or transfer failed) → sell back on DEX
-            self.order(f"DEX:{CHAIN}:{SYM}", "sell", qty=st.qty, order_type="market", venue=VENUE_DEX, flags={"slippage_bps": MEV_SLIP_BPS_GUARD})
+            self.order(f"DEX:{CHAIN}:{SYM}", "sell", qty=st.qty, order_type="market", venue=VENUE_DEX, flags={"slippage_bps": MEV_SLIP_BPS_GUARD}) # type: ignore
         else:
             self.order(f"CEX:{CEX}:{SYM}", "sell", qty=st.qty, order_type="market", venue=VENUE_CEX)
         self.order(f"PERP:{PERP_EXCH}:{SYM}", "buy", qty=st.perp_qty, order_type="market", venue=VENUE_PERP)
@@ -319,7 +319,7 @@ class OnchainSettlementArbitrage(Strategy):
     def _load_state(self) -> Optional[OpenState]:
         raw = r.get(_poskey(self.ctx.name))
         if not raw: return None
-        try: return OpenState(**json.loads(raw))
+        try: return OpenState(**json.loads(raw)) # type: ignore
         except Exception: return None
 
     def _save_state(self, st: Optional[OpenState]) -> None:

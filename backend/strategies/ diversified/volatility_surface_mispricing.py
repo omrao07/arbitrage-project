@@ -40,10 +40,10 @@ class VolatilitySurfaceMispricing(Strategy):
             return
         self.last_check = now
 
-        expiries = [e.decode().split(":")[2] for e in self.ctx.redis.scan_iter(f"iv:{SYM}:*")]
+        expiries = [e.decode().split(":")[2] for e in self.ctx.redis.scan_iter(f"iv:{SYM}:*")] # type: ignore
 
         for exp in sorted(set(expiries)):
-            curve = _fetch_iv_curve(self.ctx.redis, SYM, exp)
+            curve = _fetch_iv_curve(self.ctx.redis, SYM, exp) # type: ignore
             strikes = list(curve.keys())
             ivs = np.array(list(curve.values()))
 
@@ -65,7 +65,7 @@ class VolatilitySurfaceMispricing(Strategy):
             # Compare with shorter expiry same strike
             for other_exp in sorted(set(expiries)):
                 if other_exp == exp: continue
-                shorter_curve = _fetch_iv_curve(self.ctx.redis, SYM, other_exp)
+                shorter_curve = _fetch_iv_curve(self.ctx.redis, SYM, other_exp) # type: ignore
                 for strike, iv in curve.items():
                     if strike in shorter_curve:
                         if iv < shorter_curve[strike] - CAL_THRESH:

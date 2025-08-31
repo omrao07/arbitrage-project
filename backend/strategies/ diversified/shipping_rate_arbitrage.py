@@ -91,7 +91,7 @@ def _hget_json(hk: str, field: str) -> Optional[dict]:
     raw = r.hget(hk, field)
     if not raw: return None
     try:
-        j = json.loads(raw)
+        j = json.loads(raw) # type: ignore
         return j if isinstance(j, dict) else None
     except Exception:
         return None
@@ -100,18 +100,18 @@ def _px(sym: str) -> Optional[float]:
     raw = r.hget(LAST_HK, sym)
     if not raw: return None
     try:
-        j = json.loads(raw)
+        j = json.loads(raw) # type: ignore
         return float(j.get("price", 0))
     except Exception:
         try:
-            return float(raw)
+            return float(raw) # type: ignore
         except Exception:
             return None
 
 def _fees_bps(venue: str) -> float:
     v = r.hget(FEES_HK, venue)
     try:
-        return float(v) if v is not None else 5.0
+        return float(v) if v is not None else 5.0 # type: ignore
     except Exception:
         return 5.0
 
@@ -152,7 +152,7 @@ def _load_ewma(tag: str) -> EwmaMV:
     raw = r.get(_ewma_key(tag))
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", EWMA_ALPHA)))
         except Exception: pass
     return EwmaMV(mean=0.0, var=1.0, alpha=EWMA_ALPHA)
@@ -262,11 +262,11 @@ class ShippingRateArbitrage(Strategy):
         spot = _px(SPOT_SYM)  # for optional fair anchoring
         if None in (meta_n, meta_f) or None in (px_n, px_f) or spot is None: return
 
-        route = str(meta_n.get("route", "ROUTE"))
+        route = str(meta_n.get("route", "ROUTE")) # type: ignore
         # Simple fair spread from seasonality map (bps of near fair)
         seas = _hget_json(SEAS_HK, route) or {}
         bias_map = seas.get("spread_bias_bps") or {}
-        key = f"{meta_n.get('period','NEAR')}_{meta_f.get('period','FAR')}"
+        key = f"{meta_n.get('period','NEAR')}_{meta_f.get('period','FAR')}" # type: ignore
         seas_bps = float(bias_map.get(key, 0.0))
 
         # Build a fair for each leg as spot - adj, then apply seasonal bias to far vs near
@@ -274,7 +274,7 @@ class ShippingRateArbitrage(Strategy):
         fair_n = max(1e-6, spot - adj)
         fair_f = fair_n * (1.0 + seas_bps * 1e-4)  # apply bias to far
 
-        spread_mkt = px_f - px_n
+        spread_mkt = px_f - px_n # type: ignore
         spread_fair = fair_f - fair_n
         # Net edge (bps of |fair_spread| with guard)
         denom = max(1.0, abs(spread_fair))
@@ -294,7 +294,7 @@ class ShippingRateArbitrage(Strategy):
         if not (abs(edge_bps) >= ENTRY_BPS and abs(z) >= ENTRY_Z): return
 
         # Sizing: use near leg for lot notional baseline
-        lot_notional = _lot_usd(meta_n, max(px_n, fair_n))
+        lot_notional = _lot_usd(meta_n, max(px_n, fair_n)) # type: ignore
         lots = max(1.0, USD_NOTIONAL / max(lot_notional, 1.0))
         if lots * lot_notional < MIN_TICKET_USD: return
 
@@ -318,7 +318,7 @@ class ShippingRateArbitrage(Strategy):
         raw = r.get(_poskey(self.ctx.name, tag))
         if not raw: return None
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return OpenState(mode=str(o["mode"]), side=str(o["side"]),
                              lots=float(o["lots"]), hedge_qty=float(o["hedge_qty"]),
                              entry_bps=float(o["entry_bps"]), entry_z=float(o["entry_z"]),

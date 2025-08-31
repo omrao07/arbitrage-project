@@ -1,0 +1,81 @@
+# config/alerts.yaml
+
+# === Global settings ===
+enabled: true
+notify:
+  channels:
+    - email
+    - slack
+    - ui_banner
+  severity_levels: ["info", "warn", "critical"]
+
+# === Risk-based alerts ===
+risk:
+  drawdown:
+    enabled: true
+    threshold_pct: 0.10          # 10% portfolio drawdown
+    lookback_days: 5
+    severity: critical
+  var_breach:
+    enabled: true
+    alpha: 0.99
+    severity: warn
+  es_breach:
+    enabled: false               # enable if you want ES checks
+    alpha: 0.975
+    severity: critical
+
+# === Execution / Market alerts ===
+execution:
+  latency:
+    enabled: true
+    budget_ms: 200               # max acceptable median latency
+    percentile: 0.95
+    severity: warn
+  order_rejects:
+    enabled: true
+    threshold: 5                 # if >5% orders rejected in last hour
+    severity: critical
+  position_limit:
+    enabled: true
+    max_usd_exposure: 5_000_000
+    severity: critical
+
+# === Alt-data / Sentiment alerts ===
+sentiment:
+  social_spike:
+    enabled: true
+    zscore_threshold: 3.0        # 3σ move in sentiment index
+    severity: info
+  news_negative:
+    enabled: true
+    keywords: ["fraud", "bankruptcy", "default", "downgrade"]
+    severity: warn
+
+# === System / Ops alerts ===
+system:
+  cpu:
+    enabled: true
+    threshold_pct: 90
+    severity: warn
+  memory:
+    enabled: true
+    threshold_pct: 80
+    severity: warn
+  disk:
+    enabled: true
+    threshold_pct: 85
+    severity: warn
+  redis_lag:
+    enabled: true
+    max_lag_ms: 5000
+    severity: critical
+
+# === Alert routing ===
+routing:
+  email:
+    to: ["risk-team@example.com", "ops@example.com"]
+  slack:
+    webhook_url: "https://hooks.slack.com/services/TOKEN"
+  ui_banner:
+    show_in_dashboard: true

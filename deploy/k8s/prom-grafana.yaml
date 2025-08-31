@@ -1,0 +1,276 @@
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+---
+# Prometheus config
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    scrape_configs:
+      # Scrape Prometheus itself
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['prometheus:9090']
+
+      # Hedgefund API (expects /metrics)
+      - job_name: 'hedgefund-api'
+        kubernetes_sd_configs:
+          - role: endpoints
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            regex: hedgefund-api-service
+            action: keep
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            regex: http
+            action: keep
+          - target_label: job
+            replacement: hedgefund-api
+
+      # Node metrics (if node-exporter is present)
+      - job_name: 'node-exporter'
+        kubernetes_sd_configs:
+          - role: endpoints
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_label_app_kubernetes_io_name]
+            regex: node-exporter
+            action: keep
+
+      # Redis Exporter (optional)
+      - job_name: 'redis-exporter'
+        kubernetes_sd_configs:
+          - role: endpoints
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            regex: redis-exporter
+            action: keep
+---
+# Prometheus Deployment + Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels: { app: prometheus }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: prometheus }
+  template:
+    metadata:
+      labels: { app: prometheus }
+    spec:
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.54.0
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus"
+            - "--web.enable-lifecycle"
+          ports:
+            - containerPort: 9090
+              name: http
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+            - name: data
+              mountPath: /prometheus
+          resources:
+            requests: { cpu: "200m", memory: "256Mi" }
+            limits:   { cpu: "1",    memory: "1Gi" }
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+        - name: data
+          emptyDir: {} # swap for a PVC in prod
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels: { app: prometheus }
+spec:
+  selector: { app: prometheus }
+  ports:
+    - name: http
+      port: 9090
+      targetPort: 9090
+---
+# Grafana datasource config (points to Prometheus service above)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: monitoring
+  labels:
+    grafana_datasource: "1"
+data:
+  prometheus.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus.monitoring.svc.cluster.local:9090
+        isDefault: true
+        editable: true
+---
+# (Optional) Starter dashboard: API latency & request rate
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  hedgefund-api.json: |
+    {
+      "id": null,
+      "title": "Hedgefund API Overview",
+      "schemaVersion": 39,
+      "version": 1,
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "Request Rate (req/s)",
+          "targets": [{ "expr": "sum(rate(http_requests_total[5m]))", "legendFormat": "all" }],
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 }
+        },
+        {
+          "type": "timeseries",
+          "title": "Latency p50 / p95 (ms)",
+          "targets": [
+            { "expr": "histogram_quantile(0.5, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p50" },
+            { "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95" }
+          ],
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 }
+        },
+        {
+          "type": "timeseries",
+          "title": "5xx Error Rate",
+          "targets": [{ "expr": "sum(rate(http_requests_total{code=~\"5..\"}[5m]))", "legendFormat": "5xx" }],
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 }
+        },
+        {
+          "type": "timeseries",
+          "title": "CPU / Memory (pod)",
+          "targets": [
+            { "expr": "sum(rate(container_cpu_usage_seconds_total{container!=\"POD\",pod=~\"hedgefund-api.*\"}[5m]))", "legendFormat": "CPU" },
+            { "expr": "sum(container_memory_working_set_bytes{container!=\"POD\",pod=~\"hedgefund-api.*\"})", "legendFormat": "Mem" }
+          ],
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 }
+        }
+      ],
+      "time": { "from": "now-6h", "to": "now" }
+    }
+---
+# Grafana Deployment + Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+  labels: { app: grafana }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: grafana }
+  template:
+    metadata:
+      labels: { app: grafana }
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:10.4.5
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-admin
+                  key: username
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-admin
+                  key: password
+            - name: GF_PATHS_PROVISIONING
+              value: /etc/grafana/provisioning
+          volumeMounts:
+            - name: datasources
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: dashboards
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: dashboards-def
+              mountPath: /var/lib/grafana/dashboards
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits:   { cpu: "500m", memory: "1Gi" }
+      volumes:
+        - name: datasources
+          configMap:
+            name: grafana-datasources
+        - name: dashboards
+          configMap:
+            name: grafana-provisioning
+        - name: dashboards-def
+          configMap:
+            name: grafana-dashboards
+---
+# Grafana provisioning config to load dashboards from /var/lib/grafana/dashboards
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-provisioning
+  namespace: monitoring
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: 'default'
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 30
+        options:
+          path: /var/lib/grafana/dashboards
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: monitoring
+  labels: { app: grafana }
+spec:
+  selector: { app: grafana }
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+  type: ClusterIP
+---
+# (Optional) Secrets for Grafana admin (create your own values)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-admin
+  namespace: monitoring
+type: Opaque
+stringData:
+  username: admin
+  password: admin123   # change this in prod

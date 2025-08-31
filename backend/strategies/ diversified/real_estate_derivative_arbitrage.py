@@ -89,7 +89,7 @@ def _hget_json(hk: str, field: str) -> Optional[dict]:
     raw = r.hget(hk, field)
     if not raw: return None
     try:
-        j = json.loads(raw)
+        j = json.loads(raw) # type: ignore
         return j if isinstance(j, dict) else None
     except Exception:
         return None
@@ -97,18 +97,18 @@ def _hget_json(hk: str, field: str) -> Optional[dict]:
 def _hgetf(hk: str, field: str) -> Optional[float]:
     v = r.hget(hk, field)
     if v is None: return None
-    try: return float(v)
+    try: return float(v) # type: ignore
     except Exception:
-        try: return float(json.loads(v))
+        try: return float(json.loads(v)) # type: ignore
         except Exception: return None
 
 def _px(sym: str) -> Optional[float]:
     raw = r.hget(LAST_PRICE_HK, sym)
     if not raw: return None
     try:
-        j = json.loads(raw); return float(j.get("price", 0))
+        j = json.loads(raw); return float(j.get("price", 0)) # type: ignore
     except Exception:
-        try: return float(raw)
+        try: return float(raw) # type: ignore
         except Exception: return None
 
 def _now_ms() -> int: return int(time.time() * 1000)
@@ -160,7 +160,7 @@ def _load_ewma(tag: str) -> EwmaMV:
     raw = r.get(_ewma_key(tag))
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # pyright: ignore[reportArgumentType]
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", EWMA_ALPHA)))
         except Exception: pass
     return EwmaMV(mean=0.0, var=1.0, alpha=EWMA_ALPHA)
@@ -212,8 +212,8 @@ class RealEstateDerivativeArbitrage(Strategy):
 
         T = _tenor_years(int(meta.get("expiry_ms") or 0))
         rf, div, misc = _carry_inputs(tag)
-        fair = bkt_px * math.exp((rf - div - misc) * max(T, 1e-6))
-        basis = fut_px - fair
+        fair = bkt_px * math.exp((rf - div - misc) * max(T, 1e-6)) # type: ignore
+        basis = fut_px - fair # type: ignore
         basis_bps = 1e4 * (basis / max(1e-6, fair))
 
         ew = _load_ewma(tag); m,v = ew.update(basis_bps); _save_ewma(tag, ew)
@@ -235,13 +235,13 @@ class RealEstateDerivativeArbitrage(Strategy):
             return
 
         # sizing (derivative notional against basket NAV proxy)
-        qty_deriv = max(0.0, USD_NOTIONAL / max(1e-6, fut_px))
-        if qty_deriv * fut_px < MIN_TICKET_USD: return
+        qty_deriv = max(0.0, USD_NOTIONAL / max(1e-6, fut_px)) # type: ignore
+        if qty_deriv * fut_px < MIN_TICKET_USD: return # type: ignore
 
         # build hedge: basket quantities scaled by beta and notional
         legs = _basket_legs(BASKET_ID)
         basket_qtys: Dict[str, float] = {}
-        usd_hedge = HEDGE_BETA * qty_deriv * fut_px
+        usd_hedge = HEDGE_BETA * qty_deriv * fut_px # type: ignore
         for sym, w in legs.items():
             px = _px(sym)
             if px is None or px <= 0: return
@@ -276,8 +276,8 @@ class RealEstateDerivativeArbitrage(Strategy):
 
         T = _tenor_years(int(meta.get("maturity_ms") or 0))
         rf, div, misc = _carry_inputs(tag)
-        fair_idx = bkt_px * math.exp((rf - div - misc) * max(T, 1e-6))
-        basis = idx_px - fair_idx
+        fair_idx = bkt_px * math.exp((rf - div - misc) * max(T, 1e-6)) # type: ignore
+        basis = idx_px - fair_idx # type: ignore
         basis_bps = 1e4 * (basis / max(1e-6, fair_idx))
 
         ew = _load_ewma(tag); m,v = ew.update(basis_bps); _save_ewma(tag, ew)
@@ -294,12 +294,12 @@ class RealEstateDerivativeArbitrage(Strategy):
         if not (abs(basis_bps) >= ENTRY_BPS and abs(z) >= ENTRY_Z):
             return
 
-        qty_deriv = max(0.0, USD_NOTIONAL / max(1e-6, idx_px))
-        if qty_deriv * idx_px < MIN_TICKET_USD: return
+        qty_deriv = max(0.0, USD_NOTIONAL / max(1e-6, idx_px)) # type: ignore
+        if qty_deriv * idx_px < MIN_TICKET_USD: return # type: ignore
 
         legs = _basket_legs(BASKET_ID)
         basket_qtys: Dict[str, float] = {}
-        usd_hedge = HEDGE_BETA * qty_deriv * idx_px
+        usd_hedge = HEDGE_BETA * qty_deriv * idx_px # type: ignore
         for sym, w in legs.items():
             px = _px(sym)
             if px is None or px <= 0: return
@@ -328,7 +328,7 @@ class RealEstateDerivativeArbitrage(Strategy):
         raw = r.get(_poskey(self.ctx.name, tag))
         if not raw: return None
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return OpenState(mode=str(o["mode"]),
                              side=str(o["side"]),
                              qty_deriv=float(o["qty_deriv"]),

@@ -93,10 +93,10 @@ r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 def _hgetf(hk: str, field: str) -> Optional[float]:
     v = r.hget(hk, field)
     if v is None: return None
-    try: return float(v)
+    try: return float(v) # type: ignore
     except Exception:
         try:
-            j = json.loads(v)
+            j = json.loads(v) # type: ignore
             return float(j) if isinstance(j, (int,float)) else None
         except Exception:
             return None
@@ -105,14 +105,14 @@ def _px(sym: str) -> Optional[float]:
     raw = r.hget(LAST_HK, sym)
     if not raw: return None
     try:
-        j = json.loads(raw); return float(j.get("price", 0.0))
+        j = json.loads(raw); return float(j.get("price", 0.0)) # type: ignore
     except Exception:
-        try: return float(raw)
+        try: return float(raw) # type: ignore
         except Exception: return None
 
 def _fees_bps(hk: str, venue: str) -> float:
     v = r.hget(hk, venue)
-    try: return float(v) if v is not None else 5.0
+    try: return float(v) if v is not None else 5.0 # type: ignore
     except Exception: return 5.0
 
 def _now_ms() -> int: return int(time.time() * 1000)
@@ -135,7 +135,7 @@ def _load_ewma(tag: str) -> EwmaMV:
     raw = r.get(_ewma_key(tag))
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", EWMA_ALPHA)))
         except Exception: pass
     return EwmaMV(mean=0.0, var=1.0, alpha=EWMA_ALPHA)
@@ -302,7 +302,7 @@ class VolatilityTermStructure(Strategy):
         raw = r.get(_poskey(self.ctx.name, tag))
         if not raw: return None
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return OpenState(mode=str(o["mode"]), side=str(o["side"]),
                              qty1=float(o["qty1"]), qty2=float(o["qty2"]),
                              entry_bps=float(o["entry_bps"]), entry_z=float(o["entry_z"]),

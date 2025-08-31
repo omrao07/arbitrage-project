@@ -95,10 +95,10 @@ r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 def _hgetf(hk: str, field: str) -> Optional[float]:
     v = r.hget(hk, field)
     if v is None: return None
-    try: return float(v)
+    try: return float(v) # type: ignore
     except Exception:
         try:
-            j = json.loads(v); 
+            j = json.loads(v);  # type: ignore
             # accept {"v": number} style too
             if isinstance(j, dict) and "v" in j: return float(j["v"])
         except Exception: pass
@@ -108,7 +108,7 @@ def _hget_json(hk: str, field: str) -> Optional[dict]:
     raw = r.hget(hk, field)
     if not raw: return None
     try: 
-        obj = json.loads(raw)
+        obj = json.loads(raw) # type: ignore
         return obj if isinstance(obj, dict) else None
     except Exception:
         return None
@@ -117,10 +117,10 @@ def _price(sym: str) -> Optional[float]:
     raw = r.hget(LAST_PRICE, sym)
     if not raw: return None
     try:
-        j = json.loads(raw)
+        j = json.loads(raw) # type: ignore
         return float(j.get("price", 0))
     except Exception:
-        try: return float(raw)
+        try: return float(raw) # type: ignore
         except Exception: return None
 
 def _now_ms() -> int:
@@ -167,7 +167,7 @@ def _load_ewma(id_: str) -> EwmaMV:
     raw = r.get(_ewma_key(id_))
     if raw:
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return EwmaMV(mean=float(o["m"]), var=float(o["v"]), alpha=float(o.get("a", EWMA_ALPHA)))
         except Exception: pass
     return EwmaMV(mean=0.0, var=1.0, alpha=EWMA_ALPHA)
@@ -219,14 +219,14 @@ class PatentRightsArbitrage(Strategy):
         disc  = _hgetf(DISC_HK,  PATENT_ID)
         prob  = _hgetf(PROB_HK,  PATENT_ID)
         legal = _hgetf(LEGAL_HK, PATENT_ID) or 0.0
-        if None in (ask, rate, A0, disc, prob) or term <= 0 or ask <= 0 or rate < 0 or A0 < 0 or disc <= 0 or prob < 0:
+        if None in (ask, rate, A0, disc, prob) or term <= 0 or ask <= 0 or rate < 0 or A0 < 0 or disc <= 0 or prob < 0: # type: ignore
             return None
-        return ask, rate, A0, g, term, disc, prob, legal
+        return ask, rate, A0, g, term, disc, prob, legal # type: ignore
 
     def _evaluate(self) -> None:
         vals = self._inputs()
         if not vals: return
-        ask, rate, A0, g, term, disc, prob, legal = vals
+        ask, rate, A0, g, term, disc, prob, legal = vals # type: ignore
 
         npv = _npv(ask, rate, A0, g, term, disc, prob, legal)
         edge = npv - ask
@@ -296,7 +296,7 @@ class PatentRightsArbitrage(Strategy):
         raw = r.get(_poskey(self.ctx.name, PATENT_ID))
         if not raw: return None
         try:
-            o = json.loads(raw)
+            o = json.loads(raw) # type: ignore
             return OpenState(qty_patent=float(o["qty_patent"]),
                              hedge={k: float(v) for k, v in (o.get("hedge") or {}).items()},
                              entry_edge_usd=float(o["entry_edge_usd"]),
