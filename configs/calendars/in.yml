@@ -1,0 +1,30 @@
+# configs/calendars/in.yml
+
+region: IN
+timezone: Asia/Kolkata
+
+hours:
+  mon: "09:15-15:30"
+  tue: "09:15-15:30"
+  wed: "09:15-15:30"
+  thu: "09:15-15:30"
+  fri: "09:15-15:30"
+  sat: ""   # closed
+  sun: ""   # closed
+
+holidays:
+  # 2025 sample NSE holidays (subject to exchange circular updates)
+  - 2025-01-26   # Republic Day (Sunday, already closed)
+  - 2025-03-14   # Holi
+  - 2025-03-31   # Year End Bank Holiday
+  - 2025-04-10   # Mahavir Jayanti
+  - 2025-04-11   # Good Friday
+  - 2025-04-14   # Dr. Ambedkar Jayanti
+  - 2025-08-15   # Independence Day
+  - 2025-10-02   # Gandhi Jayanti
+  - 2025-10-21   # Diwali Laxmi Pujan (Muhurat trading evening only)
+  - 2025-12-25   # Christmas
+
+early_closes:
+  - date: 2025-10-21
+    note: "Diwali Muhurat trading session (approx 18:00–19:15 IST)"

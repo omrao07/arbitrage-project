@@ -1,0 +1,10 @@
+# k8s/base/ns.yaml
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hf
+  labels:
+    name: hf
+    environment: production
+    app.kubernetes.io/part-of: hf-platform

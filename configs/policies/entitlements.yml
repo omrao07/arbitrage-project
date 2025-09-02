@@ -1,0 +1,38 @@
+# configs/policies/entitlements.yml
+
+version: 1
+
+rules:
+  # Analysts can view analytics & dashboards but cannot trade
+  - roles: ["analyst"]
+    resources:
+      - "analytics/*"
+      - "dashboards/*"
+      - "reports/*"
+
+  # Risk team can view risk models & run scenarios
+  - roles: ["risk"]
+    resources:
+      - "risk/*"
+      - "scenarios/*"
+      - "var/*"
+      - "es/*"
+
+  # Traders can access execution modules and PnL dashboards
+  - roles: ["trader"]
+    resources:
+      - "exec/*"
+      - "pnl/*"
+      - "orders/*"
+      - "fills/*"
+
+  # Admins can access everything
+  - roles: ["admin"]
+    resources:
+      - "*"
+
+  # Example: restrict sentiment data to research desks only
+  - roles: ["research"]
+    resources:
+      - "sentiment/*"
+      - "nlp/*"

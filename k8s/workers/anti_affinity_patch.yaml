@@ -1,0 +1,86 @@
+# k8s/workers/anti_affinity_patch.yaml
+# Strategic-merge patches for worker Deployments to spread pods
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analyst-worker
+  namespace: hf
+spec:
+  template:
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values: ["analyst-worker"]
+              topologyKey: kubernetes.io/hostname
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values: ["analyst-worker"]
+                topologyKey: topology.kubernetes.io/zone
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scenario-worker
+  namespace: hf
+spec:
+  template:
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values: ["scenario-worker"]
+              topologyKey: kubernetes.io/hostname
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values: ["scenario-worker"]
+                topologyKey: topology.kubernetes.io/zone
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentiment-worker
+  namespace: hf
+spec:
+  template:
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values: ["sentiment-worker"]
+              topologyKey: kubernetes.io/hostname
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values: ["sentiment-worker"]
+                topologyKey: topology.kubernetes.io/zone

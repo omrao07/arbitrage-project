@@ -1,0 +1,31 @@
+# k8s/jobs/chaos_job.yaml
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: chaos-kill-analyst
+  namespace: hf
+  labels:
+    app: chaos
+spec:
+  template:
+    metadata:
+      labels:
+        app: chaos
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: chaos
+        image: bitnami/kubectl:1.29
+        command:
+          - /bin/sh
+          - -c
+          - |
+            echo "Simulating chaos: deleting one analyst-worker pod..."
+            POD=$(kubectl get pod -n hf -l app=analyst-worker -o jsonpath='{.items[0].metadata.name}')
+            if [ -n "$POD" ]; then
+              kubectl delete pod -n hf $POD
+              echo "Deleted pod: $POD"
+            else
+              echo "No analyst-worker pod found"
+            fi

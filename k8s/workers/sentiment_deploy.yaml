@@ -1,0 +1,81 @@
+# k8s/workers/sentiment_deploy.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentiment-worker
+  namespace: hf
+  labels:
+    app: sentiment-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: sentiment-worker
+  template:
+    metadata:
+      labels:
+        app: sentiment-worker
+        component: worker
+    spec:
+      containers:
+      - name: sentiment
+        image: hf/worker:sentiment   # built from docker/worker.Dockerfile
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: REDIS_HOST
+          value: redis
+        - name: REDIS_PORT
+          value: "6379"
+        - name: WORKER_MODULE
+          value: workers.sentiment_worker
+        # Optional: model/lang tuning via env
+        - name: SENTIMENT_LANG
+          value: "en"
+        - name: SENTIMENT_MODEL
+          value: "spacy_sm"
+        ports:
+        - name: metrics
+          containerPort: 9090
+        - name: http
+          containerPort: 8000
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+          limits:
+            cpu: "1"
+            memory: "1Gi"
+        readinessProbe:
+          httpGet:
+            path: /metrics
+            port: 9090
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /metrics
+            port: 9090
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      terminationGracePeriodSeconds: 30
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sentiment-worker
+  namespace: hf
+  labels:
+    app: sentiment-worker
+spec:
+  type: ClusterIP
+  ports:
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+    - name: http
+      port: 8000
+      targetPort: 8000
+  selector:
+    app: sentiment-worker

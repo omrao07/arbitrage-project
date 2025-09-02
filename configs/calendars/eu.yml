@@ -1,0 +1,31 @@
+# configs/calendars/eu.yml
+
+region: EU
+timezone: Europe/Brussels
+
+hours:
+  mon: "09:00-17:30"
+  tue: "09:00-17:30"
+  wed: "09:00-17:30"
+  thu: "09:00-17:30"
+  fri: "09:00-17:30"
+  sat: ""   # closed
+  sun: ""   # closed
+
+holidays:
+  # 2025 sample (Euronext/Frankfurt common closures)
+  - 2025-01-01   # New Year's Day
+  - 2025-04-18   # Good Friday
+  - 2025-04-21   # Easter Monday
+  - 2025-05-01   # Labour Day
+  - 2025-05-29   # Ascension Day
+  - 2025-06-09   # Whit Monday
+  - 2025-12-24   # Christmas Eve (early close or full close depending on venue)
+  - 2025-12-25   # Christmas Day
+  - 2025-12-26   # Boxing Day / St. Stephen’s Day
+
+early_closes:
+  - date: 2025-12-24
+    close: "13:00"
+  - date: 2025-12-31
+    close: "14:05"

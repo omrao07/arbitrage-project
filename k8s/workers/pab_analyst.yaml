@@ -1,0 +1,14 @@
+# k8s/workers/pdb_analyst.yaml
+
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: analyst-worker-pdb
+  namespace: hf
+  labels:
+    app: analyst-worker
+spec:
+  minAvailable: 1            # always keep at least 1 pod running
+  selector:
+    matchLabels:
+      app: analyst-worker

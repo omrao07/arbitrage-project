@@ -1,0 +1,33 @@
+# k8s/alerts/recording_rules.yaml
+
+groups:
+- name: worker-aggregates
+  interval: 30s
+  rules:
+  - record: worker:latency_p95_seconds
+    expr: histogram_quantile(
+            0.95,
+            sum(rate(worker_task_latency_seconds_bucket[5m])) by (le, worker)
+          )
+
+  - record: worker:error_rate_ratio
+    expr: sum(rate(worker_task_errors_total[5m])) by (worker)
+          /
+          sum(rate(worker_tasks_total[5m])) by (worker)
+
+  - record: worker:dlq_rate_ratio
+    expr: sum(rate(worker_dlq_total[5m])) by (worker)
+          /
+          sum(rate(worker_tasks_total[5m])) by (worker)
+
+  - record: worker:queue_lag_seconds
+    expr: avg(worker_queue_lag_seconds_sum) by (worker)
+
+- name: infra-aggregates
+  interval: 30s
+  rules:
+  - record: pod:restarts_10m
+    expr: sum(rate(kube_pod_container_status_restarts_total[10m])) by (pod, namespace)
+
+  - record: pod:not_ready
+    expr: kube_pod_status_ready{condition="true"} == 0

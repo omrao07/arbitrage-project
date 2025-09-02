@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "updated": "2025-09-02T00:00:00Z",
+
+  "metric": "worker_task_latency_seconds",
+  "histogram_metric": "worker_task_latency_seconds_bucket",
+
+  "defaults": {
+    "window": "7d",
+    "evaluate_every": "1m",
+    "buckets_sec": [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 4, 8, 16, 32],
+    "page_on_breach": true,
+    "freeze_on_p99_breach": true,
+    "freeze_actions": ["mode:passive_only", "participation_cap:0.5x", "kill_switch:price_band"],
+    "labels": {
+      "env": "$DEPLOY_ENV",
+      "region": "$REGION"
+    }
+  },
+
+  "slo": [
+    {
+      "service": "rl-exec",
+      "task": "route_order",
+      "p95_sec": 0.25,
+      "p99_sec": 0.50,
+      "window": "7d",
+      "burn_alerts": [
+        {"long_window": "1h", "short_window": "5m", "p95_mult": 1.0, "p99_mult": 1.0, "severity": "page"},
+        {"long_window": "24h", "short_window": "1h", "p95_mult": 1.2, "p99_mult": 1.1, "severity": "ticket"}
+      ]
+    },
+    {
+      "service": "rl-exec",
+      "task": "place_child",
+      "p95_sec": 0.15,
+      "p99_sec": 0.35,
+      "burn_alerts": [
+        {"long_window": "1h", "short_window": "5m", "p95_mult": 1.0, "p99_mult": 1.0, "severity": "page"}
+      ]
+    },
+    {
+      "service": "order-router",
+      "task": "send_to_venue",
+      "p95_sec": 0.08,
+      "p99_sec": 0.20
+    },
+    {
+      "service": "exec-gateway",
+      "task": "ack_roundtrip",
+      "p95_sec": 0.12,
+      "p99_sec": 0.25
+    },
+    {
+      "service": "analyst-worker",
+      "task": "scenario_evaluate",
+      "p95_sec": 2.0,
+      "p99_sec": 4.0
+    },
+    {
+      "service": "sentiment-worker",
+      "task": "sentiment_analyze",
+      "p95_sec": 1.5,
+      "p99_sec": 3.0
+    }
+  ],
+
+  "venues": {
+    "XNAS": { "p95_sec": 0.20, "p99_sec": 0.35 },
+    "XNYS": { "p95_sec": 0.20, "p99_sec": 0.35 },
+    "XNSE": { "p95_sec": 0.30, "p99_sec": 0.60 },
+    "XTKS": { "p95_sec": 0.25, "p99_sec": 0.50 },
+    "XPAR": { "p95_sec": 0.25, "p99_sec": 0.50 }
+  },
+
+  "tiers": {
+    "A": { "symbols": "top100_liquid", "p95_sec": 0.15, "p99_sec": 0.30 },
+    "B": { "symbols": "midcap", "p95_sec": 0.25, "p99_sec": 0.50 },
+    "C": { "symbols": "illiquid", "p95_sec": 0.50, "p99_sec": 1.00 }
+  },
+
+  "promql": {
+    "latency_p95": "histogram_quantile(0.95, sum by (le,worker,task) (rate(worker_task_latency_seconds_bucket{worker=\"$service\",task=\"$task\"}[5m])))",
+    "latency_p99": "histogram_quantile(0.99, sum by (le,worker,task) (rate(worker_task_latency_seconds_bucket{worker=\"$service\",task=\"$task\"}[5m])))",
+    "burn_p95_short": "histogram_quantile(0.95, sum by (le,worker,task) (rate(worker_task_latency_seconds_bucket{worker=\"$service\",task=\"$task\"}[$short])))",
+    "burn_p95_long":  "histogram_quantile(0.95, sum by (le,worker,task) (rate(worker_task_latency_seconds_bucket{worker=\"$service\",task=\"$task\"}[$long])))",
+    "burn_p99_short": "histogram_quantile(0.99, sum by (le,worker,task) (rate(worker_task_latency_seconds_bucket{worker=\"$service\",task=\"$task\"}[$short])))",
+    "burn_p99_long":  "histogram_quantile(0.99, sum by (le,worker,task) (rate(worker_task_latency_seconds_bucket{worker=\"$service\",task=\"$task\"}[$long])))"
+  },
+
+  "actions_on_breach": {
+    "severity_map": {
+      "page":  ["notify:pagerduty", "freeze:rl-exec", "reduce:participation_cap:0.5x"],
+      "ticket": ["notify:slack:#exec-alerts", "jira:create"]
+    }
+  }
+}

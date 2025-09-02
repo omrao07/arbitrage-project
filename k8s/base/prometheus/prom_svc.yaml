@@ -1,0 +1,18 @@
+# k8s/base/prometheus/prom_svc.yaml
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: hf
+  labels:
+    app: prometheus
+spec:
+  type: ClusterIP   # internal only by default
+  selector:
+    app: prometheus
+  ports:
+    - name: http
+      port: 9090        # service port
+      targetPort: 9090  # container port
+      protocol: TCP

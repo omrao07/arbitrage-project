@@ -1,0 +1,229 @@
+# k8s/base/prometheus/prom_deploy.yaml
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: hf
+  labels:
+    app: prometheus
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus
+  labels:
+    app: prometheus
+rules:
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - nodes/metrics
+      - services
+      - endpoints
+      - pods
+      - configmaps
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs: ["/metrics"]
+    verbs: ["get"]
+  - apiGroups: ["extensions", "networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus
+  labels:
+    app: prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: hf
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-pvc
+  namespace: hf
+  labels:
+    app: prometheus
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: standard
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: hf
+  labels:
+    app: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      serviceAccountName: prometheus
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.53.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --storage.tsdb.retention.time=15d
+            - --web.enable-lifecycle
+          ports:
+            - name: http
+              containerPort: 9090
+          volumeMounts:
+            - name: prometheus-config
+              mountPath: /etc/prometheus
+            - name: prometheus-rules
+              mountPath: /etc/prometheus/rules
+            - name: prometheus-storage
+              mountPath: /prometheus
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 9090
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: prometheus-config
+          configMap:
+            name: prometheus-config           # from prom_configmap.yaml
+        - name: prometheus-rules
+          projected:
+            sources:
+              - configMap:
+                  name: prometheus-alerts     # defined below
+                  items:
+                    - key: alert_rules.yaml
+                      path: alert_rules.yaml
+              - configMap:
+                  name: prometheus-recording  # defined below
+                  items:
+                    - key: recording_rules.yaml
+                      path: recording_rules.yaml
+        - name: prometheus-storage
+          persistentVolumeClaim:
+            claimName: prometheus-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: hf
+  labels:
+    app: prometheus
+spec:
+  type: ClusterIP
+  selector:
+    app: prometheus
+  ports:
+    - name: http
+      port: 9090
+      targetPort: 9090
+      protocol: TCP
+
+# Optional: bundle your alert/recording rules as ConfigMaps so the Deployment is self-contained.
+# If you already manage these elsewhere, you can omit these two blocks.
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-alerts
+  namespace: hf
+  labels:
+    app: prometheus
+data:
+  alert_rules.yaml: |
+    groups:
+    - name: worker-slo
+      interval: 30s
+      rules:
+      - alert: WorkerHighLatency
+        expr: histogram_quantile(0.95, sum(rate(worker_task_latency_seconds_bucket[5m])) by (le,worker)) > 8
+        for: 10m
+        labels: { severity: page, team: hedgefund-core }
+        annotations:
+          summary: "Worker latency high"
+          description: "p95 > 8s for worker {{ $labels.worker }}."
+      - alert: WorkerErrorRate
+        expr: sum(rate(worker_task_errors_total[5m])) by (worker) / sum(rate(worker_tasks_total[5m])) by (worker) > 0.01
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: "High error rate in {{ $labels.worker }}"
+          description: "Error rate > 1% over 5m."
+      - alert: WorkerDLQRate
+        expr: sum(rate(worker_dlq_total[5m])) by (worker) / sum(rate(worker_tasks_total[5m])) by (worker) > 0.001
+        for: 10m
+        labels: { severity: page }
+        annotations:
+          summary: "DLQ rate high"
+          description: "DLQ rate > 0.1%."
+      - alert: WorkerBacklogGrowing
+        expr: rate(worker_queue_lag_seconds_sum[5m]) > 0
+        for: 15m
+        labels: { severity: warn }
+        annotations:
+          summary: "Worker backlog increasing"
+          description: "Queue lag increasing for {{ $labels.worker }}."
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-recording
+  namespace: hf
+  labels:
+    app: prometheus
+data:
+  recording_rules.yaml: |
+    groups:
+    - name: worker-aggregates
+      interval: 30s
+      rules:
+      - record: worker:latency_p95_seconds
+        expr: histogram_quantile(0.95, sum(rate(worker_task_latency_seconds_bucket[5m])) by (le, worker))
+      - record: worker:error_rate_ratio
+        expr: sum(rate(worker_task_errors_total[5m])) by (worker) / sum(rate(worker_tasks_total[5m])) by (worker)
+      - record: worker:dlq_rate_ratio
+        expr: sum(rate(worker_dlq_total[5m])) by (worker) / sum(rate(worker_tasks_total[5m])) by (worker)
+      - record: worker:queue_lag_seconds
+        expr: avg(worker_queue_lag_seconds_sum) by (worker)
+    - name: infra-aggregates
+      interval: 30s
+      rules:
+      - record: pod:restarts_10m
+        expr: sum(rate(kube_pod_container_status_restarts_total[10m])) by (pod, namespace)
+      - record: pod:not_ready
+        expr: kube_pod_status_ready{condition="true"} == 0

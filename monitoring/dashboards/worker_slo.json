@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "updated": "2025-09-02T00:00:00Z",
+
+  "defaults": {
+    "window": "7d",
+    "evaluate_every": "1m",
+    "page_on_breach": true,
+    "labels": {
+      "env": "$DEPLOY_ENV",
+      "region": "$REGION"
+    }
+  },
+
+  "slo": [
+    {
+      "service": "analyst-worker",
+      "objectives": {
+        "availability": { "target": 0.995, "metric": "worker_up" },
+        "latency_p95": { "target_sec": 2.0, "metric": "worker_task_latency_seconds" },
+        "error_rate": { "target": 0.01, "metric": "worker_task_errors_total" }
+      },
+      "burn_alerts": [
+        { "long_window": "1h", "short_window": "5m", "mult": 1.0, "severity": "page" }
+      ]
+    },
+    {
+      "service": "sentiment-worker",
+      "objectives": {
+        "availability": { "target": 0.995, "metric": "worker_up" },
+        "latency_p95": { "target_sec": 1.5, "metric": "worker_task_latency_seconds" },
+        "error_rate": { "target": 0.02, "metric": "worker_task_errors_total" }
+      }
+    },
+    {
+      "service": "scenario-worker",
+      "objectives": {
+        "availability": { "target": 0.99, "metric": "worker_up" },
+        "latency_p95": { "target_sec": 3.0, "metric": "worker_task_latency_seconds" },
+        "error_rate": { "target": 0.02, "metric": "worker_task_errors_total" }
+      }
+    },
+    {
+      "service": "rl-exec",
+      "objectives": {
+        "availability": { "target": 0.999, "metric": "worker_up" },
+        "latency_p95": { "target_sec": 0.25, "metric": "worker_task_latency_seconds" },
+        "error_rate": { "target": 0.005, "metric": "worker_task_errors_total" }
+      },
+      "burn_alerts": [
+        { "long_window": "6h", "short_window": "15m", "mult": 1.0, "severity": "page" },
+        { "long_window": "24h", "short_window": "1h", "mult": 1.2, "severity": "ticket" }
+      ]
+    }
+  ],
+
+  "promql": {
+    "availability": "avg_over_time(worker_up{worker=\"$service\"}[$window])",
+    "latency_p95": "histogram_quantile(0.95, sum by (le,worker) (rate(worker_task_latency_seconds_bucket{worker=\"$service\"}[5m])))",
+    "error_rate": "sum(rate(worker_task_errors_total{worker=\"$service\"}[5m])) / sum(rate(worker_tasks_total{worker=\"$service\"}[5m]))"
+  },
+
+  "actions_on_breach": {
+    "severity_map": {
+      "page":  ["notify:pagerduty", "freeze:$service", "scale_out:$service"],
+      "ticket": ["notify:slack:#worker-alerts", "jira:create"]
+    }
+  }
+}

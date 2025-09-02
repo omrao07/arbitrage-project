@@ -1,0 +1,66 @@
+# k8s/alerts/alert_rules.yaml
+
+groups:
+- name: worker-slo
+  interval: 30s
+  rules:
+  - alert: WorkerHighLatency
+    expr: histogram_quantile(0.95, sum(rate(worker_task_latency_seconds_bucket[5m])) by (le,worker))
+      > 8
+    for: 10m
+    labels:
+      severity: page
+      team: hedgefund-core
+    annotations:
+      summary: "Worker latency high"
+      description: "p95 task latency > 8s for worker {{ $labels.worker }} (SLO breach)."
+
+  - alert: WorkerErrorRate
+    expr: sum(rate(worker_task_errors_total[5m])) by (worker) /
+          sum(rate(worker_tasks_total[5m])) by (worker) > 0.01
+    for: 5m
+    labels:
+      severity: page
+    annotations:
+      summary: "High error rate in {{ $labels.worker }}"
+      description: "Error rate > 1% for {{ $labels.worker }} over 5m."
+
+  - alert: WorkerDLQRate
+    expr: sum(rate(worker_dlq_total[5m])) by (worker) /
+          sum(rate(worker_tasks_total[5m])) by (worker) > 0.001
+    for: 10m
+    labels:
+      severity: page
+    annotations:
+      summary: "DLQ rate high"
+      description: "DLQ rate > 0.1% for {{ $labels.worker }}."
+
+  - alert: WorkerBacklogGrowing
+    expr: rate(worker_queue_lag_seconds_sum[5m]) > 0
+    for: 15m
+    labels:
+      severity: warn
+    annotations:
+      summary: "Worker backlog increasing"
+      description: "Message queue lag is increasing for {{ $labels.worker }}."
+
+- name: infra
+  interval: 30s
+  rules:
+  - alert: PodNotReady
+    expr: kube_pod_status_ready{condition="true"} == 0
+    for: 2m
+    labels:
+      severity: page
+    annotations:
+      summary: "Pod not ready"
+      description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} is not ready."
+
+  - alert: PodCrashLooping
+    expr: rate(kube_pod_container_status_restarts_total[10m]) > 0.1
+    for: 5m
+    labels:
+      severity: page
+    annotations:
+      summary: "Pod restarting"
+      description: "Container {{ $labels.container }} in pod {{ $labels.pod }} restarting too often."
