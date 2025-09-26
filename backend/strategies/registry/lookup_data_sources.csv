@@ -1,0 +1,30 @@
+id,name,category,provider,endpoint,frequency,notes
+PX_EQ_US,US Equities Prices,equities,Yahoo Finance,api.yahoo.com,daily,OHLCV for US stocks/ETFs
+PX_EQ_EU,European Equities Prices,equities,Refinitiv,refinitiv.com,daily,Major EU stocks
+PX_EQ_JP,Japan Equities Prices,equities,Nikkei Data,nikkei.com,daily,Japan listed equities
+PX_EQ_IN,Indian Equities Prices,equities,NSE India,nseindia.com,daily,NSE/BSE tickers
+
+PX_FX_G10,G10 FX Rates,fx,ECB,ecb.europa.eu,intraday,EUR/USD GBP/USD JPY/USD etc.
+PX_FX_EM,Emerging FX Rates,fx,Bloomberg,bloomberg.com,intraday,INR/BRL/MXN/CNH etc.
+PX_FX_CRYPTO,Crypto Spot Prices,fx,Binance,binance.com,tick,BTC ETH LTC
+
+PX_IR_US,US Treasury Yields,rates,FRED,fred.stlouisfed.org,daily,2y/5y/10y/30y yields
+PX_IR_EU,Eurozone Government Yields,rates,ECB,ecb.europa.eu,daily,Bund BTP OAT
+PX_IR_JP,Japan JGB Yields,rates,BoJ,boj.or.jp,daily,2s/10s/30s JGB curve
+
+PX_CMD_EN,Energy Commodities,commodities,EIA,eia.gov,weekly,Crude oil WTI/Brent, NatGas
+PX_CMD_MT,Metals Commodities,commodities,LBMA,lbma.org.uk,daily,Gold Silver Copper
+PX_CMD_AG,Agri Commodities,commodities,FAO,fao.org,monthly,Corn Wheat Soy Sugar
+
+PX_VOL_EQ,Equity Implied Volatility,vol,OptionMetrics,optionmetrics.com,daily,SPX VIX skew surface
+PX_VOL_FX,FX Implied Volatility,vol,Refinitiv,refinitiv.com,daily,ATM vols, risk reversals
+PX_VOL_IR,Interest Rate Volatility,vol,Bloomberg,bloomberg.com,daily,Swaptions surface
+
+PX_CREDIT_CDS,CDS Curves,credit,Markit,ihsmarkit.com,daily,IG/HY sovereign & corp CDS
+PX_CREDIT_TR,TRACE Bond Trades,credit,FIX,FIX.com,intraday,US corporate bond prints
+PX_CREDIT_CLO,CLO Tranches,credit,Intex,intex.com,weekly,CLO structure/pricing
+
+PX_ALT_SAT,Satellite Shipping Data,altdata,Orbcomm,orbcomm.com,daily,AIS vessel traffic
+PX_ALT_WEATHER,Global Weather,altdata,NOAA,noaa.gov,daily,Temperature/precip indices
+PX_ALT_SOCIAL,Social Sentiment,altdata,Reddit+Twitter,twitter.com,intraday,Text-based sentiment signals
+PX_ALT_ESG,ESG Scores,altdata,MSCI,msci.com,monthly,Company ESG ratings

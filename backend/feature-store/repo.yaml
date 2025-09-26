@@ -1,0 +1,76 @@
+# feature-store/repo.yaml
+project: hedgefund_store
+registry: data/registry.db        # local SQLite registry
+provider: local
+
+offline_store:
+  type: file
+  # All your parquet FileSources in features/* point here with relative paths
+
+online_store:
+  type: redis
+  connection_string: "localhost:6379"
+
+entities:
+  - name: equity
+    join_keys: [ticker]
+  - name: fx_pair
+    join_keys: [pair]
+  - name: macro_country
+    join_keys: [country]
+  - name: credit_issuer
+    join_keys: [issuer_id]
+  - name: credit_index
+    join_keys: [index_id]
+  - name: underlier
+    join_keys: [symbol]
+
+feature_views:
+  # Equities
+  - name: eq_returns_1d
+    source: features/eq_returns_1d.py
+  - name: eq_returns_derived
+    source: features/eq_returns_1d.py   # on_demand view defined inside
+  # FX
+  - name: fx_carry_signals
+    source: features/fx_carry_signals.py
+  - name: fx_carry_derived
+    source: features/fx_carry_signals.py
+  # Macro
+  - name: macro_rates
+    source: features/macro_rates.py
+  - name: macro_rates_derived
+    source: features/macro_rates.py
+  # Credit
+  - name: credit_spreads
+    source: features/credit_spreads.py
+  - name: credit_spreads_derived
+    source: features/credit_spreads.py
+  # Vol / Options
+  - name: vol_surface
+    source: features/vol_surface.py
+  - name: vol_surface_derived
+    source: features/vol_surface.py
+
+# Optional: you can also include feature services if you want pre-packaged groups
+feature_services:
+  - name: equities_service
+    features:
+      - name: eq_returns_1d
+      - name: eq_returns_derived
+  - name: fx_service
+    features:
+      - name: fx_carry_signals
+      - name: fx_carry_derived
+  - name: macro_service
+    features:
+      - name: macro_rates
+      - name: macro_rates_derived
+  - name: credit_service
+    features:
+      - name: credit_spreads
+      - name: credit_spreads_derived
+  - name: vol_service
+    features:
+      - name: vol_surface
+      - name: vol_surface_derived

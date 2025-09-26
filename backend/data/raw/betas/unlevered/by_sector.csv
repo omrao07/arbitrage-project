@@ -1,0 +1,41 @@
+import pandas as pd
+from datetime import date
+import os
+
+def build_unlevered_betas_by_sector(as_of: str | None = None) -> pd.DataFrame:
+    """
+    Unlevered betas by sector (Damodaran-style).
+    Beta_U = Beta_L / (1 + (1 - tax_rate) * D/E)
+    This file stores only the UNLEVERED rollups.
+    """
+    if as_of is None:
+        as_of = str(date.today())
+
+    rows = [
+        # sector,                 as_of,     unlevered_beta, source,      lookback_years, n_firms, tax_rate_assumed, notes
+        ("Communication Services", as_of,     0.83,           "Damodaran", 5,              720,     0.21,            "Media + telecom mix"),
+        ("Consumer Discretionary", as_of,     0.89,           "Damodaran", 5,             1050,     0.23,            "Retail, autos, leisure"),
+        ("Consumer Staples",       as_of,     0.61,           "Damodaran", 5,              640,     0.22,            "Food, beverages, household"),
+        ("Energy",                 as_of,     1.02,           "Damodaran", 5,              680,     0.20,            "Oil & gas majors"),
+        ("Financials",             as_of,     0.74,           "Damodaran", 5,             1450,     0.24,            "Leverage includes deposits"),
+        ("Healthcare",             as_of,     0.68,           "Damodaran", 5,              960,     0.21,            "Pharma + biotech mix"),
+        ("Industrials",            as_of,     0.92,           "Damodaran", 5,             1320,     0.22,            "Manufacturing, transports"),
+        ("Materials",              as_of,     0.95,           "Damodaran", 5,              730,     0.22,            "Metals, chemicals, building"),
+        ("Real Estate",            as_of,     0.60,           "Damodaran", 5,              470,     0.23,            "REITs, property developers"),
+        ("Technology",             as_of,     0.95,           "Damodaran", 5,             1590,     0.21,            "Software + hardware mix"),
+        ("Utilities",              as_of,     0.42,           "Damodaran", 5,              390,     0.25,            "Regulated utilities"),
+    ]
+
+    df = pd.DataFrame(rows, columns=[
+        "sector","as_of","unlevered_beta",
+        "source","lookback_years","n_firms",
+        "tax_rate_assumed","notes"
+    ])
+    return df
+
+if __name__ == "__main__":
+    df = build_unlevered_betas_by_sector()
+    out_path = "data/adamodar/raw/betas/unlevered/by_sector.csv"
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    df.to_csv(out_path, index=False)
+    print(f"✅ Unlevered betas by sector written to {out_path}")

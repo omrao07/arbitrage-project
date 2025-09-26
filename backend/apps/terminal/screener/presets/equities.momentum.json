@@ -1,0 +1,83 @@
+{
+  "asOf": "2025-09-25T00:00:00Z",
+  "universe": [
+    {
+      "symbol": "AAPL",
+      "name": "Apple Inc.",
+      "sector": "Tech",
+      "country": "US",
+      "mom1w": 1.8,
+      "mom1m": 5.2,
+      "mom3m": 12.4,
+      "rsi14": 62.3,
+      "zscore": 1.2,
+      "signal": "bullish"
+    },
+    {
+      "symbol": "MSFT",
+      "name": "Microsoft Corp.",
+      "sector": "Tech",
+      "country": "US",
+      "mom1w": 0.9,
+      "mom1m": 4.5,
+      "mom3m": 9.7,
+      "rsi14": 58.7,
+      "zscore": 0.8,
+      "signal": "neutral"
+    },
+    {
+      "symbol": "TSLA",
+      "name": "Tesla Inc.",
+      "sector": "Consumer Disc.",
+      "country": "US",
+      "mom1w": -2.3,
+      "mom1m": -5.8,
+      "mom3m": -12.1,
+      "rsi14": 38.4,
+      "zscore": -1.4,
+      "signal": "bearish"
+    },
+    {
+      "symbol": "RELIANCE",
+      "name": "Reliance Industries",
+      "sector": "Energy",
+      "country": "IN",
+      "mom1w": 3.2,
+      "mom1m": 7.6,
+      "mom3m": 15.9,
+      "rsi14": 68.9,
+      "zscore": 1.8,
+      "signal": "bullish"
+    },
+    {
+      "symbol": "TCS",
+      "name": "Tata Consultancy Services",
+      "sector": "Tech",
+      "country": "IN",
+      "mom1w": 0.4,
+      "mom1m": 2.1,
+      "mom3m": 6.3,
+      "rsi14": 54.2,
+      "zscore": 0.5,
+      "signal": "neutral"
+    },
+    {
+      "symbol": "SONY",
+      "name": "Sony Group Corp.",
+      "sector": "Consumer Disc.",
+      "country": "JP",
+      "mom1w": 1.1,
+      "mom1m": 3.4,
+      "mom3m": 8.5,
+      "rsi14": 60.1,
+      "zscore": 0.9,
+      "signal": "bullish"
+    }
+  ],
+  "metrics": {
+    "momentumLeaders": ["RELIANCE", "AAPL"],
+    "momentumLaggards": ["TSLA"],
+    "avgRSI": 57.1
+  },
+  "notes": "Synthetic equity momentum dataset (1w/1m/3m returns, RSI, z-scores). Replace with live factor model or data feed."
+}

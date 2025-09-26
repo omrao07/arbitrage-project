@@ -1,0 +1,217 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: analytics
+  labels:
+    project: hyper-os
+    tier: analytics
+    istio-injection: enabled
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argo-workflow-controller
+  namespace: analytics
+  annotations:
+    # EKS IRSA example (set your role ARN) OR GKE WI annotation (set your GCP SA)
+    # eks.amazonaws.com/role-arn: arn:aws:iam::<ACCOUNT_ID>:role/hyper-os-sa-argo
+    # iam.gke.io/gcp-service-account: argo-controller@<PROJECT_ID>.iam.gserviceaccount.com
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argo-server
+  namespace: analytics
+  annotations:
+    # eks.amazonaws.com/role-arn: arn:aws:iam::<ACCOUNT_ID>:role/hyper-os-sa-argo
+    # iam.gke.io/gcp-service-account: argo-server@<PROJECT_ID>.iam.gserviceaccount.com
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: argo-workflows
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflows","workflowtemplates","cronworkflows","clusterworkflowtemplates","workflowtasksets","workfloweventbindings"]
+    verbs: ["*"]
+  - apiGroups: [""]
+    resources: ["pods","pods/log","secrets","configmaps","persistentvolumeclaims","events","serviceaccounts"]
+    verbs: ["*"]
+  - apiGroups: ["apps"]
+    resources: ["deployments","statefulsets","replicasets"]
+    verbs: ["get","list","watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create","get","list","watch","delete"]
+  - apiGroups: [""]    # to create pods for executors
+    resources: ["pods/exec"]
+    verbs: ["create","get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argo-workflows-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: argo-workflows
+subjects:
+  - kind: ServiceAccount
+    name: argo-workflow-controller
+    namespace: analytics
+  - kind: ServiceAccount
+    name: argo-server
+    namespace: analytics
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: workflow-controller-configmap
+  namespace: analytics
+data:
+  # Use emissary executor (no sidecar) for simpler networking
+  containerRuntimeExecutor: emissary
+  # Artifact repository — choose ONE block below and remove the other.
+  artifactRepository: |
+    s3:
+      # ====== AWS S3 (SSE-S3) ======
+      endpoint: s3.amazonaws.com
+      bucket: <REPLACE_S3_BUCKET_curated>
+      keyFormat: "artifacts/{{workflow.name}}/{{pod.name}}"
+      insecure: false
+      region: <REPLACE_AWS_REGION>
+      # If using IRSA, omit accessKeySecret / secretKeySecret.
+      # accessKeySecret:
+      #   name: argo-artifacts
+      #   key: accesskey
+      # secretKeySecret:
+      #   name: argo-artifacts
+      #   key: secretkey
+      # encryptionOptions:
+      #   sse: "AES256"
+  # artifactRepositoryGCS alternative (comment S3 above and uncomment below)
+  # artifactRepository: |
+  #   gcs:
+  #     bucket: <REPLACE_GCS_BUCKET_curated>
+  #     keyFormat: "artifacts/{{workflow.name}}/{{pod.name}}"
+  #     # If using Workload Identity, omit serviceAccountKeySecret.
+  #     # serviceAccountKeySecret:
+  #     #   name: argo-artifacts
+  #     #   key: sa.json
+  links: |
+    - name: Argo Docs
+      scope: workflow
+      url: https://argoproj.github.io/argo-workflows/
+  metricsConfig: |
+    enabled: true
+    path: /metrics
+    port: 9090
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: argo-server
+  namespace: analytics
+spec:
+  type: ClusterIP
+  selector:
+    app: argo-server
+  ports:
+    - name: web
+      port: 2746
+      targetPort: 2746
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argo-server
+  namespace: analytics
+  labels: { app: argo-server }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: argo-server }
+  template:
+    metadata:
+      labels: { app: argo-server }
+    spec:
+      serviceAccountName: argo-server
+      containers:
+        - name: argo-server
+          image: quay.io/argoproj/argocli:v3.5.0
+          args:
+            - server
+            - --namespaced
+            - --auth-mode=server
+          ports:
+            - containerPort: 2746
+          readinessProbe:
+            httpGet: { path: /, port: 2746 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /, port: 2746 }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workflow-controller
+  namespace: analytics
+  labels: { app: workflow-controller }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: workflow-controller }
+  template:
+    metadata:
+      labels: { app: workflow-controller }
+    spec:
+      serviceAccountName: argo-workflow-controller
+      containers:
+        - name: workflow-controller
+          image: quay.io/argoproj/workflow-controller:v3.5.0
+          args:
+            - --configmap
+            - workflow-controller-configmap
+            - --executor-image
+            - quay.io/argoproj/argoexec:v3.5.0
+          env:
+            # Tighten down on retries / defaults as you like
+            - name: LEADER_ELECTION_IDENTITY
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          ports:
+            - containerPort: 9090
+          readinessProbe:
+            httpGet: { path: /metrics, port: 9090 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits:   { cpu: "1", memory: "1Gi" }
+---
+# Optional: NodePort/Ingress for UI (uncomment if you want external access)
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: argo-ui
+#   namespace: analytics
+#   annotations:
+#     kubernetes.io/ingress.class: nginx
+#     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+# spec:
+#   rules:
+#     - host: argo.${YOUR_DOMAIN}
+#       http:
+#         paths:
+#           - path: /
+#             pathType: Prefix
+#             backend:
+#               service:
+#                 name: argo-server
+#                 port:
+#                   number: 2746

@@ -1,0 +1,251 @@
+# config/lineage.yaml
+version: 1.0.0
+owner:
+  team: data-platform
+  contacts: [data@yourfund.com, risk@yourfund.com]
+
+backend:
+  driver: openlineage                     # openlineage | atlas | datahub
+  openlineage:
+    endpoint: ${OPENLINEAGE_URL:http://marquez:5000}
+    api_key: ${OPENLINEAGE_API_KEY:}
+    namespace: ${OL_NAMESPACE:trading-os}
+    emit_on:
+      airflow: true                      # use OpenLineage Airflow plugin
+      argo: true                         # use OpenLineage Argo sensor
+      spark: true                        # spark agent
+      flink: true                        # flink agent
+      python: true                       # openlineage-python for custom jobs
+    fail_on_emit_error: false
+
+catalog:
+  # Logical catalog of datasets so jobs can reference by id
+  datasets:
+    # ── Streaming (Kafka/MSK)
+    - id: kafka.market.ticks.v1
+      type: STREAM
+      physical: kafka://${KAFKA_BROKERS}/market.ticks.v1
+      schema: schemas/market/tick.avsc
+      tags: [domain:market, pii:none]
+    - id: kafka.market.orderbook.v1
+      type: STREAM
+      physical: kafka://${KAFKA_BROKERS}/market.orderbook.v1
+      schema: schemas/market/orderbook.avsc
+      tags: [domain:market, pii:none]
+    - id: kafka.news.headlines.v1
+      type: STREAM
+      physical: kafka://${KAFKA_BROKERS}/news.headlines.v1
+      schema: schemas/news/headline.avsc
+      tags: [domain:news, pii:low]
+    - id: kafka.news.signals.v1
+      type: STREAM
+      physical: kafka://${KAFKA_BROKERS}/news.signals.v1
+      schema: schemas/news/signal.avsc
+      tags: [domain:nlp, pii:none]
+
+    # ── Object Store (S3/GCS/MinIO)
+    - id: s3.equities.returns.parquet
+      type: FILE
+      physical: ${OBJ_PREFIX:s3://os-processed}/equities/returns.parquet
+      format: parquet
+      tags: [domain:market, pii:none]
+    - id: s3.news.signals.parquet
+      type: FILE
+      physical: ${OBJ_PREFIX:s3://os-processed}/news/signals.parquet
+      format: parquet
+      tags: [domain:nlp, pii:none]
+
+    # ── Warehouse (ClickHouse/BigQuery/Snowflake)
+    - id: wh.core.positions
+      type: TABLE
+      physical: clickhouse://core.positions
+      schema: schemas/portfolio/positions.avsc
+      tags: [domain:risk, pii:confidential]
+    - id: wh.core.pnl_daily
+      type: TABLE
+      physical: clickhouse://core.pnl_daily
+      schema: schemas/portfolio/pnl.avsc
+      tags: [domain:risk, pii:confidential]
+    - id: wh.risk.var_daily
+      type: TABLE
+      physical: clickhouse://risk.var_daily
+      schema: schemas/risk/var.avsc
+      tags: [domain:risk, pii:confidential]
+
+    # ── Feast Feature Store
+    - id: feast.instrument_price_features
+      type: FEATURE_VIEW
+      physical: feast://instrument_price_features
+      tags: [domain:features, pii:none]
+    - id: feast.instrument_news_features
+      type: FEATURE_VIEW
+      physical: feast://instrument_news_features
+      tags: [domain:features, pii:none]
+
+    # ── Models & Artifacts
+    - id: model.news-scorer.v3
+      type: MODEL
+      physical: mlflow://models/news-scorer/3
+      tags: [domain:nlp, pii:none]
+    - id: model.var-runner.v1
+      type: MODEL
+      physical: mlflow://models/var-runner/1
+      tags: [domain:risk, pii:none]
+
+    # ── Dashboards
+    - id: bi.pnl_overview
+      type: DASHBOARD
+      physical: grafana://dashboards/pnl_overview
+      tags: [domain:risk, pii:confidential]
+
+jobs:
+  # Each job defines inputs/outputs so lineage edges are emitted automatically.
+  - id: ingestion.market.ticks_to_parquet
+    name: "Ingest market ticks → Parquet (returns)"
+    owner: data-ingest
+    schedule: "streaming"
+    inputs: [kafka.market.ticks.v1]
+    outputs: [s3.equities.returns.parquet]
+    code_ref:
+      repo: git@github.com:fund/os.git
+      path: ingestion/parsers/market_parser.py
+      version: ${GIT_SHA}
+    facets:
+      dataQuality:
+        checks:
+          - name: ts_monotonic
+            type: expectation
+            expression: "ts increases per instrument_id"
+          - name: no_negative_prices
+            type: expectation
+            expression: "price >= 0"
+      schema:
+        path: schemas/market/tick.avsc
+      retention:
+        policy_ref: policy/retention.yaml
+      privacy:
+        classification: PUBLIC
+
+  - id: nlp.headline_to_signal
+    name: "Headline → NLP Signal"
+    owner: nlp
+    schedule: "*/10 * * * *"
+    inputs: [kafka.news.headlines.v1]
+    outputs: [kafka.news.signals.v1, s3.news.signals.parquet]
+    code_ref:
+      repo: git@github.com:fund/os.git
+      path: nlp/pipelines/news_signal.py
+      version: ${GIT_SHA}
+    facets:
+      model:
+        name: news-bert-v3
+        version: 3.1.2
+        features: [entities, sentiment, novelty]
+      privacy:
+        classification: INTERNAL
+      dataQuality:
+        checks:
+          - name: sentiment_bounds
+            expression: "-1.0 <= sentiment.score <= 1.0"
+
+  - id: batch.returns_to_featureview
+    name: "Returns → Feast price features"
+    owner: features
+    schedule: "*/30 * * * *"
+    inputs: [s3.equities.returns.parquet]
+    outputs: [feast.instrument_price_features]
+    code_ref:
+      repo: git@github.com:fund/os.git
+      path: features/materialize_prices.py
+      version: ${GIT_SHA}
+    facets:
+      privacy: { classification: INTERNAL }
+      freshnessSLO: { max_lag_seconds: 300 }
+
+  - id: risk.positions_var_daily
+    name: "Positions + Market → VaR (daily)"
+    owner: risk
+    schedule: "0 23 * * MON-FRI"
+    inputs: [wh.core.positions, s3.equities.returns.parquet]
+    outputs: [wh.risk.var_daily]
+    code_ref:
+      repo: git@github.com:fund/os.git
+      path: risk/jobs/run_var.py
+      version: ${GIT_SHA}
+    facets:
+      model: { name: var-runner, version: 1.0.0, method: HISTORICAL, horizon_days: 1, confidence: 0.95 }
+      privacy: { classification: CONFIDENTIAL }
+      controls:
+        limits_ref: policy/trade_limits.yaml
+        zero_trust_ref: policy/zero_trust.yaml
+
+  - id: risk.pnl_aggregation
+    name: "Fills/Prices → Daily PnL"
+    owner: risk
+    schedule: "5 0 * * TUE-SAT"
+    inputs: [wh.core.positions, s3.equities.returns.parquet]
+    outputs: [wh.core.pnl_daily, bi.pnl_overview]
+    code_ref:
+      repo: git@github.com:fund/os.git
+      path: pnl/jobs/close_pnl.py
+      version: ${GIT_SHA}
+    facets:
+      privacy: { classification: CONFIDENTIAL }
+      retention: { policy_ref: policy/retention.yaml }
+
+governance:
+  pii:
+    default: INTERNAL
+    overrides:
+      - dataset: wh.core.positions
+        class: CONFIDENTIAL
+      - dataset: bi.pnl_overview
+        class: CONFIDENTIAL
+  retention:
+    inherit_from: policy/retention.yaml
+  approvals:
+    required_for:
+      - changes_to: [MODEL, FEATURE_VIEW]
+        approvers: [CRO, CCO]
+      - changes_to: [DASHBOARD]
+        approvers: [RiskLead]
+
+emitters:
+  airflow:
+    enabled: true
+    connection_id: openlineage_default
+  argo:
+    enabled: true
+    collector_url: ${OPENLINEAGE_URL:http://marquez:5000}
+  spark:
+    enabled: true
+    jar: io.openlineage:openlineage-spark_2.12:1.13.0
+  flink:
+    enabled: true
+    jar: io.openlineage:openlineage-flink:1.13.0
+  python:
+    enabled: true
+    module: openlineage.client
+
+validation:
+  # Gate changes to lineage config in CI
+  ci_checks:
+    - name: schemas_exist
+      type: path_exists
+      paths:
+        - schemas/market/tick.avsc
+        - schemas/portfolio/positions.avsc
+    - name: ids_unique
+      type: unique_ids
+      scope: [catalog.datasets, jobs]
+    - name: referenced_ids_exist
+      type: xref
+      rules:
+        - each: jobs[*].inputs -> existsIn: catalog.datasets[*].id
+        - each: jobs[*].outputs -> existsIn: catalog.datasets[*].id
+
+telemetry:
+  siem_index_prefix: lineage
+  emit_metrics: true
+  metrics_namespace: lineage
+  dimensions: [job_id, status, duration_ms]

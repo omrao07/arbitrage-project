@@ -1,0 +1,18 @@
+id: P72-0829
+firm: Point72
+name: Macro Cross-Asset Risk On/Off #829
+description: Equities vs bonds vs havens.
+discipline: Macro
+family: Point72-Style
+region: Global
+horizon: Macro
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: macro
+created_at: 2025-09-10
+updated_at: 2025-09-10

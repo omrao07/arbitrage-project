@@ -1,0 +1,43 @@
+import os
+import pandas as pd
+import numpy as np
+
+OUT_PATH = "data/adamodar/curated/mispricings_global.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def seed_mispricings_global() -> pd.DataFrame:
+    rows = [
+        ("2025-01-15","US","United States","equity_index","S&P500","PE_vs_History",4600,4800,-0.042,-1.1,"short",90,"Forward P/E > 85th pctile","Use futures hedge"),
+        ("2025-01-15","Europe","Germany","equity_index","DAX","ERP_gap",16500,15500,0.065,0.9,"long",120,"ERP spread > avg","Policy easing priced in"),
+        ("2025-01-15","Japan","Japan","equity_index","Nikkei225","PB_vs_History",34500,33500,0.030,0.6,"long",180,"ROE improving","Rates capped"),
+        ("2025-01-15","EM Asia","India","equity_index","NIFTY50","PE_vs_History",19800,21000,-0.057,-1.2,"short",90,"Rich vs hist avg","Pair vs EM basket"),
+        ("2025-01-15","LatAm","Brazil","fx","BRLUSD","PPP",0.230,0.200,0.150,1.1,"long",120,"15% cheap to PPP","Carry positive"),
+        ("2025-01-15","EMEA","South Africa","credit","ZAF_5Y_CDS","CDS_vs_spread",180,210,-0.143,-1.6,"long",60,"Cash spread > CDS","Liquidity dislocation"),
+        ("2025-01-15","Global","","rate","Global_10Y_Yield","ERP_gap",0.035,0.040,-0.125,-0.8,"long",180,"Global ERP > DM avg","Macro risk-off hedge"),
+        ("2025-01-15","Global","","commodity","Brent_Oil","Real_Fair_Price",85,75,0.133,0.7,"long",60,"Undervalued vs cost curve","Geopolitical premium absent"),
+    ]
+    return pd.DataFrame(rows, columns=[
+        "as_of","region","country","asset_type","instrument","metric",
+        "fair_value","market_value","mispricing_pct","zscore","signal","horizon_days","rationale","notes"
+    ])
+
+def compute_mispricing(df: pd.DataFrame) -> pd.DataFrame:
+    d = df.copy()
+    d["mispricing_pct"] = (d["fair_value"] / d["market_value"] - 1).replace([np.inf,-np.inf], np.nan)
+    # Rule-based signals (simple)
+    d["signal"] = d["mispricing_pct"].apply(
+        lambda x: "long" if x > 0.03 else "short" if x < -0.03 else "flat"
+    )
+    return d
+
+def write_csv(df: pd.DataFrame, path: str = OUT_PATH):
+    ensure_dirs(path)
+    df.to_csv(path, index=False)
+
+if __name__ == "__main__":
+    df = seed_mispricings_global()
+    df = compute_mispricing(df)
+    write_csv(df)
+    print(f"✅ mispricings_global.csv written to {OUT_PATH} with {len(df)} rows")

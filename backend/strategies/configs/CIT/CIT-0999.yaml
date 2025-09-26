@@ -1,0 +1,18 @@
+id: CIT-0999
+firm: Citadel
+name: Cross-Asset Carry Composite #999
+description: Credit relative value model.
+discipline: Credit
+family: IG/HY RV
+region: Global
+horizon: Swing
+status: research
+engine: credit_cds
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

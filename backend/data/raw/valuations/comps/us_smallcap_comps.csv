@@ -1,0 +1,57 @@
+import os
+import pandas as pd
+import numpy as np
+
+OUT_PATH = "data/adamodar/curated/us_smallcap_comps.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def seed_us_smallcap() -> pd.DataFrame:
+    rows = [
+        ("2025-01-01","PLUG","Plug Power Inc.","Industrials",2.5e9,3.0e9,1.0e9,-0.2e9,-0.6e9,-0.55e9,4.5e9,2.0e9,0.5e9,"","","","","",0.05,-0.20,-0.60,-0.30,-0.13,2.50,"Hydrogen growth, losses"),
+        ("2025-01-01","RUN","Sunrun Inc.","Utilities",3.5e9,8.0e9,1.8e9,0.2e9,-0.1e9,-0.12e9,7.5e9,2.5e9,4.5e9,"","","","","",0.20,0.11,-0.06,-0.04,-0.01,22.50,"Solar installation"),
+        ("2025-01-01","UPST","Upstart Holdings","Financials",4.0e9,3.8e9,1.2e9,0.25e9,0.05e9,0.04e9,1.5e9,0.7e9,-0.2e9,"","","","","",0.50,0.21,0.04,0.07,0.03,-0.80,"AI lending platform"),
+        ("2025-01-01","FATE","Fate Therapeutics","Healthcare",1.5e9,1.4e9,0.2e9,-0.15e9,-0.25e9,-0.26e9,1.2e9,0.6e9,-0.1e9,"","","","","",0.70,-0.75,-1.25,-0.42,-0.21,-0.67,"Biotech early stage"),
+        ("2025-01-01","COHR","Coherent Corp.","Information Technology",4.5e9,5.0e9,3.2e9,0.7e9,0.25e9,0.23e9,6.0e9,2.0e9,0.5e9,"","","","","",0.35,0.22,0.08,0.13,0.04,0.71,"Photonics/semicap"),
+    ]
+    return pd.DataFrame(rows, columns=[
+        "as_of","ticker","name","sector","market_cap_usd","enterprise_value_usd","revenue_usd","ebitda_usd",
+        "net_income_usd","free_cash_flow_usd","total_assets_usd","total_equity_usd","net_debt_usd",
+        "pe","psales","ev_ebitda","ev_sales","fcf_yield","gross_margin","ebit_margin","ni_margin","roe","roa","net_debt_to_ebitda","notes"
+    ])
+
+def compute_ratios(df: pd.DataFrame) -> pd.DataFrame:
+    d = df.copy()
+    eps = 1e-12
+
+    # Valuation
+    d["pe"] = d["market_cap_usd"] / (d["net_income_usd"] + eps)
+    d["psales"] = d["market_cap_usd"] / (d["revenue_usd"] + eps)
+    d["ev_ebitda"] = d["enterprise_value_usd"] / (d["ebitda_usd"] + eps)
+    d["ev_sales"] = d["enterprise_value_usd"] / (d["revenue_usd"] + eps)
+    d["fcf_yield"] = d["free_cash_flow_usd"] / (d["market_cap_usd"] + eps)
+
+    # Margins & Returns
+    d["ni_margin"] = d["net_income_usd"] / (d["revenue_usd"] + eps)
+    d["roe"] = d["net_income_usd"] / (d["total_equity_usd"] + eps)
+    d["roa"] = d["net_income_usd"] / (d["total_assets_usd"] + eps)
+
+    # Leverage
+    d["net_debt_to_ebitda"] = d["net_debt_usd"] / (d["ebitda_usd"] + eps)
+
+    # Clean up
+    for c in ["pe","psales","ev_ebitda","ev_sales","fcf_yield","ni_margin","roe","roa","net_debt_to_ebitda"]:
+        d[c] = d[c].replace([np.inf,-np.inf], np.nan)
+
+    return d
+
+def write_csv(df: pd.DataFrame, path: str = OUT_PATH):
+    ensure_dirs(path)
+    df.to_csv(path, index=False)
+
+if __name__ == "__main__":
+    df = seed_us_smallcap()
+    df = compute_ratios(df)
+    write_csv(df)
+    print(f"✅ us_smallcap_comps.csv written to {OUT_PATH} with {len(df)} rows")

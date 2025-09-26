@@ -1,0 +1,170 @@
+# credit/datasets.yaml
+# Canonical dataset specs for Credit domain.
+# Each document is a dataset (valid against _meta/schema.dataset.yaml)
+
+# ---------------------------------------------------------------------------
+# 1) CDS spreads by entity/tenor (daily)
+# ---------------------------------------------------------------------------
+id: blp_cds_spreads
+title: Bloomberg CDS Spreads (Single-name)
+vendor: bloomberg
+source: bpipe
+version: "1.0.0"
+frequency: daily
+description: >
+  Daily CDS mid spreads for single-name reference entities across standard tenors.
+  Includes doc clause and seniority tier for routing.
+primary_key: [dt, entity_id, tenor_yrs]
+partitions: [dt]
+columns:
+  - { name: dt,         type: date,      quality: [not_null, no_future_date] }
+  - { name: entity_id,  type: string,    desc: "Internal issuer/reference entity id" }
+  - { name: entity_name,type: string,    nullable: true }
+  - { name: currency,   type: string,    nullable: true }
+  - { name: doc_clause, type: string,    nullable: true, desc: "e.g., CR, MM, XR" }
+  - { name: tier,       type: string,    nullable: true, desc: "SR (senior), SUB (subordinated), etc." }
+  - { name: tenor_yrs,  type: float64,   unit: years,    quality: [non_negative] }
+  - { name: spread_bp,  type: float64,   unit: bp,       quality: [non_negative], desc: "Quoted mid spread" }
+  - { name: upfront_pct,type: float64,   unit: pct,      nullable: true, desc: "If quoted upfront" }
+  - { name: recovery,   type: float64,   unit: pct,      nullable: true, desc: "Assumed recovery rate" }
+endpoints:
+  - kind: bpipe
+    path: "CDS_SPREAD_MID,CDS_UPFRONT_MID,RECOVERY_RATE"
+    params:
+      universe_ref: "bloomberg/baseline/symbology/mapping.yaml"   # entity_id mapping expected here
+      tenors_years: [1,3,5,7,10]
+      calendar: "utc"
+      tz: "UTC"
+lineage: [refdata_issuers]
+tags: [bloomberg, credit, cds, spreads, curves, daily]
+---
+# ---------------------------------------------------------------------------
+# 2) Credit indices (CDX/iTraxx) – price & spread (daily)
+# ---------------------------------------------------------------------------
+id: blp_credit_indices
+title: Bloomberg Credit Indices (CDX / iTraxx)
+vendor: bloomberg
+source: bpipe
+version: "1.0.0"
+frequency: daily
+description: >
+  Daily levels for liquid credit indices including price, spread, and TR index.
+  Series/roll versions are included for continuity.
+primary_key: [dt, index_code, series, version]
+partitions: [dt]
+columns:
+  - { name: dt,           type: date,      quality: [not_null, no_future_date] }
+  - { name: index_code,   type: string,    desc: "e.g., CDXIG, CDXHY, ITRAXXEUR" }
+  - { name: series,       type: string,    desc: "Series number, e.g., 42" }
+  - { name: version,      type: string,    desc: "Version/roll (e.g., 1, 2)" }
+  - { name: px_last,      type: float64,   unit: USD,    nullable: true }
+  - { name: spread_bp,    type: float64,   unit: bp,     nullable: true }
+  - { name: ret_1d,       type: float64,   unit: pct,    nullable: true }
+  - { name: total_return, type: float64,   unit: pct,    nullable: true, desc: "Indexed TR (rebased if needed)" }
+endpoints:
+  - kind: bpipe
+    path: "PX_LAST,CDS_INDEX_SPREAD_MID,TOTAL_RETURN_INDEX"
+    params:
+      universe_ref: "credit/indices.universe.yaml"   # maintain your index list here
+      calendar: "utc"
+      tz: "UTC"
+lineage: []
+tags: [bloomberg, credit, indices, spreads, prices, daily]
+---
+# ---------------------------------------------------------------------------
+# 3) Corporate bonds – OAS & risk (daily)
+# ---------------------------------------------------------------------------
+id: blp_corp_oas
+title: Bloomberg Corporate Bonds OAS / Yield / Risk
+vendor: bloomberg
+source: bpipe
+version: "1.0.0"
+frequency: daily
+description: >
+  Per-security option-adjusted spread (OAS), z-spread, mid yield-to-maturity,
+  and basic risk measures (duration, convexity) for corporate bonds.
+primary_key: [dt, ticker]
+partitions: [dt]
+columns:
+  - { name: dt,         type: date,      quality: [not_null, no_future_date] }
+  - { name: ticker,     type: string,    desc: "Internal security identifier" }
+  - { name: currency,   type: string,    nullable: true }
+  - { name: oas_bp,     type: float64,   unit: bp,     nullable: true, desc: "Option-adjusted spread" }
+  - { name: z_spread,   type: float64,   unit: bp,     nullable: true }
+  - { name: yield,      type: float64,   unit: pct,    nullable: true, desc: "YTM mid" }
+  - { name: duration,   type: float64,   nullable: true, desc: "Modified duration" }
+  - { name: convexity,  type: float64,   nullable: true }
+  - { name: rating_moody, type: string,  nullable: true }
+  - { name: rating_sp,    type: string,  nullable: true }
+endpoints:
+  - kind: bpipe
+    path: "OAS_SPREAD_MID,Z_SPREAD_MID,YLD_YTM_MID,MOD_DUR_MID,CONVEXITY_MID,RTG_MOODY,RTG_SP"
+    params:
+      universe_ref: "bloomberg/baseline/symbology/mapping.yaml"   # bond tickers/universe
+      calendar: "utc"
+      tz: "UTC"
+lineage: [refdata_instruments]
+tags: [bloomberg, credit, oas, spreads, yields, risk, daily]
+---
+# ---------------------------------------------------------------------------
+# 4) Ratings history (issuer-level, ad-hoc)
+# ---------------------------------------------------------------------------
+id: blp_ratings_history
+title: Bloomberg Issuer Ratings History
+vendor: bloomberg
+source: blp
+version: "1.0.0"
+frequency: ad-hoc
+description: >
+  Point-in-time ratings events by agency for issuers, including action,
+  watch/outlook, and effective date.
+primary_key: [ts, issuer_id, agency]
+partitions: [dt]
+columns:
+  - { name: ts,          type: timestamp, quality: [not_null] }
+  - { name: dt,          type: date,      quality: [not_null, no_future_date], desc: "Event business date" }
+  - { name: issuer_id,   type: string,    desc: "Internal issuer id" }
+  - { name: agency,      type: string,    desc: "MOODY|SNP|FITCH|DBRS..." }
+  - { name: rating,      type: string }
+  - { name: action,      type: string,    nullable: true, desc: "UPGRADE|DOWNGRADE|AFFIRM..." }
+  - { name: outlook,     type: string,    nullable: true, desc: "POS|NEG|STABLE|EWN..." }
+  - { name: watch,       type: string,    nullable: true }
+endpoints:
+  - kind: blp
+    path: "RATINGS_HISTORY"
+    params:
+      universe_ref: "refdata/issuers.universe.yaml"
+      tz: "UTC"
+lineage: [refdata_issuers]
+tags: [bloomberg, credit, ratings, refdata, ad_hoc]
+---
+# ---------------------------------------------------------------------------
+# 5) CDS curves – bootstrapped hazard / survival (derived)
+# ---------------------------------------------------------------------------
+id: internal_cds_curves
+title: Derived CDS Curves (Hazard/Survival)
+vendor: internal
+source: file
+version: "0.1.0"
+frequency: daily
+description: >
+  Bootstrapped hazard rates and survival probabilities from single-name CDS spreads.
+  Derived downstream from blp_cds_spreads with consistent recovery assumptions.
+primary_key: [dt, entity_id, tenor_yrs]
+partitions: [dt]
+columns:
+  - { name: dt,         type: date,      quality: [not_null, no_future_date] }
+  - { name: entity_id,  type: string }
+  - { name: tenor_yrs,  type: float64,   unit: years,    quality: [non_negative] }
+  - { name: hazard,     type: float64,   unit: pct,      nullable: true }
+  - { name: survival,   type: float64,   unit: pct,      nullable: true, desc: "Survival probability to tenor" }
+  - { name: recovery,   type: float64,   unit: pct,      nullable: true }
+  - { name: method,     type: string,    nullable: true, desc: "Bootstrap method id" }
+endpoints:
+  - kind: file
+    path: "derived/credit/cds_curves/{dt}.parquet"
+    params:
+      format: parquet
+      compression: snappy
+lineage: [blp_cds_spreads]
+tags: [internal, credit, cds, curves, derived, daily]

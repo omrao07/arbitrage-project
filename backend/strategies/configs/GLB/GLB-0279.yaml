@@ -1,0 +1,18 @@
+id: GLB-0279
+firm: Global
+name: Global Clean Energy vs Fossil Energy Spread (MX)
+description: Worldwide diversified strategy in Thematic / Events — region: MX.
+discipline: Event-Driven
+family: Thematic / Events
+region: MX
+horizon: Macro
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

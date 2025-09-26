@@ -1,0 +1,37 @@
+{
+  "type": "record",
+  "namespace": "market",
+  "name": "Trade",
+  "doc": "Schema for trade prints (executions) across markets.",
+  "fields": [
+    { "name": "trade_id", "type": "string", "doc": "Unique trade identifier from feed or generated internally" },
+    { "name": "instrument_id", "type": "string", "doc": "Underlying instrument (ticker, ISIN, or synthetic ID)" },
+    { "name": "exchange", "type": "string", "doc": "Venue or market (e.g., NASDAQ, CME, BINANCE)" },
+
+    { "name": "price", "type": "double", "doc": "Execution price" },
+    { "name": "size", "type": "double", "doc": "Execution quantity (units/contracts)" },
+
+    {
+      "name": "side",
+      "type": {
+        "type": "enum",
+        "name": "AggressorSide",
+        "symbols": ["BUY", "SELL", "UNKNOWN"]
+      },
+      "doc": "Aggressor side (buyer-initiated vs seller-initiated); UNKNOWN if not provided"
+    },
+
+    {
+      "name": "trade_conditions",
+      "type": ["null", { "type": "array", "items": "string" }],
+      "default": null,
+      "doc": "Array of feed-specific flags (e.g., odd lot, late print, auction)"
+    },
+
+    { "name": "sequence_number", "type": "long", "doc": "Monotonic sequence number for ordering/replay" },
+    { "name": "event_time", "type": { "type": "long", "logicalType": "timestamp-millis" }, "doc": "Exchange-reported event time" },
+    { "name": "ingest_time", "type": { "type": "long", "logicalType": "timestamp-millis" }, "doc": "Pipeline ingest/processing time" },
+
+    { "name": "source", "type": ["null", "string"], "default": null, "doc": "Feed or provider (e.g., SIP, direct, crypto venue)" }
+  ]
+}

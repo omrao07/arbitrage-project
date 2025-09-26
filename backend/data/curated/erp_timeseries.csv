@@ -1,0 +1,24 @@
+import pandas as pd
+from datetime import date
+
+def build_erp_timeseries():
+    rows = [
+        ("2000-01-01", 0.048, 0.052, 0.064, "Dot-com bubble peak"),
+        ("2005-01-01", 0.045, 0.050, 0.042, "Pre-GFC"),
+        ("2008-12-01", 0.065, 0.055, 0.025, "GFC crisis (ERP spike)"),
+        ("2015-01-01", 0.050, 0.049, 0.020, "Post-crisis normalization"),
+        ("2020-03-01", 0.062, 0.051, 0.010, "COVID crash ERP jump"),
+        ("2022-01-01", 0.055, 0.050, 0.015, "Inflation comeback"),
+        ("2025-01-01", 0.052, 0.048, 0.037, "Current estimate"),
+    ]
+
+    df = pd.DataFrame(rows, columns=[
+        "date","implied_erp","historical_erp","rf_rate","notes"
+    ])
+    return df
+
+if __name__ == "__main__":
+    df = build_erp_timeseries()
+    out_path = "data/adamodar/curated/erp_timeseries.csv"
+    df.to_csv(out_path, index=False)
+    print(f"✅ ERP timeseries written to {out_path}")

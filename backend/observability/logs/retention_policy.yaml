@@ -1,0 +1,46 @@
+# observability/logs/retention_policy.yaml
+# Retention & lifecycle policies for logs across backends.
+
+defaults:
+  max_age_days: 30          # default retention if no override
+  action: delete            # delete, archive, downsample
+  archive_location: s3://my-logs-archive/
+  downsample_level: daily   # hourly | daily | weekly
+
+rules:
+  - match:
+      service: news-intel
+      level: DEBUG
+    max_age_days: 7
+    action: delete
+
+  - match:
+      service: news-intel
+      level: INFO
+    max_age_days: 14
+    action: downsample
+    downsample_level: daily
+
+  - match:
+      service: news-intel
+      level: ERROR
+    max_age_days: 90
+    action: archive
+    archive_location: s3://my-logs-archive/errors/
+
+  - match:
+      service: api-gateway
+    max_age_days: 60
+    action: archive
+    archive_location: s3://my-logs-archive/api/
+
+  - match:
+      env: prod
+    max_age_days: 180
+    action: archive
+    archive_location: s3://my-logs-archive/prod/
+
+  - match:
+      env: dev
+    max_age_days: 3
+    action: delete

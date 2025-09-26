@@ -1,0 +1,184 @@
+# options_greeks_eod/datasets.yaml
+# Canonical end-of-day options chain with greeks. Valid against _meta/schema.dataset.yaml.
+# Greeks are Black–Scholes/Merton style unless vendor specifies otherwise.
+# Conventions:
+# - Percentages are FRACTIONS (1% => 0.01).
+# - Delta sign: calls ≥0, puts ≤0; gamma/vega ≥0 (non-negative), theta typically ≤0.
+
+# ----------------------------------------------------------------------------
+# 1) Bloomberg – Options EOD (Chain + Greeks)
+# ----------------------------------------------------------------------------
+id: blp_options_eod_greeks
+title: Bloomberg Options (EOD Chain + Greeks)
+vendor: bloomberg
+source: bpipe
+version: "1.0.0"
+frequency: daily
+description: >
+  End-of-day options chain for listed underlyings with vendor greeks, prices,
+  and reference attributes (expiry, strike, right, style, multiplier, currency).
+  Use the internal normalized table as the canonical join target.
+primary_key: [dt, option_id]          # option_id = internal canonical id for a contract
+partitions: [dt]
+columns:
+  # keys / joins
+  - { name: dt,                 type: date,      quality: [not_null, no_future_date], desc: "Business date (UTC)." }
+  - { name: option_id,          type: string,    desc: "Canonical option contract id." }
+  - { name: underlying_ticker,  type: string,    desc: "Internal ticker of the underlying." }
+
+  # reference (contract spec)
+  - { name: expiration_dt,      type: date,      desc: "Option expiry date (UTC)." }
+  - { name: dte,                type: int32,     nullable: true, desc: "Days to expiry (calendar days)." }
+  - { name: strike,             type: float64,   desc: "Strike price in quote currency." }
+  - { name: right,              type: string,    desc: "C|P." }
+  - { name: exercise_style,     type: string,    nullable: true, desc: "AMERICAN|EUROPEAN|OTHER." }
+  - { name: settlement,         type: string,    nullable: true, desc: "PHYSICAL|CASH." }
+  - { name: multiplier,         type: float64,   nullable: true, quality: [non_negative], desc: "Contract multiplier (e.g., 100)." }
+  - { name: currency,           type: string,    nullable: true, desc: "Quote currency (ISO 4217)." }
+
+  # market (prices/size)
+  - { name: bid,                type: float64,   nullable: true, quality: [non_negative] }
+  - { name: ask,                type: float64,   nullable: true, quality: [non_negative] }
+  - { name: mid,                type: float64,   nullable: true, quality: [non_negative], desc: "(bid+ask)/2 if provided by vendor." }
+  - { name: last,               type: float64,   nullable: true, quality: [non_negative] }
+  - { name: mark,               type: float64,   nullable: true, quality: [non_negative], desc: "Vendor mark/theo or mid." }
+  - { name: volume,             type: float64,   unit: contracts, nullable: true, quality: [non_negative] }
+  - { name: open_interest,      type: float64,   unit: contracts, nullable: true, quality: [non_negative] }
+  - { name: underlying_close,   type: float64,   nullable: true, quality: [non_negative], desc: "Underlying EOD close in same currency." }
+
+  # greeks / vol
+  - { name: iv,                 type: float64,   nullable: true, unit: pct, desc: "Implied volatility (annualized, fraction)." }
+  - { name: delta,              type: float64,   nullable: true, desc: "Per 1 unit of underlying." }
+  - { name: gamma,              type: float64,   nullable: true, desc: "Per 1 unit² of underlying." }
+  - { name: vega,               type: float64,   nullable: true, desc: "Per 1 vol point (0.01) change; per contract unless vendor states per 1 unit." }
+  - { name: theta,              type: float64,   nullable: true, desc: "Per calendar day; per contract unless vendor states otherwise." }
+  - { name: rho,                type: float64,   nullable: true, desc: "Per 1 rate point (0.01)." }
+
+  # diagnostics
+  - { name: surface_tenor,      type: string,    nullable: true, desc: "Vendor tenor label if supplied (e.g., 1M, 3M weekly)." }
+  - { name: method,             type: string,    nullable: true, desc: "Vendor calc method/version id." }
+endpoints:
+  - kind: bpipe
+    path: "OPTIONS_CHAIN_EOD"    # mnemonic group; map specifics via fields_ref
+    params:
+      universe_ref: "bloomberg/baseline/symbology/mapping.yaml"
+      fields_ref:   "options_greeks_eod/fields.map.yaml"
+      tz: "UTC"
+lineage: [refdata_instruments]
+tags: [bloomberg, options, greeks, eod]
+---
+# ----------------------------------------------------------------------------
+# 2) Koyfin – Options EOD (subset + greeks)
+# ----------------------------------------------------------------------------
+id: koyfin_options_eod_greeks
+title: Koyfin Options (EOD Subset + Greeks)
+vendor: koyfin
+source: rest
+version: "1.0.0"
+frequency: daily
+description: >
+  Koyfin options chain snapshot with basic greeks (where available). Used for
+  parity checks and as fallback. Schema aligns with the normalized columns.
+primary_key: [dt, option_id]
+partitions: [dt]
+columns:
+  - { name: dt,                 type: date }
+  - { name: option_id,          type: string }
+  - { name: underlying_ticker,  type: string }
+  - { name: expiration_dt,      type: date }
+  - { name: strike,             type: float64 }
+  - { name: right,              type: string }
+  - { name: exercise_style,     type: string,    nullable: true }
+  - { name: multiplier,         type: float64,   nullable: true }
+  - { name: currency,           type: string,    nullable: true }
+  - { name: bid,                type: float64,   nullable: true }
+  - { name: ask,                type: float64,   nullable: true }
+  - { name: mid,                type: float64,   nullable: true }
+  - { name: last,               type: float64,   nullable: true }
+  - { name: volume,             type: float64,   unit: contracts, nullable: true }
+  - { name: open_interest,      type: float64,   unit: contracts, nullable: true }
+  - { name: iv,                 type: float64,   unit: pct, nullable: true }
+  - { name: delta,              type: float64,   nullable: true }
+  - { name: gamma,              type: float64,   nullable: true }
+  - { name: vega,               type: float64,   nullable: true }
+  - { name: theta,              type: float64,   nullable: true }
+  - { name: rho,                type: float64,   nullable: true }
+endpoints:
+  - kind: rest
+    path: "/v1/options/eod"
+    params:
+      universe_ref: "bloomberg/baseline/symbology/mapping.yaml"
+      fields: ["expiration_dt","strike","right","exercise_style","multiplier","currency",
+               "bid","ask","mid","last","volume","open_interest",
+               "iv","delta","gamma","vega","theta","rho","underlying_close"]
+      auth: "env:KOYFIN_API_KEY"
+      tz: "UTC"
+lineage: []
+tags: [koyfin, options, greeks, eod]
+---
+# ----------------------------------------------------------------------------
+# 3) Internal – Options EOD Normalized (Consolidated + Cleaned Greeks)
+# ----------------------------------------------------------------------------
+id: internal_options_eod_normalized
+title: Options (EOD, Normalized + Cleaned Greeks)
+vendor: internal
+source: file
+version: "0.1.0"
+frequency: daily
+description: >
+  Consolidated options chain using vendor priority (Bloomberg → Koyfin), with
+  standardized greeks and contract metadata. Greeks are normalized
+  per-contract; vega/theta/rho are interpreted as per 0.01 moves unless noted.
+  Includes basic quality flags and chosen source.
+primary_key: [dt, option_id]
+partitions: [dt]
+columns:
+  # keys / joins
+  - { name: dt,                 type: date,      quality: [not_null, no_future_date] }
+  - { name: option_id,          type: string }
+  - { name: underlying_ticker,  type: string }
+
+  # reference
+  - { name: expiration_dt,      type: date }
+  - { name: dte,                type: int32,     nullable: true }
+  - { name: strike,             type: float64 }
+  - { name: right,              type: string }
+  - { name: exercise_style,     type: string,    nullable: true }
+  - { name: settlement,         type: string,    nullable: true }
+  - { name: multiplier,         type: float64,   nullable: true }
+  - { name: currency,           type: string,    nullable: true }
+
+  # market (vendor-blended)
+  - { name: bid,                type: float64,   nullable: true }
+  - { name: ask,                type: float64,   nullable: true }
+  - { name: mid,                type: float64,   nullable: true }
+  - { name: last,               type: float64,   nullable: true }
+  - { name: mark,               type: float64,   nullable: true }
+  - { name: volume,             type: float64,   unit: contracts, nullable: true }
+  - { name: open_interest,      type: float64,   unit: contracts, nullable: true }
+  - { name: underlying_close,   type: float64,   nullable: true }
+
+  # greeks / vol (standardized)
+  - { name: iv,                 type: float64,   unit: pct,  nullable: true }
+  - { name: delta,              type: float64,   nullable: true }
+  - { name: gamma,              type: float64,   nullable: true }
+  - { name: vega,               type: float64,   nullable: true }
+  - { name: theta,              type: float64,   nullable: true }
+  - { name: rho,                type: float64,   nullable: true }
+
+  # quality / provenance
+  - { name: src_bid_ask,        type: string,    nullable: true, desc: "blp|koyfin|blend" }
+  - { name: src_greeks,         type: string,    nullable: true, desc: "blp|koyfin|calc" }
+  - { name: quality_flag,       type: string,    nullable: true, desc: "OK|WIDE_BA|IV_CLIP|BAD_MARK|MISSING" }
+  - { name: method,             type: string,    nullable: true, desc: "Normalization method/version id." }
+endpoints:
+  - kind: file
+    path: "derived/options/eod/{dt}.parquet"
+    params:
+      format: parquet
+      compression: snappy
+lineage:
+  - blp_options_eod_greeks
+  - koyfin_options_eod_greeks
+  - blp_eq_px_eod
+tags: [internal, options, greeks, eod, derived]

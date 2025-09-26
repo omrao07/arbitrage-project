@@ -1,0 +1,75 @@
+import os
+import pandas as pd
+import numpy as np
+
+OUT_PATH = "data/adamodar/curated/mispricings_us.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def seed_mispricings_us() -> pd.DataFrame:
+    rows = [
+        ("2025-01-15","US","", "equity_index","S&P500","PE_vs_History",4600,4800,-0.0417,-1.1,"short",90,"Forward P/E > 85th pctile","Hedge via ES futures"),
+        ("2025-01-15","US","", "sector","Tech_EV","EVEBITDA_vs_hist",14.5,15.6,-0.0705,-0.8,"short",60,"Multiple rich vs 10y avg","Pair vs Energy_EV"),
+        ("2025-01-15","US","", "rate","US_10Y","Term_Premium",-0.002,0.001,-0.3000,-0.9,"long",60,"Excess term premium; expect rally","TY futures"),
+        ("2025-01-15","US","", "credit","IG_OAS","CDS_vs_spread",1.05,1.20,-0.1250,-1.3,"long",45,"Cash OAS > CDS-implied","Primary heavy supply"),
+        ("2025-01-15","US","", "credit","HY_OAS","Default_Model",4.00,4.60,-0.1304,-0.7,"long",60,"Excess spread vs expected losses","Carry pickup"),
+        ("2025-01-15","US","", "commodity","WTI","Real_Fair_Price",85,75,0.1333,0.7,"long",30,"Undervalued vs cost curve","Event risk"),
+        ("2025-01-15","US","", "fx","USD_Index","PPP",98,103,-0.0485,-0.6,"short",90,"USD ~5% rich to PPP vs DMs","Use DXY futures"),
+    ]
+    return pd.DataFrame(rows, columns=[
+        "as_of","region","state","asset_type","instrument","metric",
+        "fair_value","market_value","mispricing_pct","zscore","signal","horizon_days","rationale","notes"
+    ])
+
+def compute_mispricing(df: pd.DataFrame, treat_rates_as_levels: bool = True) -> pd.DataFrame:
+    """
+    Recompute mispricing and simple rule-based signal.
+    For levels: mispricing_pct = fair/market - 1.
+    If you decide to store yields/spreads as bps deltas, set treat_rates_as_levels=False and
+    create/maintain a 'mispricing_bps' column in your ETL instead.
+    """
+    d = df.copy()
+
+    if treat_rates_as_levels:
+        d["mispricing_pct"] = (d["fair_value"] / d["market_value"] - 1).replace([np.inf, -np.inf], np.nan)
+
+    # Simple signal rules (override with your selector if needed)
+    def decide(x):
+        if pd.isna(x): return "flat"
+        if x > 0.03:  return "long"
+        if x < -0.03: return "short"
+        return "flat"
+    d["signal"] = d["mispricing_pct"].apply(decide)
+
+    return d
+
+def upsert_row(df: pd.DataFrame, row: dict) -> pd.DataFrame:
+    """Idempotent upsert by (as_of, instrument, metric)."""
+    for k in ["as_of","instrument","metric"]:
+        if k not in row:
+            raise ValueError(f"Missing key '{k}'")
+    row = row.copy()
+    row["as_of"] = pd.to_datetime(row["as_of"]).strftime("%Y-%m-%d")
+
+    mask = (
+        (pd.to_datetime(df["as_of"]) == pd.to_datetime(row["as_of"])) &
+        (df["instrument"] == row["instrument"]) &
+        (df["metric"] == row["metric"])
+    )
+    if mask.any():
+        for k, v in row.items():
+            df.loc[mask, k] = v
+    else:
+        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+    return df
+
+def write_csv(df: pd.DataFrame, path: str = OUT_PATH):
+    ensure_dirs(path)
+    df.to_csv(path, index=False)
+
+if __name__ == "__main__":
+    df = seed_mispricings_us()
+    df = compute_mispricing(df, treat_rates_as_levels=True)
+    write_csv(df)
+    print(f"✅ mispricings_us.csv written to {OUT_PATH} with {len(df)} rows")

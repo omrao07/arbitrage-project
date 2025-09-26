@@ -1,0 +1,51 @@
+import os
+import pandas as pd
+import numpy as np
+
+OUT_PATH = "data/adamodar/curated/net_income_margin.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def seed_net_income_margin() -> pd.DataFrame:
+    rows = [
+        ("United States","region","United States","2023-01-01",22.0e12,1.95e12,0.089,"","","Baseline"),
+        ("United States","region","United States","2024-01-01",23.2e12,2.10e12,0.091,"","","Margins slightly up"),
+        ("United States","region","United States","2025-01-01",24.2e12,2.25e12,0.093,"","","Tech driving EPS"),
+        ("Emerging Mkts","region","EM Aggregate","2023-01-01",10.5e12,0.95e12,0.090,"","","Baseline"),
+        ("Emerging Mkts","region","EM Aggregate","2024-01-01",11.3e12,1.02e12,0.090,"","","FX volatility offset"),
+        ("Emerging Mkts","region","EM Aggregate","2025-01-01",12.0e12,1.10e12,0.092,"","","Resilient profitability"),
+        ("Tech Sector","sector","United States","2023-01-01",5.6e12,0.95e12,0.170,"","","Big Tech surge"),
+        ("Tech Sector","sector","United States","2024-01-01",6.1e12,1.02e12,0.167,"","","Capex drag"),
+        ("Tech Sector","sector","United States","2025-01-01",6.55e12,1.09e12,0.166,"","","Margins flattening"),
+    ]
+    return pd.DataFrame(rows, columns=[
+        "entity","entity_type","region","as_of","revenue_usd","net_income_usd",
+        "ni_margin","margin_change_yoy","margin_3y_avg","notes"
+    ])
+
+def compute_margin_changes(df: pd.DataFrame) -> pd.DataFrame:
+    d = df.copy()
+    d["as_of"] = pd.to_datetime(d["as_of"])
+    d.sort_values(["entity","as_of"], inplace=True)
+
+    # recompute net income margin
+    d["ni_margin"] = d["net_income_usd"] / d["revenue_usd"]
+
+    # YoY change
+    d["margin_change_yoy"] = d.groupby("entity")["ni_margin"].diff()
+
+    # trailing 3-year avg
+    d["margin_3y_avg"] = d.groupby("entity")["ni_margin"].rolling(3).mean().reset_index(level=0, drop=True)
+
+    return d
+
+def write_csv(df: pd.DataFrame, path: str = OUT_PATH):
+    ensure_dirs(path)
+    df.to_csv(path, index=False)
+
+if __name__ == "__main__":
+    df = seed_net_income_margin()
+    df = compute_margin_changes(df)
+    write_csv(df)
+    print(f"✅ net_income_margin.csv written to {OUT_PATH} with {len(df)} rows")

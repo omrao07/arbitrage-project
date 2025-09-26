@@ -1,0 +1,51 @@
+import pandas as pd
+from datetime import date
+import os
+
+OUT_PATH = "data/macro/gdp_growth.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def init_gdp_growth(seed: bool = True) -> pd.DataFrame:
+    """
+    Create gdp_growth.csv with schema:
+    date, region, gdp_growth_qoq, gdp_growth_yoy, gdp_level_usd_trn, source, notes
+    """
+    ensure_dirs(OUT_PATH)
+    cols = ["date","region","gdp_growth_qoq","gdp_growth_yoy","gdp_level_usd_trn","source","notes"]
+
+    if not seed:
+        df = pd.DataFrame(columns=cols)
+        df.to_csv(OUT_PATH, index=False)
+        return df
+
+    today = str(date.today())
+    rows = [
+        ("2025-01-01","United States",0.007,0.025,28.0,"BEA","Q4 GDP estimate"),
+        ("2025-01-01","Developed ex-US",0.005,0.018,35.0,"OECD","Europe, Japan, Canada, Aus"),
+        ("2025-01-01","Emerging Mkts",0.012,0.048,25.0,"IMF","Aggregate EM"),
+        ("2025-01-01","Frontier Mkts",0.009,0.035,3.0,"IMF","Africa, small EM basket"),
+        ("2025-01-01","Global Total",0.008,0.030,91.0,"IMF/World Bank","Weighted global growth"),
+        (today,"United States",None,None,None,"Manual","Placeholder for live update"),
+    ]
+    df = pd.DataFrame(rows, columns=cols)
+    df.to_csv(OUT_PATH, index=False)
+    return df
+
+# ---------- Analytics helpers ----------
+
+def load_gdp_growth(path: str = OUT_PATH) -> pd.DataFrame:
+    df = pd.read_csv(path)
+    df["date"] = pd.to_datetime(df["date"])
+    return df
+
+def yoy_growth(df: pd.DataFrame, region: str = "United States") -> pd.DataFrame:
+    return df[df["region"] == region][["date","gdp_growth_yoy"]].sort_values("date")
+
+if __name__ == "__main__":
+    df = init_gdp_growth(seed=True)
+    print(f"✅ gdp_growth.csv written to {OUT_PATH} with {len(df)} rows")
+    # Example usage:
+    # us = yoy_growth(load_gdp_growth(), "United States")
+    # print(us.tail())

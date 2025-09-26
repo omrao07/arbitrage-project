@@ -1,0 +1,205 @@
+# retail_altdata/datasets.yaml
+# Canonical alternative datasets covering consumer/retail signals.
+# Valid against _meta/schema.dataset.yaml. Returns are fractions (1% => 0.01).
+
+# ----------------------------------------------------------------------------
+# 1) Card Spend – anonymized panel (merchant-level)
+# ----------------------------------------------------------------------------
+id: alt_retail_card_spend_daily
+title: Card Spend (Merchant-Level, Daily)
+vendor: external_card_panel
+source: rest
+version: "1.0.0"
+frequency: daily
+description: >
+  Aggregated anonymized card spend and transactions by merchant. Useful for
+  nowcasting Same-Store Sales and demand inflections. Values are currency-
+  normalized to reported `currency`.
+primary_key: [dt, merchant_id]
+partitions: [dt]
+columns:
+  - { name: dt,               type: date,      desc: "Business date (UTC)." }
+  - { name: merchant_id,      type: string,    desc: "Stable provider merchant id." }
+  - { name: merchant_name,    type: string,    nullable: true }
+  - { name: ticker,           type: string,    nullable: true, desc: "Linked equity ticker (if applicable)." }
+  - { name: country,          type: string,    nullable: true }
+  - { name: region,           type: string,    nullable: true, desc: "State/Province/Region code if available." }
+  - { name: currency,         type: string,    nullable: true, desc: "ISO 4217." }
+  - { name: spend_total,      type: float64,   quality: [non_negative], unit: USD, desc: "Total card spend for the panel in `currency`." }
+  - { name: transactions,     type: float64,   quality: [non_negative], desc: "Number of transactions (panel)." }
+  - { name: customers,        type: float64,   quality: [non_negative], nullable: true, desc: "Distinct cards (panel)." }
+  - { name: avg_ticket,       type: float64,   nullable: true, desc: "spend_total / transactions." }
+  - { name: share_of_wallet,  type: float64,   unit: pct, nullable: true, desc: "Merchant SoW within category (0–1)." }
+  - { name: panel_coverage,   type: float64,   unit: pct, nullable: true, desc: "Panel representativeness (0–1)." }
+  - { name: method,           type: string,    nullable: true, desc: "Ingestion/normalization method id." }
+endpoints:
+  - kind: rest
+    path: "/v1/card/spend/daily"
+    params:
+      auth: "env:CARD_PANEL_API_KEY"
+      tz: "UTC"
+lineage: [retail_entity_map]
+tags: [altdata, retail, cards, spend, daily]
+---
+# ----------------------------------------------------------------------------
+# 2) Foot Traffic – POI visits & dwell (store-level)
+# ----------------------------------------------------------------------------
+id: alt_retail_foot_traffic_daily
+title: Foot Traffic (POI Visits, Daily)
+vendor: placer_ai
+source: rest
+version: "1.0.0"
+frequency: daily
+description: >
+  Store-level device visit counts and dwell metrics aggregated to daily
+  resolution. Includes a visits index vs provider baseline.
+primary_key: [dt, location_id]
+partitions: [dt]
+columns:
+  - { name: dt,               type: date }
+  - { name: location_id,      type: string,  desc: "Provider POI id." }
+  - { name: merchant_id,      type: string,  nullable: true }
+  - { name: ticker,           type: string,  nullable: true }
+  - { name: country,          type: string,  nullable: true }
+  - { name: region,           type: string,  nullable: true }
+  - { name: visits,           type: float64, quality: [non_negative] }
+  - { name: unique_visitors,  type: float64, quality: [non_negative], nullable: true }
+  - { name: dwell_median_min, type: float64, nullable: true }
+  - { name: visits_index,     type: float64, nullable: true, desc: "Index vs baseline (=1.0 baseline)." }
+  - { name: closures_flag,    type: bool,    nullable: true, desc: "Store temporarily closed indicator." }
+  - { name: method,           type: string,  nullable: true }
+endpoints:
+  - kind: rest
+    path: "/v1/poi/visits/daily"
+    params:
+      auth: "env:PLACER_API_KEY"
+      tz: "UTC"
+lineage: [retail_entity_map]
+tags: [altdata, retail, mobility, foot_traffic, daily]
+---
+# ----------------------------------------------------------------------------
+# 3) Web Traffic – site engagement (brand-level)
+# ----------------------------------------------------------------------------
+id: alt_retail_web_traffic_daily
+title: Web Traffic (Visits & Engagement, Daily)
+vendor: similarweb
+source: rest
+version: "1.0.0"
+frequency: daily
+description: >
+  Domain-level web visits and engagement metrics for retail brands. Useful for
+  digital demand tracking and campaign impact analysis.
+primary_key: [dt, domain]
+partitions: [dt]
+columns:
+  - { name: dt,               type: date }
+  - { name: domain,           type: string,  desc: "Brand primary domain (lowercase)." }
+  - { name: merchant_id,      type: string,  nullable: true }
+  - { name: ticker,           type: string,  nullable: true }
+  - { name: country,          type: string,  nullable: true }
+  - { name: visits,           type: float64, quality: [non_negative] }
+  - { name: unique_visitors,  type: float64, quality: [non_negative], nullable: true }
+  - { name: pages_per_visit,  type: float64, nullable: true }
+  - { name: avg_session_sec,  type: float64, nullable: true }
+  - { name: bounce_rate,      type: float64, unit: pct, nullable: true }
+  - { name: method,           type: string,  nullable: true }
+endpoints:
+  - kind: rest
+    path: "/v1/web/traffic/daily"
+    params:
+      auth: "env:SIMILARWEB_API_KEY"
+      tz: "UTC"
+lineage: [retail_entity_map]
+tags: [altdata, retail, web, traffic, daily]
+---
+# ----------------------------------------------------------------------------
+# 4) App Rankings / Usage – store charts & actives (brand-level)
+# ----------------------------------------------------------------------------
+id: alt_retail_app_ranking_daily
+title: App Rankings & Usage (Daily)
+vendor: dataai
+source: rest
+version: "1.0.0"
+frequency: daily
+description: >
+  Mobile app store ranks and usage signals (where available) by platform,
+  country, and category. Tracks retail brand app momentum.
+primary_key: [dt, app_id, country, platform]
+partitions: [dt]
+columns:
+  - { name: dt,             type: date }
+  - { name: app_id,         type: string, desc: "Store-specific app identifier." }
+  - { name: app_name,       type: string, nullable: true }
+  - { name: platform,       type: string, desc: "ios|android." }
+  - { name: country,        type: string }
+  - { name: category,       type: string, nullable: true }
+  - { name: rank_free,      type: float64, nullable: true }
+  - { name: rank_grossing,  type: float64, nullable: true }
+  - { name: dau,            type: float64, nullable: true }
+  - { name: mau,            type: float64, nullable: true }
+  - { name: rating,         type: float64, nullable: true }
+  - { name: rating_count,   type: float64, nullable: true }
+  - { name: merchant_id,    type: string,  nullable: true }
+  - { name: ticker,         type: string,  nullable: true }
+  - { name: method,         type: string,  nullable: true }
+endpoints:
+  - kind: rest
+    path: "/v1/apps/ranks/daily"
+    params:
+      auth: "env:DATAAI_API_KEY"
+      tz: "UTC"
+lineage: [retail_entity_map]
+tags: [altdata, retail, apps, rankings, usage, daily]
+---
+# ----------------------------------------------------------------------------
+# 5) Price Basket – scraped SKU basket prices (retailer-level, weekly)
+# ----------------------------------------------------------------------------
+id: alt_retail_price_basket_weekly
+title: Price Basket (Weekly, Scraped)
+vendor: internal
+source: file
+version: "0.1.0"
+frequency: weekly
+description: >
+  Normalized price of fixed SKU baskets per retailer. Scraped daily and rolled
+  to weekly close; includes promo and stock-out rates.
+primary_key: [week, retailer_id, basket_id]
+partitions: [week]
+columns:
+  - { name: week,              type: date,    desc: "ISO week ending date (UTC Friday by convention)." }
+  - { name: retailer_id,       type: string }
+  - { name: retailer_name,     type: string,  nullable: true }
+  - { name: ticker,            type: string,  nullable: true }
+  - { name: country,           type: string,  nullable: true }
+  - { name: currency,          type: string,  nullable: true }
+  - { name: basket_id,         type: string,  desc: "Internal basket code (e.g., GROCERY_CORE_50)." }
+  - { name: basket_name,       type: string,  nullable: true }
+  - { name: sku_count,         type: int32,   nullable: true }
+  - { name: price_basket,      type: float64, quality: [non_negative], desc: "Sum of latest in-stock SKU prices." }
+  - { name: promo_pct,         type: float64, unit: pct, nullable: true }
+  - { name: oos_pct,           type: float64, unit: pct, nullable: true, desc: "Out-of-stock share across SKUs." }
+  - { name: method,            type: string,  nullable: true }
+endpoints:
+  - kind: file
+    path: "derived/retail/baskets/{week}.parquet"
+    params:
+      format: parquet
+      compression: snappy
+lineage: [retail_entity_map]
+tags: [altdata, retail, pricing, baskets, weekly, derived]
+---
+# ----------------------------------------------------------------------------
+# 6) Retail Entity Map – cross-id reference (brand/merchant)
+# ----------------------------------------------------------------------------
+id: retail_entity_map
+title: Retail Entity Cross-IDs (Merchant/Brand)
+vendor: internal
+source: file
+version: "1.0.0"
+frequency: ad_hoc
+description: >
+  Point-in-time mapping of merchants/brands to domains, app ids, POIs, and
+  listed tickers for joining altdata sources.
+primary_key: [entity_id]
+partitions: []
+columns:

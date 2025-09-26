@@ -1,5 +1,20 @@
 {
   "devDependencies": {
+    "@types/node": "^24.4.0",
     "@types/react": "^19.1.11"
+  },
+  "dependencies": {
+    "@nivo/heatmap": "^0.99.0",
+    "@opentelemetry/api": "^1.9.0",
+    "dotenv": "^17.2.2",
+    "faiss": "^1.0.0",
+    "fuzz": "^0.0.3",
+    "kafkajs": "^2.2.4",
+    "nats": "^2.29.3",
+    "open": "^10.2.0",
+    "redis": "^5.8.2",
+    "strategy": "^1.1.1",
+    "strawberry": "^1.0.1",
+    "telemetry": "^0.1.0"
   }
 }

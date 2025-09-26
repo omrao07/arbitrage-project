@@ -1,0 +1,26 @@
+import pandas as pd
+
+def build_fundamentals_2022():
+    rows = [
+        ("AAPL","Apple Inc.","Technology","US","2022-01-01",365000,108000,95000,370000,80000,104000,11000,0.12,0.09,0.30,0.26,0.30,"Snapshot FY2022"),
+        ("MSFT","Microsoft","Technology","US","2022-01-01",198000,88000,72000,305000,115000,87000,14000,0.13,0.10,0.37,0.29,0.25,"Snapshot FY2022"),
+        ("TSLA","Tesla","Consumer Discretionary","US","2022-01-01",81500,13000,10500,108000,38000,12500,4500,0.28,0.10,0.16,0.13,0.48,"EV sector early scale"),
+        ("JPM","JPMorgan","Financials","US","2022-01-01",125000,55000,40000,3800000,340000,64000,7000,0.12,0.01,0.44,0.32,5.10,"Leverage includes deposits"),
+        ("XOM","ExxonMobil","Energy","US","2022-01-01",400000,58000,45000,340000,175000,54000,18000,0.26,0.13,0.15,0.11,0.95,"Oil cycle rebound"),
+    ]
+
+    df = pd.DataFrame(rows, columns=[
+        "ticker","company_name","sector","region","as_of",
+        "revenue_musd","ebit_musd","net_income_musd",
+        "total_assets_musd","total_equity_musd",
+        "operating_cf_musd","capex_musd",
+        "roe","roa","ebit_margin","net_margin",
+        "debt_to_equity","notes"
+    ])
+    return df
+
+if __name__ == "__main__":
+    df = build_fundamentals_2022()
+    out_path = "data/adamodar/versions/2022/fundamentals.csv"
+    df.to_csv(out_path, index=False)
+    print(f"✅ fundamentals.csv snapshot written to {out_path}")

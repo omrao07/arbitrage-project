@@ -1,0 +1,18 @@
+id: BW-0381
+firm: Bridgewater
+name: Risk Parity Allocation (UK)
+description: Balanced beta across assets.
+discipline: Quant
+family: Cross-Asset Overlays
+region: UK
+horizon: Macro
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

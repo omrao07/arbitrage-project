@@ -1,0 +1,24 @@
+date,issuer,category,rating_bucket,tenor,spread_bps,zas_bps,oas_bps,source
+2025-09-10,US IG Index,Index,IG,1Y,65,64,66,compiled
+2025-09-10,US IG Index,Index,IG,3Y,78,77,80,compiled
+2025-09-10,US IG Index,Index,IG,5Y,85,84,87,compiled
+2025-09-10,US IG Index,Index,IG,7Y,92,91,94,compiled
+2025-09-10,US IG Index,Index,IG,10Y,100,99,102,compiled
+
+2025-09-10,US HY Index,Index,HY,1Y,380,378,382,compiled
+2025-09-10,US HY Index,Index,HY,3Y,420,418,423,compiled
+2025-09-10,US HY Index,Index,HY,5Y,460,458,465,compiled
+2025-09-10,US HY Index,Index,HY,7Y,490,488,496,compiled
+2025-09-10,US HY Index,Index,HY,10Y,525,523,532,compiled
+
+2025-09-10,Apple Inc,Corporate,AA,1Y,42,41,43,bbg
+2025-09-10,Apple Inc,Corporate,AA,3Y,55,54,56,bbg
+2025-09-10,Apple Inc,Corporate,AA,5Y,62,61,64,bbg
+2025-09-10,Apple Inc,Corporate,AA,7Y,70,69,71,bbg
+2025-09-10,Apple Inc,Corporate,AA,10Y,80,79,82,bbg
+
+2025-09-10,Tesla Inc,Corporate,BBB,1Y,120,118,121,bbg
+2025-09-10,Tesla Inc,Corporate,BBB,3Y,160,158,162,bbg
+2025-09-10,Tesla Inc,Corporate,BBB,5Y,185,183,188,bbg
+2025-09-10,Tesla Inc,Corporate,BBB,7Y,210,208,213,bbg
+2025-09-10,Tesla Inc,Corporate,BBB,10Y,240,238,243,bbg

@@ -1,0 +1,18 @@
+id: GLB-0302
+firm: Global
+name: EUR vs CHF Safe Haven (US)
+description: Worldwide diversified strategy in Credit & Structured — region: US.
+discipline: Credit
+family: Credit & Structured
+region: US
+horizon: Swing
+status: research
+engine: credit_cds
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: credit
+created_at: 2025-09-10
+updated_at: 2025-09-10

@@ -1,0 +1,33 @@
+import pandas as pd
+from datetime import date
+
+def build_sectors_multiples(as_of: str = None):
+    if as_of is None:
+        as_of = str(date.today())
+
+    rows = [
+        ("Communication Services","US",as_of,18.5,10.2,2.1,2.4,0.020,145,"Media + telecom mix"),
+        ("Consumer Discretionary","US",as_of,24.0,13.5,4.2,2.8,0.010,420,"Retail, autos, leisure"),
+        ("Consumer Staples","US",as_of,20.2,11.0,3.5,2.2,0.025,235,"Food, beverages, household"),
+        ("Energy","US",as_of,12.0,6.5,1.8,1.2,0.040,150,"Oil & gas majors"),
+        ("Financials","US",as_of,11.5,9.0,1.2,1.0,0.030,570,"Leverage includes deposits"),
+        ("Healthcare","US",as_of,21.5,12.0,3.8,2.6,0.015,390,"Pharma + biotech mix"),
+        ("Industrials","US",as_of,17.0,9.8,2.6,1.9,0.020,520,"Manufacturing, transports"),
+        ("Materials","US",as_of,14.8,8.5,2.1,1.6,0.025,280,"Metals, chemicals, building"),
+        ("Real Estate","US",as_of,30.0,18.0,2.0,6.5,0.050,190,"REIT leverage net debt based"),
+        ("Technology","US",as_of,27.0,15.0,6.0,4.5,0.008,650,"Software + hardware"),
+        ("Utilities","US",as_of,16.0,9.2,1.5,1.8,0.045,140,"Regulated utilities"),
+    ]
+
+    df = pd.DataFrame(rows, columns=[
+        "sector","region","as_of",
+        "pe_ratio","ev_ebitda","pb_ratio","ps_ratio",
+        "dividend_yield","n_firms","notes"
+    ])
+    return df
+
+if __name__ == "__main__":
+    df = build_sectors_multiples()
+    out_path = "data/adamodar/curated/sectors_multiples.csv"
+    df.to_csv(out_path, index=False)
+    print(f"✅ sectors_multiples.csv written to {out_path}")

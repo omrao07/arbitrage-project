@@ -1,0 +1,32 @@
+import pandas as pd
+import os
+
+def build_monthly_erp():
+    rows = [
+        (2023,1,0.025,0.028,0.052,0.073,0.037,"Post-2022 rebound continues"),
+        (2023,2,0.026,0.029,0.053,0.072,0.038,"Strong EM inflows"),
+        (2023,3,0.027,0.028,0.054,0.074,0.039,"US banks stress"),
+        (2023,4,0.024,0.027,0.052,0.073,0.037,"Stabilization"),
+        (2023,5,0.023,0.027,0.051,0.072,0.036,"Fed pause"),
+        (2023,6,0.022,0.028,0.052,0.073,0.037,"Equity rally broadens"),
+        (2023,7,0.021,0.028,0.053,0.074,0.037,"EM currencies weaken"),
+        (2023,8,0.020,0.028,0.054,0.075,0.038,"US inflation re-accelerates"),
+        (2023,9,0.021,0.029,0.055,0.076,0.039,"Oil up, risk premia up"),
+        (2023,10,0.022,0.030,0.056,0.076,0.040,"Bond yields spike"),
+        (2023,11,0.021,0.029,0.055,0.075,0.039,"Equities rebound"),
+        (2023,12,0.020,0.029,0.054,0.074,0.038,"Year-end ERP stabilization"),
+        (2024,1,0.020,0.029,0.052,0.073,0.038,"Stable ERP start"),
+    ]
+
+    df = pd.DataFrame(rows, columns=[
+        "year","month","us_erp","developed_ex_us_erp","em_erp",
+        "frontier_erp","global_weighted_erp","notes"
+    ])
+    return df
+
+if __name__ == "__main__":
+    df = build_monthly_erp()
+    out_path = "data/adamodar/curated/monthly_erp.csv"
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    df.to_csv(out_path, index=False)
+    print(f"✅ Monthly ERP dataset written to {out_path}")

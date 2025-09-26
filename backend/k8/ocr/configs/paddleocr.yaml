@@ -1,0 +1,51 @@
+# paddleocr.yaml
+# Config for PaddleOCR (Optical Character Recognition)
+# Place under kb/ocr/configs/
+
+ocr:
+  engine: paddleocr
+  languages: [en]               # e.g. [en], [ch], [en, ch] for multilingual
+  use_angle_cls: true           # enable angle classification
+  det_model_dir: models/paddleocr/det/en_PP-OCRv4_det_infer
+  rec_model_dir: models/paddleocr/rec/en_PP-OCRv4_rec_infer
+  cls_model_dir: models/paddleocr/cls/ch_ppocr_mobile_v2.0_cls_infer
+  use_gpu: true                 # use GPU if available
+  enable_mkldnn: false          # CPU acceleration (if no GPU)
+  gpu_mem: 8000                 # MB GPU memory limit
+  precision: fp32               # fp32|fp16
+
+preprocess:
+  grayscale: true               # convert to grayscale
+  denoise: true                 # light denoising
+  binarize: true                 # adaptive thresholding
+  deskew: true                   # deskew skewed docs
+  resize_long: 1280              # resize longest side
+  pad: 10                        # pad pixels around text regions
+
+inference:
+  det_algorithm: DB              # detection algorithm: DB|EAST|SAST
+  rec_algorithm: CRNN            # recognition algorithm: CRNN|SRN
+  use_space_char: true
+  box_thresh: 0.6
+  text_thresh: 0.5
+  max_batch_size: 32
+  output_time: false             # show inference time
+
+postprocess:
+  spellcheck: false
+  correct_confusable: true
+  merge_boxes: true              # merge small overlapping boxes
+  min_length: 2
+  lowercase: true
+  uppercase: false
+
+runtime:
+  device: auto                   # auto|cpu|cuda
+  num_threads: 4
+  log_level: INFO
+
+output:
+  results_dir: outputs/ocr/paddleocr/
+  save_format: jsonl             # jsonl|txt
+  include_boxes: true
+  include_confidence: true

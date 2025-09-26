@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<rss version="2.0">
+  <channel>
+    <title>Financial Times - Markets</title>
+    <link>https://www.ft.com/markets</link>
+    <description>Latest news from global markets</description>
+    <language>en-us</language>
+    <pubDate>Sun, 14 Sep 2025 12:10:00 GMT</pubDate>
+
+    <item>
+      <title>European Stocks Rally as ECB Signals Rate Pause</title>
+      <link>https://www.ft.com/content/ecb-rate-pause-2025</link>
+      <description>European equities rose across the board after the ECB hinted at pausing rate hikes, boosting risk sentiment.</description>
+      <pubDate>Sun, 14 Sep 2025 11:55:00 GMT</pubDate>
+      <guid>ft-001</guid>
+    </item>
+
+    <item>
+      <title>China’s Yuan Hits 6-Month Low Against Dollar</title>
+      <link>https://www.ft.com/content/china-yuan-fx-2025</link>
+      <description>The yuan slid to its weakest level in six months amid capital outflows and diverging Fed/ECB policy paths.</description>
+      <pubDate>Sun, 14 Sep 2025 11:15:00 GMT</pubDate>
+      <guid>ft-002</guid>
+    </item>
+
+    <item>
+      <title>US Corporate Bond Issuance Slows Sharply</title>
+      <link>https://www.ft.com/content/us-corp-bonds-2025</link>
+      <description>High-grade corporate bond issuance dropped 40% this quarter as borrowing costs rose and investor appetite faded.</description>
+      <pubDate>Sun, 14 Sep 2025 10:45:00 GMT</pubDate>
+      <guid>ft-003</guid>
+    </item>
+
+  </channel>
+</rss>

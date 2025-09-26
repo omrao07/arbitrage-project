@@ -1,0 +1,33 @@
+import pandas as pd
+import os
+
+def build_annual_erp():
+    rows = [
+        (2010,0.030,0.028,0.045,0.060,0.034,"Post-crisis elevated ERPs"),
+        (2011,0.035,0.030,0.048,0.065,0.038,"Eurozone debt fears"),
+        (2012,0.040,0.032,0.050,0.068,0.041,"QE + EM commodity boom"),
+        (2013,0.030,0.027,0.046,0.063,0.035,"DM rally, narrowing ERP"),
+        (2014,0.025,0.026,0.045,0.062,0.033,"Global liquidity strong"),
+        (2015,0.025,0.027,0.047,0.065,0.034,"China slowdown, EM stress"),
+        (2016,0.035,0.028,0.050,0.070,0.038,"Political + EM FX shocks"),
+        (2017,0.025,0.024,0.045,0.062,0.032,"Global bull market"),
+        (2018,0.030,0.027,0.050,0.068,0.036,"Trade war, EM volatility"),
+        (2019,0.035,0.028,0.048,0.067,0.037,"Fed pivot, synchronized rebound"),
+        (2020,0.055,0.035,0.060,0.075,0.048,"COVID crash & rebound"),
+        (2021,0.040,0.030,0.055,0.070,0.039,"Earnings recovery"),
+        (2022,0.030,0.032,0.058,0.078,0.042,"Inflation & rate hikes"),
+        (2023,0.020,0.028,0.050,0.072,0.037,"Global rebound"),
+        (2024,0.020,0.029,0.052,0.073,0.038,"Stabilizing ERP estimates"),
+    ]
+
+    df = pd.DataFrame(rows, columns=[
+        "year","us_erp","developed_ex_us_erp","em_erp","frontier_erp","global_weighted_erp","notes"
+    ])
+    return df
+
+if __name__ == "__main__":
+    df = build_annual_erp()
+    out_path = "data/adamodar/curated/annual_erp.csv"
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    df.to_csv(out_path, index=False)
+    print(f"✅ Annual ERP dataset written to {out_path}")

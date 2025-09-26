@@ -1,0 +1,18 @@
+id: BW-0357
+firm: Bridgewater
+name: Liquidity Shock Hedge
+description: Short HY vs long USTs.
+discipline: Quant
+family: Cross-Asset Overlays
+region: Global
+horizon: Macro
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

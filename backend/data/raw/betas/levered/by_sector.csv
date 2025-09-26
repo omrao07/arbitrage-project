@@ -1,0 +1,37 @@
+import pandas as pd
+from datetime import date
+import os
+
+def build_levered_betas_by_company(as_of: str = None):
+    """
+    Levered betas by company (Damodaran-style).
+    - levered_beta = equity beta (with leverage).
+    - Inputs: regression beta, capital structure, tax rate.
+    """
+    if as_of is None:
+        as_of = str(date.today())
+
+    rows = [
+        ("AAPL","Apple Inc.","Technology","US",as_of,1.12,0.30,0.21,0.44,0.10,5,"Large-cap tech"),
+        ("MSFT","Microsoft","Technology","US",as_of,1.05,0.20,0.21,0.46,0.09,5,"Cloud-heavy mix"),
+        ("TSLA","Tesla","Consumer Discretionary","US",as_of,1.45,0.50,0.23,0.39,0.15,5,"High volatility"),
+        ("JPM","JPMorgan","Financials","US",as_of,0.90,5.10,0.24,0.40,0.08,5,"Includes deposits"),
+        ("XOM","ExxonMobil","Energy","US",as_of,1.20,0.95,0.20,0.32,0.12,5,"Oil cycle"),
+        ("TSM","TSMC","Technology","Asia",as_of,0.95,0.25,0.21,0.41,0.11,5,"Asia-Pacific semis"),
+        ("RELI","Reliance","Energy/Telecom","India",as_of,1.15,0.60,0.25,0.36,0.14,5,"Conglomerate"),
+        ("BABA","Alibaba","Consumer Discretionary","China",as_of,1.30,0.40,0.25,0.35,0.13,5,"Tech + regulation risk"),
+    ]
+
+    df = pd.DataFrame(rows, columns=[
+        "ticker","company_name","sector","region","as_of",
+        "levered_beta","debt_to_equity","tax_rate",
+        "r2","beta_std_err","lookback_years","notes"
+    ])
+    return df
+
+if __name__ == "__main__":
+    df = build_levered_betas_by_company()
+    out_path = "data/adamodar/raw/betas/levered/by_company.csv"
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    df.to_csv(out_path, index=False)
+    print(f"✅ Levered betas by company written to {out_path}")

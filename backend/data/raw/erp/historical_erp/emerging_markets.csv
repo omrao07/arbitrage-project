@@ -1,0 +1,32 @@
+import pandas as pd
+from datetime import date
+import os
+
+def build_emerging_markets_dataset(as_of: str | None = None):
+    if as_of is None:
+        as_of = str(date.today())
+
+    rows = [
+        ("Brazil",as_of,0.080,0.035,0.070,0.98,1.20,0.55,0.27,600,9,1.3,6.0,0.050,"Commodity cycle exposure"),
+        ("India",as_of,0.072,0.020,0.065,0.95,1.20,0.60,0.25,2200,18,2.4,9.0,0.015,"High growth, higher CRP"),
+        ("China",as_of,0.068,0.015,0.030,0.90,1.10,0.40,0.25,4500,14,1.8,7.5,0.020,"Regulation risk premium"),
+        ("South Africa",as_of,0.072,0.050,0.085,1.00,1.30,0.65,0.28,200,11,1.4,6.0,0.045,"FX & political volatility"),
+        ("Mexico",as_of,0.075,0.030,0.065,0.95,1.15,0.50,0.26,400,11,1.5,7.0,0.035,"US trade dependency"),
+        ("Turkey",as_of,0.090,0.045,0.090,1.05,1.35,0.70,0.30,150,8,1.1,5.5,0.060,"Inflation + political risk"),
+        ("Indonesia",as_of,0.078,0.025,0.060,0.94,1.15,0.52,0.26,250,12,1.4,6.8,0.033,"ASEAN anchor"),
+        ("EM Avg",as_of,0.076,0.029,0.066,0.95,1.18,0.55,0.27,8250,12,1.6,7.1,0.034,"Weighted average across EM"),
+    ]
+
+    df = pd.DataFrame(rows, columns=[
+        "country","as_of","erp_implied","crp","rf_rate",
+        "unlevered_beta","levered_beta","avg_debt_to_equity","tax_rate",
+        "n_firms","pe","pb","ev_ebitda","dividend_yield","notes"
+    ])
+    return df
+
+if __name__ == "__main__":
+    df = build_emerging_markets_dataset()
+    out_path = "data/adamodar/curated/regions/emerging_markets.csv"
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    df.to_csv(out_path, index=False)
+    print(f"✅ Emerging markets dataset written to {out_path}")

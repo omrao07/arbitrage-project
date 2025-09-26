@@ -1,0 +1,18 @@
+id: GLB-0045
+firm: Global
+name: Ags Inflation Hedge Basket (UK)
+description: Worldwide diversified strategy in Vol/Options — region: UK.
+discipline: Quant
+family: Vol/Options
+region: UK
+horizon: Macro
+status: research
+engine: options_vol
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

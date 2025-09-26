@@ -1,0 +1,69 @@
+{
+  "type": "record",
+  "namespace": "market",
+  "name": "OrderBook",
+  "doc": "Schema for market order book snapshots or updates.",
+  "fields": [
+    {
+      "name": "instrument_id",
+      "type": "string",
+      "doc": "Unique identifier for the instrument (e.g., ticker or ISIN)"
+    },
+    {
+      "name": "exchange",
+      "type": "string",
+      "doc": "Exchange or venue (e.g., NASDAQ, CME, Binance)"
+    },
+    {
+      "name": "book_type",
+      "type": {
+        "type": "enum",
+        "name": "BookType",
+        "symbols": ["SNAPSHOT", "INCREMENTAL"]
+      },
+      "doc": "Whether this record is a full snapshot or an incremental update"
+    },
+    {
+      "name": "bids",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "BidLevel",
+          "fields": [
+            { "name": "price", "type": "double", "doc": "Bid price" },
+            { "name": "quantity", "type": "double", "doc": "Quantity available at this level" },
+            { "name": "order_count", "type": "int", "doc": "Number of individual orders at this level" }
+          ]
+        }
+      },
+      "doc": "Array of bid levels (descending by price)"
+    },
+    {
+      "name": "asks",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "AskLevel",
+          "fields": [
+            { "name": "price", "type": "double", "doc": "Ask price" },
+            { "name": "quantity", "type": "double", "doc": "Quantity available at this level" },
+            { "name": "order_count", "type": "int", "doc": "Number of individual orders at this level" }
+          ]
+        }
+      },
+      "doc": "Array of ask levels (ascending by price)"
+    },
+    {
+      "name": "sequence_number",
+      "type": "long",
+      "doc": "Sequence number to maintain event ordering"
+    },
+    {
+      "name": "timestamp",
+      "type": { "type": "long", "logicalType": "timestamp-millis" },
+      "doc": "Timestamp of this book event (exchange or ingest time)"
+    }
+  ]
+}

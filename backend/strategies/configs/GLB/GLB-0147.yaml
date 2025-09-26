@@ -1,0 +1,18 @@
+id: GLB-0147
+firm: Global
+name: BTC/ETH Options Term Structure (JP)
+description: Worldwide diversified strategy in FX & Macro — region: JP.
+discipline: Macro
+family: FX & Macro
+region: JP
+horizon: Macro
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

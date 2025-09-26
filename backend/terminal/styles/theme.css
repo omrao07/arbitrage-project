@@ -1,0 +1,110 @@
+/* themes.css */
+
+/* Root defaults (Dark Mode is default here) */
+:root {
+  --color-bg: #0a0a0a;
+  --color-surface: #18181b;
+  --color-surface-alt: #27272a;
+  --color-border: #3f3f46;
+
+  --color-text: #f4f4f5;
+  --color-text-muted: #a1a1aa;
+  --color-text-inverse: #0a0a0a;
+
+  --color-accent: #fbbf24; /* amber */
+  --color-accent-hover: #facc15;
+
+  --color-success: #22c55e;
+  --color-danger: #ef4444;
+  --color-warning: #f59e0b;
+  --color-info: #3b82f6;
+
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.15);
+  --shadow-md: 0 2px 6px rgba(0,0,0,0.25);
+  --shadow-lg: 0 8px 20px rgba(0,0,0,0.35);
+
+  --transition-fast: 150ms ease;
+  --transition-slow: 300ms ease;
+}
+
+/* Light theme */
+[data-theme="light"] {
+  --color-bg: #fafafa;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f4f4f5;
+  --color-border: #d4d4d8;
+
+  --color-text: #18181b;
+  --color-text-muted: #52525b;
+  --color-text-inverse: #ffffff;
+
+  --color-accent: #d97706;
+  --color-accent-hover: #b45309;
+
+  --color-success: #16a34a;
+  --color-danger: #dc2626;
+  --color-warning: #ca8a04;
+  --color-info: #2563eb;
+}
+
+/* High Contrast theme */
+[data-theme="contrast"] {
+  --color-bg: #000000;
+  --color-surface: #000000;
+  --color-surface-alt: #1a1a1a;
+  --color-border: #ffffff;
+
+  --color-text: #ffffff;
+  --color-text-muted: #e4e4e7;
+  --color-text-inverse: #000000;
+
+  --color-accent: #ffff00; /* bright yellow */
+  --color-accent-hover: #facc15;
+
+  --color-success: #00ff00;
+  --color-danger: #ff0000;
+  --color-warning: #ff9900;
+  --color-info: #00ccff;
+}
+
+/* Utility classes (optional helpers if not using Tailwind) */
+.bg {
+  background-color: var(--color-bg);
+}
+.surface {
+  background-color: var(--color-surface);
+}
+.surface-alt {
+  background-color: var(--color-surface-alt);
+}
+.text {
+  color: var(--color-text);
+}
+.text-muted {
+  color: var(--color-text-muted);
+}
+.border {
+  border: 1px solid var(--color-border);
+}
+.accent {
+  color: var(--color-accent);
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.btn:hover {
+  background: var(--color-accent-hover);
+}

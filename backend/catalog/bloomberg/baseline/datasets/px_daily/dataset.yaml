@@ -1,0 +1,135 @@
+# px_daily/dataset.yaml
+# Canonical end-of-day (EOD) price datasets. Monetary values in issuer quote currency (`currency`).
+# Returns (ret_*) are FRACTIONS (e.g., 1% => 0.01).
+
+# ----------------------------------------------------------------------------
+# 1) Bloomberg – Equities EOD OHLCV (+ basic CA context)
+# ----------------------------------------------------------------------------
+id: blp_eq_px_eod
+title: Bloomberg Equities Prices (EOD OHLCV)
+vendor: bloomberg
+source: bpipe
+version: "1.0.0"
+frequency: daily
+description: >
+  Raw end-of-day OHLCV for equities with basic corporate actions context (cash
+  dividend amount and split ratio). Use `internal_eq_px_eod_normalized` for
+  adjusted series and clean returns.
+primary_key: [dt, ticker]
+partitions: [dt]
+columns:
+  - { name: dt,            type: date,      quality: [not_null, no_future_date] }
+  - { name: ticker,        type: string,    desc: "Internal canonical symbol" }
+  - { name: currency,      type: string,    nullable: true, desc: "ISO 4217" }
+
+  - { name: px_open,       type: float64,   quality: [non_negative] }
+  - { name: px_high,       type: float64,   quality: [non_negative] }
+  - { name: px_low,        type: float64,   quality: [non_negative] }
+  - { name: px_close,      type: float64,   quality: [non_negative], desc: "Official close" }
+  - { name: px_last,       type: float64,   nullable: true, quality: [non_negative], desc: "Vendor PX_LAST if distinct from close" }
+  - { name: vwap,          type: float64,   nullable: true, quality: [non_negative] }
+  - { name: volume,        type: float64,   unit: shares, quality: [non_negative] }
+  - { name: turnover,      type: float64,   unit: USD, nullable: true, quality: [non_negative], desc: "Price*Volume in quote cc y" }
+
+  # Corporate actions context (unadjusted series above)
+  - { name: split_ratio,   type: float64,   nullable: true, quality: [non_negative], desc: "Shares-after / shares-before (e.g., 2.0 for 2-for-1)" }
+  - { name: dividend_amt,  type: float64,   unit: USD, nullable: true, desc: "Cash dividend per share, ex-date" }
+
+  # Convenience (optional)
+  - { name: shares_out,    type: float64,   unit: shares, nullable: true, quality: [non_negative] }
+  - { name: marketcap,     type: float64,   unit: USD,    nullable: true, quality: [non_negative], desc: "px_close * shares_out when both present" }
+
+  # Raw/simple return (unadjusted)
+  - { name: ret_1d_raw,    type: float64,   unit: pct, nullable: true, desc: "px_close / lag(px_close) - 1 (no CA adj)" }
+endpoints:
+  - kind: bpipe
+    path: "PX_OPEN,PX_HIGH,PX_LOW,PX_LAST,VOLUME,VWAP,CRNCY,EQY_DVD_EX_FLAG DVD_AMT,EQY_SH_OUT,EQY_FUND_CRNCY"
+    params:
+      universe_ref: "bloomberg/baseline/symbology/mapping.yaml"
+      calendar: "utc"
+      tz: "UTC"
+lineage: [refdata_instruments]
+tags: [bloomberg, equities, prices, eod, daily]
+---
+# ----------------------------------------------------------------------------
+# 2) Koyfin – Equities EOD Close (fallback / parity)
+# ----------------------------------------------------------------------------
+id: koyfin_eq_px_eod
+title: Koyfin Equities Prices (EOD Close)
+vendor: koyfin
+source: rest
+version: "1.0.0"
+frequency: daily
+description: >
+  Daily close and volume from Koyfin for parity checks and as a fallback when
+  Bloomberg is unavailable. Use the internal normalized table for adjusted
+  returns.
+primary_key: [dt, ticker]
+partitions: [dt]
+columns:
+  - { name: dt,        type: date,      quality: [not_null, no_future_date] }
+  - { name: ticker,    type: string }
+  - { name: currency,  type: string,    nullable: true }
+  - { name: px_close,  type: float64,   quality: [non_negative] }
+  - { name: volume,    type: float64,   unit: shares, nullable: true, quality: [non_negative] }
+endpoints:
+  - kind: rest
+    path: "/v1/prices/eod"
+    params:
+      universe_ref: "bloomberg/baseline/symbology/mapping.yaml"
+      fields: ["px_close","volume","currency"]
+      auth: "env:KOYFIN_API_KEY"
+      tz: "UTC"
+lineage: []
+tags: [koyfin, equities, prices, eod, daily]
+---
+# ----------------------------------------------------------------------------
+# 3) Internal – Equities EOD Normalized (adjusted OHLCV & returns)
+# ----------------------------------------------------------------------------
+id: internal_eq_px_eod_normalized
+title: Equities Prices (EOD, Adjusted & Cleaned)
+vendor: internal
+source: file
+version: "0.1.0"
+frequency: daily
+description: >
+  Corporate-actions-adjusted OHLCV (split & cash dividend back-adjustment),
+  with consistent 1-day returns and cumulative adjustment factors. Uses
+  Bloomberg raw OHLCV and CA context; optionally reconciles with Koyfin close.
+primary_key: [dt, ticker]
+partitions: [dt]
+columns:
+  - { name: dt,               type: date,      quality: [not_null, no_future_date] }
+  - { name: ticker,           type: string }
+  - { name: currency,         type: string,    nullable: true }
+
+  # adjustment factors (cumulative to current)
+  - { name: adj_factor_split, type: float64,   quality: [non_negative], desc: "Cumulative split factor" }
+  - { name: adj_factor_div,   type: float64,   quality: [non_negative], desc: "Cumulative cash dividend factor" }
+  - { name: adj_factor_total, type: float64,   quality: [non_negative], desc: "adj_factor_split * adj_factor_div" }
+
+  # adjusted OHLCV
+  - { name: px_open_adj,      type: float64,   quality: [non_negative] }
+  - { name: px_high_adj,      type: float64,   quality: [non_negative] }
+  - { name: px_low_adj,       type: float64,   quality: [non_negative] }
+  - { name: px_close_adj,     type: float64,   quality: [non_negative] }
+  - { name: vwap_adj,         type: float64,   nullable: true, quality: [non_negative] }
+  - { name: volume_adj,       type: float64,   unit: shares, quality: [non_negative], desc: "Volume adjusted for splits" }
+
+  # returns
+  - { name: ret_1d,           type: float64,   unit: pct, desc: "Clean 1-day total return (adjusted)" }
+  - { name: ret_1d_px,        type: float64,   unit: pct, nullable: true, desc: "Price-only return (ex-dividend)" }
+
+  # diagnostics (optional)
+  - { name: source_px_close,  type: string,    nullable: true, desc: "blp|koyfin|blend" }
+  - { name: method,           type: string,    nullable: true, desc: "Normalization method/version id" }
+endpoints:
+  - kind: file
+    path: "derived/prices/eod_equities/{dt}.parquet"
+    params:
+      format: parquet
+      compression: snappy
+lineage:
+  - blp_eq_px_eod
+  - koyfin_eq_px_eod
+tags: [internal, equities, prices, eod, daily, derived]

@@ -1,0 +1,18 @@
+id: GLB-0495
+firm: Global
+name: Ags Inflation Hedge Basket (IN)
+description: Worldwide diversified strategy in Thematic / Events — region: IN.
+discipline: Event-Driven
+family: Thematic / Events
+region: IN
+horizon: Macro
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

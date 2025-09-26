@@ -1,0 +1,47 @@
+import os
+import pandas as pd
+import numpy as np
+
+OUT_PATH = "data/adamodar/curated/psales_by_sector.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def seed_psales_by_sector() -> pd.DataFrame:
+    rows = [
+        ("Technology","United States","2023-01-01",19.0e12,5.6e12,3.39,0.78,"Rich multiples, AI-driven"),
+        ("Technology","United States","2024-01-01",21.0e12,6.1e12,3.44,0.80,"Still elevated"),
+        ("Technology","United States","2025-01-01",22.5e12,6.55e12,3.43,0.79,"Flat multiple"),
+        ("Healthcare","United States","2023-01-01",8.0e12,2.8e12,2.86,0.60,"Pipeline optimism"),
+        ("Healthcare","United States","2024-01-01",8.5e12,2.9e12,2.93,0.63,"Steady"),
+        ("Healthcare","United States","2025-01-01",9.0e12,3.05e12,2.95,0.65,"Stable margins"),
+        ("Energy","United States","2023-01-01",4.5e12,6.0e12,0.75,0.35,"Cheap vs history"),
+        ("Energy","United States","2024-01-01",4.8e12,6.4e12,0.75,0.37,"Still cheap"),
+        ("Energy","United States","2025-01-01",5.0e12,6.7e12,0.75,0.36,"Profits steady"),
+    ]
+    return pd.DataFrame(rows, columns=[
+        "sector","region","as_of","market_cap_usd","revenue_usd","psales_ratio","psales_pctile","notes"
+    ])
+
+def compute_psales(df: pd.DataFrame) -> pd.DataFrame:
+    d = df.copy()
+    d["as_of"] = pd.to_datetime(d["as_of"])
+    d.sort_values(["sector","as_of"], inplace=True)
+
+    # recompute P/S
+    d["psales_ratio"] = d["market_cap_usd"] / d["revenue_usd"]
+
+    # rank by history
+    d["psales_pctile"] = d.groupby("sector")["psales_ratio"].rank(pct=True)
+
+    return d
+
+def write_csv(df: pd.DataFrame, path: str = OUT_PATH):
+    ensure_dirs(path)
+    df.to_csv(path, index=False)
+
+if __name__ == "__main__":
+    df = seed_psales_by_sector()
+    df = compute_psales(df)
+    write_csv(df)
+    print(f"✅ psales_by_sector.csv written to {OUT_PATH} with {len(df)} rows")

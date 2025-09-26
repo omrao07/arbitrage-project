@@ -1,0 +1,14 @@
+date,issuer,type,rating,tenor,spread_bps,yield_pct
+2025-09-10,US Treasury,Govt,AAA,2Y,0,4.85
+2025-09-10,US Treasury,Govt,AAA,10Y,0,4.42
+2025-09-10,US Treasury,Govt,AAA,30Y,0,4.70
+
+2025-09-10,Apple Inc,Corporate,AA,5Y,95,5.38
+2025-09-10,Apple Inc,Corporate,AA,10Y,120,5.62
+2025-09-10,Apple Inc,Corporate,AA,30Y,150,6.20
+
+2025-09-10,Tesla Inc,Corporate,BBB,5Y,220,6.05
+2025-09-10,Tesla Inc,Corporate,BBB,10Y,270,6.52
+
+2025-09-10,US HY Index,Corporate,B,5Y,450,8.92
+2025-09-10,US HY Index,Corporate,B,10Y,520,9.45

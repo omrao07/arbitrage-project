@@ -1,0 +1,316 @@
+# px_daily/validations.yaml
+# Runbook-friendly validations for EOD price datasets.
+
+version: 1
+
+# -----------------------------------------------------------------------------
+# Global defaults (override per-dataset as needed)
+# -----------------------------------------------------------------------------
+defaults:
+  timezone: "UTC"
+  severity:
+    freshness_breach: warn          # warn|error
+    schema_mismatch: error
+    null_violation: error
+    range_violation: error
+    join_unmatched: warn
+    duplicate_pk: error
+    variance_spike: warn
+    monotonic_break: warn
+  freshness_sla_min: 1440           # 24h for daily datasets
+  baseline_window_days: 20
+  row_count_variance_pct: 20
+  allowed_currencies: ["USD","EUR","GBP","JPY","INR","AUD","CHF","CAD","NZD","CNY","HKD","SEK","NOK","SGD"]
+  numeric_eps: 1e-12
+  price_eps: 1e-6
+  rel_tol_px: 0.005                 # 50 bps tolerance for price identities
+  rel_tol_ret: 0.001                # 10 bps tolerance for return identities
+  rel_tol_mcap: 0.02                # 2% tolerance for market cap identity
+
+# -----------------------------------------------------------------------------
+# Reusable macros (names only; engine implements semantics)
+# -----------------------------------------------------------------------------
+macros:
+  - not_null
+  - non_negative
+  - pct_0_1
+  - no_future_date
+
+# -----------------------------------------------------------------------------
+# Dataset-specific validations
+# -----------------------------------------------------------------------------
+datasets:
+
+  # ====================== 1) Bloomberg – Equities EOD OHLCV ==================
+  blp_eq_px_eod:
+    freshness_sla_min: 1440
+    primary_key: ["dt","ticker"]
+
+    schema:
+      require_columns:
+        - dt
+        - ticker
+        - px_open
+        - px_high
+        - px_low
+        - px_close
+        - volume
+      types:
+        dt: date
+        ticker: string
+        currency: string
+        px_open: float64
+        px_high: float64
+        px_low: float64
+        px_close: float64
+        px_last: float64
+        vwap: float64
+        volume: float64
+        turnover: float64
+        split_ratio: float64
+        dividend_amt: float64
+        shares_out: float64
+        marketcap: float64
+        ret_1d_raw: float64
+
+    row_rules:
+      - { name: dt_present,        columns: ["dt"],         check: not_null }
+      - { name: dt_not_future,     columns: ["dt"],         check: no_future_date }
+      - { name: ticker_present,    columns: ["ticker"],     check: not_null }
+      - { name: nonneg_prices,     columns: ["px_open","px_high","px_low","px_close","px_last","vwap"], check: non_negative }
+      - { name: nonneg_volume,     columns: ["volume"],     check: non_negative }
+      - { name: nonneg_shares,     columns: ["shares_out"], check: non_negative }
+      - { name: currency_enum,     sql: "currency IS NULL OR currency IN (${allowed_currencies})" }
+
+      # OHLC sanity
+      - name: ohlc_low_le_high
+        sql: "px_low <= px_high"
+      - name: low_le_min_oc
+        sql: "px_low <= LEAST(px_open, px_close)"
+      - name: high_ge_max_oc
+        sql: "px_high >= GREATEST(px_open, px_close)"
+
+      # Market cap identity (soft)
+      - name: marketcap_identity
+        sql: >
+          marketcap IS NULL OR px_close IS NULL OR shares_out IS NULL OR shares_out = 0 OR
+          ABS(marketcap - (px_close * shares_out)) <=
+          (${rel_tol_mcap} * GREATEST(1.0, ABS(px_close * shares_out)))
+
+    ranges:
+      - { field: px_open,   min: 0,    max: 1e6 }
+      - { field: px_high,   min: 0,    max: 1e6 }
+      - { field: px_low,    min: 0,    max: 1e6 }
+      - { field: px_close,  min: 0,    max: 1e6 }
+      - { field: px_last,   min: 0,    max: 1e6 }
+      - { field: vwap,      min: 0,    max: 1e6 }
+      - { field: volume,    min: 0,    max: 1e12 }
+      - { field: turnover,  min: 0,    max: 1e15 }
+      - { field: split_ratio, min: 0,  max: 1000 }
+      - { field: dividend_amt, min: -1e4, max: 1e4 }   # allow specials/negative adjustments
+      - { field: shares_out, min: 0,    max: 1e13 }
+      - { field: marketcap,  min: 0,    max: 1e16 }
+      - { field: ret_1d_raw, min: -0.99, max: 9.99 }
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 20
+      max_delta_pct: 20
+
+  # ==================== 2) Koyfin – Equities EOD Close (parity) ==============
+  koyfin_eq_px_eod:
+    freshness_sla_min: 1440
+    primary_key: ["dt","ticker"]
+
+    schema:
+      require_columns: ["dt","ticker","px_close"]
+      types:
+        dt: date
+        ticker: string
+        currency: string
+        px_close: float64
+        volume: float64
+
+    row_rules:
+      - { name: dt_present,      columns: ["dt"],      check: not_null }
+      - { name: dt_not_future,   columns: ["dt"],      check: no_future_date }
+      - { name: ticker_present,  columns: ["ticker"],  check: not_null }
+      - { name: px_nonneg,       columns: ["px_close"], check: non_negative }
+      - { name: vol_nonneg,      columns: ["volume"],   check: non_negative }
+      - { name: currency_enum,   sql: "currency IS NULL OR currency IN (${allowed_currencies})" }
+
+    ranges:
+      - { field: px_close, min: 0, max: 1e6 }
+      - { field: volume,   min: 0, max: 1e12 }
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 20
+      max_delta_pct: 25
+
+  # ========== 3) Internal – Adjusted OHLCV & Returns (normalized EOD) ========
+  internal_eq_px_eod_normalized:
+    freshness_sla_min: 1440
+    primary_key: ["dt","ticker"]
+
+    schema:
+      require_columns:
+        - dt
+        - ticker
+        - adj_factor_split
+        - adj_factor_div
+        - adj_factor_total
+        - px_close_adj
+        - volume_adj
+        - ret_1d
+      types:
+        dt: date
+        ticker: string
+        currency: string
+        adj_factor_split: float64
+        adj_factor_div: float64
+        adj_factor_total: float64
+        px_open_adj: float64
+        px_high_adj: float64
+        px_low_adj: float64
+        px_close_adj: float64
+        vwap_adj: float64
+        volume_adj: float64
+        ret_1d: float64
+        ret_1d_px: float64
+        source_px_close: string
+        method: string
+
+    row_rules:
+      - { name: dt_present,        columns: ["dt"],                check: not_null }
+      - { name: dt_not_future,     columns: ["dt"],                check: no_future_date }
+      - { name: nonneg_adj_factors,columns: ["adj_factor_split","adj_factor_div","adj_factor_total"], check: non_negative }
+      - { name: nonneg_adj_prices, columns: ["px_open_adj","px_high_adj","px_low_adj","px_close_adj","vwap_adj"], check: non_negative }
+      - { name: nonneg_volume_adj, columns: ["volume_adj"],        check: non_negative }
+
+      # Factor identity
+      - name: adj_factor_identity
+        sql: "ABS(adj_factor_total - (adj_factor_split * adj_factor_div)) <= ${price_eps}"
+
+    ranges:
+      - { field: px_close_adj,   min: 0,    max: 1e6 }
+      - { field: volume_adj,     min: 0,    max: 1e12 }
+      - { field: ret_1d,         min: -0.99, max: 9.99 }
+      - { field: ret_1d_px,      min: -0.99, max: 9.99 }
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 20
+      max_delta_pct: 20
+
+# -----------------------------------------------------------------------------
+# Cross-dataset integrity checks
+# -----------------------------------------------------------------------------
+cross_checks:
+
+  # -------- Vendor parity: BLP vs Koyfin close (median over last 20d) --------
+  - name: blp_vs_koyfin_close_parity_p50_20d
+    description: "Median relative diff |BLP-Koy| / |BLP| ≤ 20 bps over last 20 trading days."
+    sql: >
+      WITH joined AS (
+        SELECT a.dt, a.ticker,
+               a.px_close AS blp, b.px_close AS koy
+        FROM blp_eq_px_eod a
+        JOIN koyfin_eq_px_eod b
+          ON a.dt = b.dt AND a.ticker = b.ticker
+        WHERE a.dt >= dateadd('day', -20, current_date)
+      )
+      SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (ABS(blp - koy) / NULLIF(ABS(blp),0))) AS p50_rel_diff
+      FROM joined
+    expect:
+      p50_rel_diff_lte: 0.002
+
+  # -------- Adjustment identities vs raw Bloomberg OHLC ----------------------
+  - name: adj_prices_match_raw_over_factors
+    description: "Adjusted OHLC ≈ raw OHLC ÷ adj_factor_total (50 bps tolerance)."
+    sql: >
+      WITH j AS (
+        SELECT n.dt, n.ticker, n.adj_factor_total,
+               n.px_open_adj, n.px_high_adj, n.px_low_adj, n.px_close_adj,
+               r.px_open, r.px_high, r.px_low, r.px_close
+        FROM internal_eq_px_eod_normalized n
+        JOIN blp_eq_px_eod r ON n.dt = r.dt AND n.ticker = r.ticker
+        WHERE n.adj_factor_total IS NOT NULL AND n.adj_factor_total > 0
+      )
+      SELECT
+        AVG( CASE WHEN px_open IS NULL  OR px_open = 0  THEN NULL
+                  ELSE ABS(px_open_adj  - px_open  / adj_factor_total)  / px_open_adj END )  AS avg_rel_err_open,
+        AVG( CASE WHEN px_high IS NULL  OR px_high = 0  THEN NULL
+                  ELSE ABS(px_high_adj  - px_high  / adj_factor_total)  / px_high_adj END )  AS avg_rel_err_high,
+        AVG( CASE WHEN px_low  IS NULL  OR px_low  = 0  THEN NULL
+                  ELSE ABS(px_low_adj   - px_low   / adj_factor_total)  / px_low_adj  END )  AS avg_rel_err_low,
+        AVG( CASE WHEN px_close IS NULL OR px_close = 0 THEN NULL
+                  ELSE ABS(px_close_adj - px_close / adj_factor_total)  / px_close_adj END )  AS avg_rel_err_close
+      FROM j
+    expect:
+      avg_rel_err_open_lte: 0.005
+      avg_rel_err_high_lte: 0.005
+      avg_rel_err_low_lte:  0.005  avg_rel_err_close_lte:0.005
+
+  - name: volume_adjusts_with_split
+    description: "volume_adj ≈ volume × adj_factor_split (split affects volume; dividends do not)."
+    sql: >
+      WITH j AS (
+        SELECT n.dt, n.ticker, n.volume_adj, n.adj_factor_split, r.volume
+        FROM internal_eq_px_eod_normalized n
+        JOIN blp_eq_px_eod r ON n.dt = r.dt AND n.ticker = r.ticker
+        WHERE n.adj_factor_split IS NOT NULL AND r.volume IS NOT NULL AND r.volume > 0
+      )
+      SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ABS( (volume_adj - (volume * adj_factor_split)) / NULLIF(volume_adj,0) )) AS p50_rel_err
+      FROM j
+    expect:
+      p50_rel_err_lte: 0.02
+
+  # ---------------------- Return identities (adjusted) -----------------------
+  - name: ret_1d_equals_adj_close_ratio
+    description: "ret_1d ≈ px_close_adj / lag(px_close_adj) - 1"
+    sql: >
+      WITH w AS (
+        SELECT dt, ticker, px_close_adj, ret_1d,
+               LAG(px_close_adj) OVER (PARTITION BY ticker ORDER BY dt) AS prev_close_adj
+        FROM internal_eq_px_eod_normalized
+      )
+      SELECT AVG(ABS(ret_1d - ((px_close_adj / NULLIF(prev_close_adj,0)) - 1))) AS avg_abs_err
+      FROM w
+      WHERE prev_close_adj IS NOT NULL
+    expect:
+      avg_abs_err_lte: 0.001
+
+  - name: total_vs_price_only_return_with_div
+    description: "On ex-div dates, (ret_1d - ret_1d_px) ≈ dividend / prev_close_adj."
+    sql: >
+      WITH base AS (
+        SELECT n.dt, n.ticker, n.ret_1d, n.ret_1d_px,
+               LAG(n.px_close_adj) OVER (PARTITION BY n.ticker ORDER BY n.dt) AS prev_close_adj,
+               b.dividend_amt
+        FROM internal_eq_px_eod_normalized n
+        JOIN blp_eq_px_eod b ON n.dt = b.dt AND n.ticker = b.ticker
+      )
+      SELECT AVG(ABS( (ret_1d - COALESCE(ret_1d_px,0)) - (COALESCE(dividend_amt,0) / NULLIF(prev_close_adj,0)) )) AS avg_abs_err
+      FROM base
+      WHERE dividend_amt IS NOT NULL AND dividend_amt <> 0 AND prev_close_adj IS NOT NULL
+    expect:
+      avg_abs_err_lte: 0.0015
+
+# -----------------------------------------------------------------------------
+# Alert routing hints (map to channels in your runner)
+# -----------------------------------------------------------------------------
+alerts:
+  routes:
+    - match: { dataset: "blp_eq_px_eod", type: "schema_mismatch" }
+      to: ["slack:#prices-pipeline"]
+    - match: { dataset: "internal_eq_px_eod_normalized", type: "variance_spike" }
+      to: ["slack:#analytics-quality"]
+    - match: { dataset: "*", type: "duplicate_pk" }
+      to: ["slack:#data-quality"]

@@ -1,0 +1,230 @@
+# -----------------------------------------------------------------------------
+# Argo Workflows Helm chart values
+# Chart: argo/argo-workflows   (v>=0.40.x, app v>=3.5.x)
+# Namespace to install into: analytics
+# -----------------------------------------------------------------------------
+
+fullnameOverride: argo
+namespace: analytics
+
+images:
+  tag: v3.5.0
+
+# Install CRDs with the chart (or manage separately)
+installCRD: true
+
+# -----------------------------------------------------------------------------
+# Controller
+# -----------------------------------------------------------------------------
+controller:
+  # Use emissary (no sidecar); great for private clusters & simple networking
+  containerRuntimeExecutor: emissary
+
+  # If you need Docker-in-Docker etc., switch to k8sapi or pns accordingly.
+  workflowNamespaces:
+    - analytics
+
+  # Default workflow spec patches applied to every Workflow unless overridden
+  workflowDefaults:
+    spec:
+      ttlStrategy:
+        secondsAfterSuccess: 86400
+        secondsAfterFailure: 604800
+      onExit: null
+      podGC:
+        strategy: OnWorkflowSuccess
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      # Add common volumes/env across all templates if needed:
+      # volumes: []
+      # nodeSelector: {}
+      # tolerations: []
+
+  # Metrics for Prometheus
+  metricsConfig:
+    enabled: true
+    path: /metrics
+    port: 9090
+
+  # Executor image (must match app version)
+  executor:
+    image:
+      tag: v3.5.0
+
+  serviceAccount:
+    create: true
+    name: argo-workflow-controller
+    annotations: {}
+      # EKS IRSA:
+      # eks.amazonaws.com/role-arn: arn:aws:iam::<ACCOUNT_ID>:role/hyper-os-sa-argo
+      # GKE Workload Identity:
+      # iam.gke.io/gcp-service-account: argo-controller@<PROJECT_ID>.iam.gserviceaccount.com
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1
+      memory: 1Gi
+
+  # Artifact repository (choose ONE and delete the other)
+  artifactRepository:
+    s3:
+      bucket: REPLACE_S3_BUCKET_curated
+      endpoint: s3.amazonaws.com
+      region: us-east-1
+      insecure: false
+      keyFormat: artifacts/{{workflow.namespace}}/{{workflow.name}}/{{pod.name}}
+      # With IRSA, omit access/secret keys:
+      # accessKeySecret:
+      #   name: argo-artifacts
+      #   key: accesskey
+      # secretKeySecret:
+      #   name: argo-artifacts
+      #   key: secretkey
+      encryptionOptions:
+        sse: AES256
+    # gcs:
+    #   bucket: REPLACE_GCS_BUCKET_curated
+    #   keyFormat: artifacts/{{workflow.namespace}}/{{workflow.name}}/{{pod.name}}
+    #   # With Workload Identity, omit serviceAccountKeySecret
+    #   # serviceAccountKeySecret:
+    #   #   name: argo-artifacts
+    #   #   key: sa.json
+
+  # Pod Security Context defaults for controller pods
+  podSecurityContext:
+    runAsNonRoot: true
+    fsGroup: 1000
+
+  # Extra K8s settings
+  workflowRestrictions:
+    templateReferencing: ScopeNamespace
+
+# -----------------------------------------------------------------------------
+# Argo Server (UI & API)
+# -----------------------------------------------------------------------------
+server:
+  enabled: true
+  secure: false                # keep HTTP in-cluster; use Ingress TLS if exposing
+  serviceType: ClusterIP
+  servicePort: 2746
+
+  serviceAccount:
+    create: true
+    name: argo-server
+    annotations: {}
+      # eks.amazonaws.com/role-arn: arn:aws:iam::<ACCOUNT_ID>:role/hyper-os-sa-argo
+      # iam.gke.io/gcp-service-account: argo-server@<PROJECT_ID>.iam.gserviceaccount.com
+
+  # Auth modes: server is simplest for in-cluster
+  extraArgs:
+    - --auth-mode=server
+    - --namespaced
+
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1
+      memory: 512Mi
+
+  ingress:
+    enabled: false
+    # className: nginx
+    # hosts:
+    #   - argo.your-domain.com
+    # tls:                     # use cert-manager or your own secret
+    #   - secretName: argo-tls
+    #     hosts:
+    #       - argo.your-domain.com
+    annotations: {}
+      # nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+      # cert-manager.io/cluster-issuer: "letsencrypt"
+
+# -----------------------------------------------------------------------------
+# Workflow RBAC for namespaced usage
+# -----------------------------------------------------------------------------
+workflow:
+  rbac:
+    create: true
+    # grant workflow pods permissions to create their own pods, configmaps, etc.
+    # scope is namespace-only (analytics)
+
+# -----------------------------------------------------------------------------
+# Main service account for Workflow pods (templates)
+# -----------------------------------------------------------------------------
+serviceAccount:
+  create: true
+  name: argo-workflow
+  annotations: {}
+    # eks.amazonaws.com/role-arn: arn:aws:iam::<ACCOUNT_ID>:role/hyper-os-sa-workflows
+    # iam.gke.io/gcp-service-account: workflows@<PROJECT_ID>.iam.gserviceaccount.com
+
+# -----------------------------------------------------------------------------
+# Artifact repo secret (only if not using IRSA/WI)
+# -----------------------------------------------------------------------------
+artifacts:
+  s3:
+    enabled: false
+    secretName: argo-artifacts
+    accessKey: ""
+    secretKey: ""
+  gcs:
+    enabled: false
+    secretName: argo-artifacts
+    serviceAccountKeyJson: ""
+
+# -----------------------------------------------------------------------------
+# Pod Security / Network Hygiene
+# -----------------------------------------------------------------------------
+singleNamespace: true
+useDefaultArtifactRepo: true
+
+# Default pod security for workflow pods
+workflowDefaultsSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+# Optional: add a default nodeSelector / tolerations for spot nodes, etc.
+# nodeSelector:
+#   eks.amazonaws.com/capacityType: SPOT
+# tolerations:
+#   - key: "workload-type"
+#     operator: "Equal"
+#     value: "batch"
+#     effect: "NoSchedule"
+
+# -----------------------------------------------------------------------------
+# Telemetry / OpenTelemetry (optional)
+# -----------------------------------------------------------------------------
+# controller:
+#   otlp:
+#     endpoint: "otel-collector.monitoring.svc.cluster.local:4317"
+#     insecure: true
+
+# -----------------------------------------------------------------------------
+# Workflow Archive (optional, requires DB)
+# -----------------------------------------------------------------------------
+# workflowArchive:
+#   enabled: true
+#   persistence:
+#     connectionPool:
+#       maxIdleConns: 10
+#       maxOpenConns: 100
+#     postgresql:
+#       host: postgres.os.svc.cluster.local
+#       port: 5432
+#       database: argo
+#       tableName: argo_workflows
+#       userNameSecret:
+#         name: argo-postgres
+#         key: username
+#       passwordSecret:
+#         name: argo-postgres
+#         key: password

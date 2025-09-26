@@ -1,0 +1,343 @@
+# fx/validations.yaml
+# Runbook-friendly validations for FX datasets.
+# Your engine (SQL/Spark/DuckDB/etc.) implements the semantics for each rule.
+
+version: 1
+
+# ---------------------------------------------------------------------------
+# Global defaults (override per-dataset as needed)
+# ---------------------------------------------------------------------------
+defaults:
+  timezone: "UTC"
+  severity:
+    freshness_breach: warn          # warn|error
+    schema_mismatch: error
+    null_violation: error
+    range_violation: error
+    join_unmatched: warn
+    duplicate_pk: error
+    variance_spike: warn
+    monotonic_break: warn
+  freshness_sla_min: 1440           # default 24h for daily datasets
+  row_count_variance_pct: 30        # ±30% vs baseline window
+  baseline_window_days: 20
+  allowed_currencies: ["USD","EUR","GBP","JPY","INR","AUD","CHF","CAD","NZD","CNH","SEK","NOK","SGD","HKD"]
+  numeric_eps: 1e-12
+  price_eps: 1e-6                    # tolerance for mid ≈ (bid+ask)/2
+
+# ---------------------------------------------------------------------------
+# Reusable macros (names only; engine defines how to enforce)
+# ---------------------------------------------------------------------------
+macros:
+  - not_null
+  - non_negative
+  - pct_0_1
+  - no_future_date
+
+# ---------------------------------------------------------------------------
+# Dataset-specific validations
+# ---------------------------------------------------------------------------
+datasets:
+
+  # ========================= 1) FX Spot – EOD (daily) =======================
+  blp_fx_spot_eod:
+    freshness_sla_min: 1440
+    primary_key: ["dt","pair"]
+
+    schema:
+      require_columns: ["dt","pair","px_last"]
+      types:
+        dt: date
+        pair: string
+        currency: string
+        px_last: float64
+        ret_1d: float64
+
+    row_rules:
+      - { name: dt_present,       columns: ["dt"],   check: not_null }
+      - { name: dt_not_future,    columns: ["dt"],   check: no_future_date }
+      - { name: pair_format,      sql: "pair REGEXP '^[A-Z]{6}$'" }
+      - { name: px_last_nonneg,   columns: ["px_last"], check: non_negative }
+      - { name: currency_enum,    sql: "currency IS NULL OR currency IN (${allowed_currencies})" }
+      - name: currency_matches_pair
+        sql: "currency IS NULL OR SUBSTR(pair,4,3) = currency"   # quote leg equals currency
+
+    ranges:
+      - { field: px_last, min: 0, max: 1e6 }  # wide sanity band
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 20
+      max_delta_pct: 15
+
+  # ======================= 2) FX Spot – Intraday 1m =========================
+  blp_fx_spot_1m:
+    freshness_sla_min: 5            # expect data ≤5 minutes stale
+    primary_key: ["ts","pair"]
+
+    schema:
+      require_columns: ["ts","dt","pair"]
+      types:
+        ts: timestamp
+        dt: date
+        pair: string
+        bid: float64
+        ask: float64
+        mid: float64
+        px_last: float64
+        volume: float64
+
+    row_rules:
+      - { name: ts_present,      columns: ["ts"], check: not_null }
+      - { name: dt_present,      columns: ["dt"], check: not_null }
+      - { name: dt_not_future,   columns: ["dt"], check: no_future_date }
+      - { name: pair_format,     sql: "pair REGEXP '^[A-Z]{6}$'" }
+      - { name: nonneg_prices,   columns: ["bid","ask","mid","px_last"], check: non_negative }
+      - { name: nonneg_volume,   columns: ["volume"], check: non_negative }
+      - name: mid_consistency
+        sql: "mid IS NULL OR bid IS NULL OR ask IS NULL OR ABS(mid - ((bid + ask)/2)) <= ${price_eps}"
+
+    ranges:
+      - { field: bid,     min: 0, max: 1e6 }
+      - { field: ask,     min: 0, max: 1e6 }
+      - { field: mid,     min: 0, max: 1e6 }
+      - { field: px_last, min: 0, max: 1e6 }
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 5      # per-day bar counts vs 5-day window
+      max_delta_pct: 25
+
+  # ======================= 3) FX Forwards – Points/All-in ===================
+  blp_fx_forwards:
+    freshness_sla_min: 1440
+    primary_key: ["dt","pair","tenor"]
+
+    schema:
+      require_columns: ["dt","pair","tenor"]
+      types:
+        dt: date
+        pair: string
+        tenor: string
+        fwd_pts: float64
+        fwd_rate: float64
+
+    row_rules:
+      - { name: dt_present,      columns: ["dt"],   check: not_null }
+      - { name: dt_not_future,   columns: ["dt"],   check: no_future_date }
+      - { name: pair_format,     sql: "pair REGEXP '^[A-Z]{6}$'" }
+      - { name: nonneg_rate,     columns: ["fwd_rate"], check: non_negative }
+      - name: tenor_label
+        sql: "tenor REGEXP '^[0-9]{1,2}(W|M|Y)$'"     # e.g., 1W, 3M, 6M, 1Y, 2Y
+      - name: sign_consistency_pts_vs_rate
+        sql: "fwd_pts IS NULL OR fwd_rate IS NULL OR px_last IS NULL OR SIGN(fwd_rate - px_last) = SIGN(fwd_pts)"
+        hint: "When spot(px_last) is available in join context; else skip (engine can left-join spot by dt,pair)."
+
+    ranges:
+      - { field: fwd_rate, min: 0, max: 1e6 }
+      - { field: fwd_pts,  min: -1e6, max: 1e6 }   # pips can be negative/positive
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 20
+      max_delta_pct: 20
+
+  # ===================== 4) FX Vol Surface – Vendor points ==================
+  blp_fx_vol_surface:
+    freshness_sla_min: 1440
+    primary_key: ["dt","pair","tenor","delta"]
+
+    schema:
+      require_columns: ["dt","pair","tenor","delta","vol"]
+      types:
+        dt: date
+        pair: string
+        tenor: string
+        delta: float64
+        vol: float64
+        rr: float64
+        bf: float64
+
+    row_rules:
+      - { name: dt_present,      columns: ["dt"],   check: not_null }
+      - { name: dt_not_future,   columns: ["dt"],   check: no_future_date }
+      - { name: pair_format,     sql: "pair REGEXP '^[A-Z]{6}$'" }
+      - { name: delta_fraction,  columns: ["delta"], check: pct_0_1 }
+      - { name: vol_nonneg,      columns: ["vol"],   check: non_negative }
+      - { name: tenor_label,     sql: "tenor REGEXP '^[0-9]{1,2}(W|M|Y)$'" }
+      - name: allowed_vendor_deltas
+        sql: "delta IN (0.10, 0.25, 0.50)"
+
+    ranges:
+      - { field: vol, min: 0, max: 2 }     # 0–200% vol in fraction space
+      - { field: rr,  min: -1, max: 1 }
+      - { field: bf,  min: -1, max: 1 }
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 20
+      max_delta_pct: 15
+
+  # ========================= 5) Koyfin Spot (Daily) =========================
+  koyfin_fx_spot_daily:
+    freshness_sla_min: 1440
+    primary_key: ["dt","pair"]
+
+    schema:
+      require_columns: ["dt","pair","px_last"]
+      types:
+        dt: date
+        pair: string
+        px_last: float64
+
+    row_rules:
+      - { name: dt_present,       columns: ["dt"], check: not_null }
+      - { name: dt_not_future,    columns: ["dt"], check: no_future_date }
+      - { name: pair_format,      sql: "pair REGEXP '^[A-Z]{6}$'" }
+      - { name: px_last_nonneg,   columns: ["px_last"], check: non_negative }
+
+    ranges:
+      - { field: px_last, min: 0, max: 1e6 }
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 20
+      max_delta_pct: 20
+
+  # ============ 6) Derived – Calendarized Forward Curve (years) =============
+  internal_fx_forward_curve:
+    freshness_sla_min: 1440
+    primary_key: ["dt","pair","tenor_yrs"]
+
+    schema:
+      require_columns: ["dt","pair","tenor_yrs","fwd_rate"]
+      types:
+        dt: date
+        pair: string
+        tenor_yrs: float64
+        fwd_rate: float64
+        method: string
+
+    row_rules:
+      - { name: dt_present,       columns: ["dt"], check: not_null }
+      - { name: dt_not_future,    columns: ["dt"], check: no_future_date }
+      - { name: pair_format,      sql: "pair REGEXP '^[A-Z]{6}$'" }
+      - { name: tenor_nonneg,     columns: ["tenor_yrs"], check: non_negative }
+      - { name: fwd_rate_nonneg,  columns: ["fwd_rate"], check: non_negative }
+
+    ranges:
+      - { field: tenor_yrs, min: 0.0, max: 50.0 }
+      - { field: fwd_rate,  min: 0.0, max: 1e6 }
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 20
+      max_delta_pct: 25
+
+  # ======= 7) Derived – Interpolated Vol Surface (dense grid) ===============
+  internal_fx_vol_surface_interp:
+    freshness_sla_min: 1440
+    primary_key: ["dt","pair","tenor","delta"]
+
+    schema:
+      require_columns: ["dt","pair","tenor","delta","vol"]
+      types:
+        dt: date
+        pair: string
+        tenor: string
+        delta: float64
+        vol: float64
+        method: string
+
+    row_rules:
+      - { name: dt_present,      columns: ["dt"], check: not_null }
+      - { name: dt_not_future,   columns: ["dt"], check: no_future_date }
+      - { name: pair_format,     sql: "pair REGEXP '^[A-Z]{6}$'" }
+      - { name: delta_fraction,  columns: ["delta"], check: pct_0_1 }
+      - { name: vol_nonneg,      columns: ["vol"],   check: non_negative }
+      - { name: tenor_label,     sql: "tenor REGEXP '^[0-9]{1,2}(W|M|Y)$'" }
+
+    ranges:
+      - { field: vol, min: 0, max: 2 }
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 20
+      max_delta_pct: 20
+
+# ---------------------------------------------------------------------------
+# Cross-dataset integrity checks
+# ---------------------------------------------------------------------------
+cross_checks:
+
+  # Parity between Bloomberg and Koyfin daily spot (where both exist)
+  - name: spot_vendor_parity_last_20d
+    description: "Median relative diff between BLP and Koyfin px_last ≤ 20 bps over last 20 trading days."
+    sql: >
+      WITH joined AS (
+        SELECT a.dt, a.pair,
+               a.px_last AS blp, b.px_last AS koy
+        FROM blp_fx_spot_eod a
+        JOIN koyfin_fx_spot_daily b
+          ON a.dt = b.dt AND a.pair = b.pair
+        WHERE a.dt >= dateadd('day', -20, current_date)
+      )
+      SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (ABS(blp - koy) / NULLIF(blp,0))) AS p50_rel_diff
+      FROM joined
+    expect:
+      p50_rel_diff_lte: 0.002   # 20 bps
+
+  # Optional sanity: forward vs spot sign consistency when both available
+  - name: forwards_sign_consistency
+    description: "Sign(fwd_rate - spot) matches sign(fwd_pts) when same-day spot exists."
+    sql: >
+      SELECT COUNT(*) AS bad
+      FROM blp_fx_forwards f
+      JOIN blp_fx_spot_eod s ON f.dt = s.dt AND f.pair = s.pair
+      WHERE f.fwd_rate IS NOT NULL AND f.fwd_pts IS NOT NULL
+        AND SIGN(f.fwd_rate - s.px_last) <> SIGN(f.fwd_pts)
+    expect:
+      bad_eq: 0
+
+  # Derived vol surface should be “close” to vendor at anchor deltas
+  - name: vol_interp_anchor_consistency
+    description: "Median abs diff between vendor vol and interpolated vol at same (dt,pair,tenor,delta) ≤ 50 bps (0.005)."
+    sql: >
+      WITH overlap AS (
+        SELECT v.dt, v.pair, v.tenor, v.delta,
+               v.vol AS vol_vendor, i.vol AS vol_interp
+        FROM blp_fx_vol_surface v
+        JOIN internal_fx_vol_surface_interp i
+          ON v.dt = i.dt AND v.pair = i.pair AND v.tenor = i.tenor AND v.delta = i.delta
+        WHERE v.dt >= dateadd('day', -20, current_date)
+      )
+      SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ABS(vol_vendor - vol_interp)) AS p50_abs_diff
+      FROM overlap
+    expect:
+      p50_abs_diff_lte: 0.005
+
+# ---------------------------------------------------------------------------
+# Alert routing hints (map to channels in your runner)
+# ---------------------------------------------------------------------------
+alerts:
+  routes:
+    - match: { dataset: "blp_fx_spot_1m", type: "freshness_breach" }
+      to: ["pager", "slack:#fx-pipeline"]
+    - match: { dataset: "blp_fx_vol_surface", type: "schema_mismatch" }
+      to: ["slack:#fx-pipeline"]
+    - match: { dataset: "*", type: "duplicate_pk" }
+      to: ["slack:#data-quality"]

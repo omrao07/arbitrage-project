@@ -1,0 +1,47 @@
+import os
+import pandas as pd
+import numpy as np
+
+OUT_PATH = "data/adamodar/curated/ev_ebitda_by_sector.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def seed_ev_ebitda_by_sector() -> pd.DataFrame:
+    rows = [
+        ("Technology","United States","2023-01-01",18.0e12,1.20e12,15.0,0.82,"High multiples, AI narrative"),
+        ("Technology","United States","2024-01-01",19.5e12,1.25e12,15.6,0.85,"Still elevated"),
+        ("Technology","United States","2025-01-01",21.0e12,1.35e12,15.6,0.83,"Flat multiple, EBITDA catch-up"),
+        ("Energy","United States","2023-01-01",4.5e12,0.60e12,7.5,0.42,"Cheap vs history"),
+        ("Energy","United States","2024-01-01",4.6e12,0.58e12,7.9,0.48,"Rebound"),
+        ("Energy","United States","2025-01-01",5.0e12,0.64e12,7.8,0.45,"Capex discipline"),
+        ("Financials","United States","2023-01-01",7.2e12,0.90e12,8.0,0.55,"Banks normalized"),
+        ("Financials","United States","2024-01-01",7.6e12,0.95e12,8.0,0.52,"Stable"),
+        ("Financials","United States","2025-01-01",8.0e12,0.98e12,8.2,0.53,"Steady margins"),
+    ]
+    return pd.DataFrame(rows, columns=[
+        "sector","region","as_of","ev_usd","ebitda_usd","ev_ebitda","ev_ebitda_pctile","notes"
+    ])
+
+def compute_multiples(df: pd.DataFrame) -> pd.DataFrame:
+    d = df.copy()
+    d["as_of"] = pd.to_datetime(d["as_of"])
+    d.sort_values(["sector","as_of"], inplace=True)
+    
+    # recompute ev/ebitda if not filled
+    d["ev_ebitda"] = d["ev_usd"] / d["ebitda_usd"]
+    
+    # optional: rolling historical percentile per sector
+    d["ev_ebitda_pctile"] = d.groupby("sector")["ev_ebitda"].rank(pct=True)
+    
+    return d
+
+def write_csv(df: pd.DataFrame, path: str = OUT_PATH):
+    ensure_dirs(path)
+    df.to_csv(path, index=False)
+
+if __name__ == "__main__":
+    df = seed_ev_ebitda_by_sector()
+    df = compute_multiples(df)
+    write_csv(df)
+    print(f"✅ ev_ebitda_by_sector.csv written to {OUT_PATH} with {len(df)} rows")

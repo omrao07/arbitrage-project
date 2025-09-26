@@ -1,0 +1,18 @@
+id: BW-0008
+firm: Bridgewater
+name: JGB 2s10s Steepener
+description: YCC relaxation dynamics.
+discipline: Macro
+family: Rates & Basis
+region: Global
+horizon: Macro
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: macro
+created_at: 2025-09-10
+updated_at: 2025-09-10

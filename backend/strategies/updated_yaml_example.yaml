@@ -1,0 +1,39 @@
+id: GLB-0501
+firm: Global
+name: Global Momentum Overlay (Auto)
+description: >
+  Cross-asset momentum sleeve with news-aware bias. Allocates dynamically across
+  equities, rates, FX, and commodities using medium-term momentum signals and
+  macro quadrant filters.
+discipline: QA
+family: STAT
+region: Global
+horizon: Macro
+status: research
+engine: stat_arb
+
+# NEW FIELDS
+genre: Momentum       # fine-grained grouping
+mode: auto            # "auto" = eligible for automated runs, "manual" = run only when triggered manually
+
+params:
+  signal: cross_asset_momentum
+  lookbacks: [63, 126, 252]
+  rebalance_freq: monthly
+  vol_norm: true
+
+risk:
+  risk_budget: 0.02   # base allocation fraction (required)
+  vol_target: 0.12    # annualized vol target
+  stop_loss: 0.08     # max drawdown tolerance
+  max_leverage: 3.0   # leverage cap
+
+data:
+  requirements:
+    - PX_EQ_US        # US equities prices
+    - PX_IR_US        # US rates
+    - PX_FX_G10       # G10 FX crosses
+    - PX_CMD_EN       # Energy commodities
+owner: quant_team
+created_at: 2025-09-10
+updated_at: 2025-09-10

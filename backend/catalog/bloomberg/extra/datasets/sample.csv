@@ -1,0 +1,11 @@
+# extra/sample.csv
+# Union schema sample across all EXTRA datasets.
+# Columns: keep blank for fields not used by a given dataset row.
+
+dataset_id,ex_dt,dt,ts,as_of,ticker,index_id,fund_ticker,asset_ticker,id,source_name,pair,base_ccy,quote_ccy,action_type,action,weight,shares,freefloat_adj,div_amt,div_currency,record_dt,pay_dt,split_ratio,old_ticker,new_ticker,old_cusip,new_cusip,announce_dt,effective_dt,notes,px_close,px_high,px_low,source,market_value,country,sector,title,summary,url,tickers,sentiment,importance,lang
+blp_corporate_actions_equities,2025-02-07,,,,AAPL,,,,,,,,,,,,,,,,0.24,USD,2025-02-10,2025-02-20,,,,2025-02-01,,,,"",,"",,,,"Cash dividend declared","","",,,
+blp_corporate_actions_equities,2025-06-10,,,,TSLA,,,,,,,,,SPLIT,,,,,,,,3.0,,,,,2025-05-20,2025-06-10,"3-for-1 stock split announced",,,,,,,,,,,
+blp_index_membership,,2025-01-03,,,,MSFT,SPX,,,,,,,,HOLD,0.0682,6556000000,0.88,,,,,,,,,,,,,,,,,,,"","",,,
+blp_fx_spot_eod,,2025-01-03,,,,,,,,"",EURUSD,EUR,USD,,,,,,,,,,,,,,,,1.1042,1.1060,1.1015,blp,,,,,"","","",,,
+blp_etf_holdings_daily,,,,"2025-01-03",,,"SPY","AAPL",,,,,,,,,0.0725,180345000,,,,,,,,,,,,,,,"",,"",34215000000,US,Information Technology,"","","",,,
+internal_news_headlines,,2025-01-03,2025-01-03T14:05:22Z,,,,,,ft-20250103-abc123,FT,,,,,,,,,,,,,,,,,,,,,,,,,"Big Tech rallies on AI optimism","Mega-cap tech leads gains on accelerated AI adoption","https://example.com/article","[\"AAPL\",\"MSFT\"]",0.34,0.71,en

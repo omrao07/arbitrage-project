@@ -1,0 +1,18 @@
+id: GLB-0201
+firm: Global
+name: US TIPS vs Nominals Breakevens (UK)
+description: Worldwide diversified strategy in Global L/S & Themes — region: UK.
+discipline: Equities
+family: Global L/S & Themes
+region: UK
+horizon: Swing
+status: research
+engine: equity_ls
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: equity
+created_at: 2025-09-10
+updated_at: 2025-09-10

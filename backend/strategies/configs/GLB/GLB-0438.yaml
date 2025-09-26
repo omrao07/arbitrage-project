@@ -1,0 +1,18 @@
+id: GLB-0438
+firm: Global
+name: US–China Tariff Arb (CN)
+description: Worldwide diversified strategy in Credit & Structured — region: CN.
+discipline: Credit
+family: Credit & Structured
+region: CN
+horizon: Swing
+status: research
+engine: credit_cds
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: credit
+created_at: 2025-09-10
+updated_at: 2025-09-10

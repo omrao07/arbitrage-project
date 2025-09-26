@@ -1,0 +1,112 @@
+{
+  "type": "record",
+  "namespace": "risk",
+  "name": "VaR",
+  "doc": "Value-at-Risk snapshot with model metadata, scope, currency context, and diagnostics.",
+  "fields": [
+    /* Identity & scope */
+    { "name": "var_id",        "type": "string", "doc": "Unique id (e.g., <portfolio>-<conf>-<h>h-<ts>)" },
+    { "name": "scope",         "type": { "type":"enum", "name":"VaRScope", "symbols":["PORTFOLIO","STRATEGY","INSTRUMENT"] }, "doc": "Aggregation level" },
+    { "name": "portfolio_id",  "type": "string", "doc": "Portfolio/account identifier" },
+    { "name": "strategy_tag",  "type": ["null","string"], "default": null, "doc": "Optional strategy/book tag" },
+    { "name": "instrument_id", "type": ["null","string"], "default": null, "doc": "Optional instrument identifier" },
+
+    /* Timing & currency */
+    { "name": "as_of_time",    "type": { "type":"long", "logicalType":"timestamp-millis" }, "doc": "Timestamp of the risk snapshot (UTC)" },
+    { "name": "report_ccy",    "type": "string", "doc": "Reporting/base currency (e.g., USD)" },
+
+    /* Model configuration */
+    {
+      "name": "model",
+      "type": {
+        "type":"record",
+        "name":"VaRModel",
+        "fields":[
+          { "name":"method", "type": { "type":"enum", "name":"VaRMethod", "symbols":["HISTORICAL","MONTE_CARLO","PARAMETRIC"] }, "doc": "Computation approach" },
+          { "name":"distribution", "type": ["null", { "type":"enum", "name":"Distribution", "symbols":["NORMAL","STUDENT_T","CORNISH_FISHER","EMPIRICAL","OTHER"] }], "default": null, "doc": "If parametric/MC, the assumed distribution" },
+          { "name":"confidence", "type": "float", "doc": "e.g., 0.95, 0.99" },
+          { "name":"horizon_days", "type": "int", "doc": "Risk horizon in trading days (e.g., 1, 10)" },
+          { "name":"window_days",  "type": ["null","int"], "default": null, "doc": "Lookback window for calibration (historical/parametric)" },
+          { "name":"scenarios",    "type": ["null","int"], "default": null, "doc": "Number of MC scenarios or historical paths used" },
+          { "name":"two_sided",    "type": ["null","boolean"], "default": null, "doc": "If true, compute both lower/upper tail; else left tail only" },
+          { "name":"pnl_input",    "type": ["null", { "type":"enum", "name":"PnLInput", "symbols":["FULL_REVAL","DELTAGAMMA","LINEAR","FACTOR_MODEL"] }], "default": null, "doc": "How P&L distribution was generated" },
+          { "name":"decay_lambda", "type": ["null","float"], "default": null, "doc": "EWMA decay (if used)" }
+        ]
+      },
+      "doc": "Model setup"
+    },
+
+    /* Results (report_ccy) */
+    { "name": "var_value",     "type": "double", "doc": "One-sided VaR (>0 means loss magnitude in report_ccy)" },
+    { "name": "var_right_tail","type": ["null","double"], "default": null, "doc": "Optional right-tail VaR (gain risk) for two-sided" },
+    { "name": "expected_shortfall", "type": ["null","double"], "default": null, "doc": "ES / CVaR at same confidence (report_ccy)" },
+
+    /* Distribution diagnostics (optional) */
+    {
+      "name": "diagnostics",
+      "type": ["null", {
+        "type":"record",
+        "name":"Diagnostics",
+        "fields":[
+          { "name":"mean_pnl",   "type":["null","double"], "default": null, "doc":"Mean of input PnL distribution" },
+          { "name":"stdev_pnl",  "type":["null","double"], "default": null, "doc":"Std dev of input PnL distribution" },
+          { "name":"skew_pnl",   "type":["null","double"], "default": null, "doc":"Skewness (if computed)" },
+          { "name":"kurt_pnl",   "type":["null","double"], "default": null, "doc":"Excess kurtosis (if computed)" },
+          { "name":"min_pnl",    "type":["null","double"], "default": null },
+          { "name":"max_pnl",    "type":["null","double"], "default": null },
+          { "name":"vector_hash","type":["null","string"], "default": null, "doc":"Hash/fingerprint of PnL vector for audit/repro" }
+        ]
+      }],
+      "default": null
+    },
+
+    /* Attribution (optional) */
+    {
+      "name": "attribution",
+      "type": ["null", {
+        "type":"array",
+        "items": {
+          "type":"record",
+          "name":"Attribution",
+          "fields":[
+            { "name":"bucket", "type":"string", "doc":"e.g., Sector:Tech, Country:US, Factor:Value, Book:StatArb" },
+            { "name":"var",    "type":"double", "doc":"Contribution to VaR (report_ccy)" }
+          ]
+        }
+      }],
+      "default": null,
+      "doc": "Optional VaR contributions by bucket"
+    },
+
+    /* Backtesting (optional) */
+    {
+      "name": "backtest",
+      "type": ["null", {
+        "type":"record",
+        "name":"Backtest",
+        "fields":[
+          { "name":"window_days",  "type":"int", "doc":"Backtest window length" },
+          { "name":"exceptions",   "type":"int", "doc":"Number of VaR breaches (loss < -VaR)" },
+          { "name":"traffic_light","type": { "type":"enum", "name":"TrafficLight", "symbols":["GREEN","AMBER","RED"] }, "doc":"Basel-style classification" }
+        ]
+      }],
+      "default": null
+    },
+
+    /* Provenance & tags */
+    {
+      "name": "source",
+      "type": ["null", {
+        "type":"record",
+        "name":"SourceInfo",
+        "fields":[
+          { "name":"engine",  "type":"string", "doc":"Computation engine (e.g., var-runner-v1)" },
+          { "name":"version", "type":"string", "doc":"Semantic version/git SHA" },
+          { "name":"params",  "type":["null",{"type":"array","items":"string"}], "default": null, "doc":"Free-form parameter strings" }
+        ]
+      }],
+      "default": null
+    },
+    { "name": "tags", "type": ["null", {"type":"array","items":"string"}], "default": null, "doc":"Labels (desk, region, book, etc.)" }
+  ]
+}

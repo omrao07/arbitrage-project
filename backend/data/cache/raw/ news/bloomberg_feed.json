@@ -1,0 +1,36 @@
+{
+  "source": "Bloomberg",
+  "timestamp": "2025-09-14T12:00:00Z",
+  "articles": [
+    {
+      "id": "bbg-001",
+      "title": "US Inflation Eases, Fueling Bets on Fed Rate Cut",
+      "summary": "Headline CPI slowed to 3.1% y/y in August, below expectations. Traders raised odds of a 25bp Fed cut at the next FOMC.",
+      "url": "https://www.bloomberg.com/news/articles/2025-09-14/fed-inflation-rate-cut",
+      "tickers": ["SPX", "UST2Y", "DXY"],
+      "publishedAt": "2025-09-14T11:30:00Z",
+      "topics": ["macro", "rates", "fx"],
+      "sentiment": 0.35
+    },
+    {
+      "id": "bbg-002",
+      "title": "Apple Plans Major Buyback as Cash Pile Hits Record",
+      "summary": "Apple Inc. announced a $90B share repurchase, citing strong free cash flow and resilient iPhone demand.",
+      "url": "https://www.bloomberg.com/news/articles/2025-09-14/apple-buyback",
+      "tickers": ["AAPL", "NDX"],
+      "publishedAt": "2025-09-14T10:45:00Z",
+      "topics": ["equity", "buyback"],
+      "sentiment": 0.65
+    },
+    {
+      "id": "bbg-003",
+      "title": "High-Yield Spreads Widen Amid Risk-Off Mood",
+      "summary": "HY bond spreads jumped 50bps over IG as investors rotated into safer assets following global growth fears.",
+      "url": "https://www.bloomberg.com/news/articles/2025-09-14/hy-credit-spreads",
+      "tickers": ["HYG", "LQD"],
+      "publishedAt": "2025-09-14T09:20:00Z",
+      "topics": ["credit", "macro"],
+      "sentiment": -0.45
+    }
+  ]
+}

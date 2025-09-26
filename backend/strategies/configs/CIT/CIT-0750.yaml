@@ -1,0 +1,18 @@
+id: CIT-0750
+firm: Citadel
+name: PJM Congestion Spread #750
+description: Systematic volatility premia.
+discipline: Equities
+family: Microstructure
+region: Global
+horizon: Intraday
+status: research
+engine: equity_ls
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

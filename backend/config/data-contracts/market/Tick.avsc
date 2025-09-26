@@ -1,0 +1,45 @@
+{
+  "type": "record",
+  "namespace": "market",
+  "name": "Tick",
+  "doc": "Unified market data tick: trade, quote, or BBO.",
+  "fields": [
+    { "name": "instrument_id", "type": "string", "doc": "Unique instrument key (ticker/ISIN/synthetic ID)" },
+    { "name": "exchange", "type": "string", "doc": "Venue code (e.g., NASDAQ, NYSE, CME, BINANCE)" },
+
+    {
+      "name": "tick_type",
+      "type": {
+        "type": "enum",
+        "name": "TickType",
+        "symbols": ["TRADE", "QUOTE", "BBO"]
+      },
+      "doc": "TRADE = last sale; QUOTE = inside quote; BBO = best bid/offer snapshot"
+    },
+
+    /* ---------- TRADE fields (nullable for non-TRADE) ---------- */
+    { "name": "trade_id",          "type": ["null", "string"], "default": null, "doc": "Provider trade ID if available" },
+    { "name": "last_price",        "type": ["null", "double"], "default": null, "doc": "Last trade price" },
+    { "name": "last_size",         "type": ["null", "double"], "default": null, "doc": "Last trade size (units)" },
+    { "name": "trade_conditions",  "type": ["null", {"type":"array","items":"string"}], "default": null, "doc": "Tape flags, sale conditions" },
+
+    /* ---------- QUOTE/BBO fields (nullable for TRADE-only ticks) ---------- */
+    { "name": "bid_price",         "type": ["null", "double"], "default": null, "doc": "Best bid price" },
+    { "name": "bid_size",          "type": ["null", "double"], "default": null, "doc": "Best bid size" },
+    { "name": "ask_price",         "type": ["null", "double"], "default": null, "doc": "Best ask price" },
+    { "name": "ask_size",          "type": ["null", "double"], "default": null, "doc": "Best ask size" },
+    { "name": "quote_conditions",  "type": ["null", {"type":"array","items":"string"}], "default": null, "doc": "Quote flags (e.g., NBBO eligible)" },
+
+    /* ---------- Common analytics helpers (nullable) ---------- */
+    { "name": "mid_price",         "type": ["null", "double"], "default": null, "doc": "Midpoint (derived if provided by source)" },
+    { "name": "spread",            "type": ["null", "double"], "default": null, "doc": "Ask - Bid (if available)" },
+
+    /* ---------- Sequencing & timing ---------- */
+    { "name": "sequence_number",   "type": "long", "doc": "Monotonic sequence for ordering/replay" },
+    { "name": "event_time",        "type": {"type":"long","logicalType":"timestamp-millis"}, "doc": "Exchange event time" },
+    { "name": "ingest_time",       "type": {"type":"long","logicalType":"timestamp-millis"}, "doc": "Ingest/processing time" },
+
+    /* ---------- Provenance ---------- */
+    { "name": "source",            "type": ["null","string"], "default": null, "doc": "Feed/source (e.g., SIP, direct, crypto venue)" }
+  ]
+}

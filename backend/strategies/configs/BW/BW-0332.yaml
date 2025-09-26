@@ -1,0 +1,18 @@
+id: BW-0332
+firm: Bridgewater
+name: Gasoline vs Heating Oil Crack (JP)
+description: Refining margin trade.
+discipline: Macro
+family: Curves & Spreads
+region: JP
+horizon: Macro
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: macro
+created_at: 2025-09-10
+updated_at: 2025-09-10

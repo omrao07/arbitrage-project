@@ -1,0 +1,18 @@
+id: P72-0925
+firm: Point72
+name: Consumer Equity Footfall vs E‑Commerce #925
+description: Card receipts and traffic alt-data tilt.
+discipline: Equities
+family: Point72-Style
+region: Global
+horizon: Swing
+status: research
+engine: equity_ls
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: equity
+created_at: 2025-09-10
+updated_at: 2025-09-10

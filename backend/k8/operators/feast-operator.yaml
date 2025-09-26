@@ -1,0 +1,181 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: data
+  labels:
+    project: hyper-os
+    tier: data
+    istio-injection: enabled
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: feast-operator
+  namespace: data
+  annotations:
+    # EKS IRSA example
+    # eks.amazonaws.com/role-arn: arn:aws:iam::<ACCOUNT_ID>:role/hyper-os-sa-feast
+    # GKE WI example
+    # iam.gke.io/gcp-service-account: feast-operator@<PROJECT_ID>.iam.gserviceaccount.com
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: feast-operator
+rules:
+  - apiGroups: ["feast.dev"]
+    resources: ["featurestores","featureviews","entitys","featureservices"]
+    verbs: ["*"]
+  - apiGroups: [""]
+    resources: ["configmaps","secrets","pods","services","events"]
+    verbs: ["*"]
+  - apiGroups: ["apps"]
+    resources: ["deployments","statefulsets"]
+    verbs: ["*"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: feast-operator-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: feast-operator
+subjects:
+  - kind: ServiceAccount
+    name: feast-operator
+    namespace: data
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: featurestores.feast.dev
+spec:
+  group: feast.dev
+  scope: Namespaced
+  names:
+    plural: featurestores
+    singular: featurestore
+    kind: FeatureStore
+    shortNames: ["fs"]
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                registry:
+                  type: string
+                onlineStore:
+                  type: object
+                  additionalProperties: true
+                offlineStore:
+                  type: object
+                  additionalProperties: true
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: featureviews.feast.dev
+spec:
+  group: feast.dev
+  scope: Namespaced
+  names:
+    plural: featureviews
+    singular: featureview
+    kind: FeatureView
+    shortNames: ["fv"]
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                entities:
+                  type: array
+                  items: { type: string }
+                features:
+                  type: array
+                  items: { type: string }
+                ttl:
+                  type: string
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: feast-operator
+  namespace: data
+  labels:
+    app: feast-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: feast-operator }
+  template:
+    metadata:
+      labels: { app: feast-operator }
+    spec:
+      serviceAccountName: feast-operator
+      containers:
+        - name: feast-operator
+          image: feastdev/feast-operator:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - --namespace=data
+            - --enable-leader-election
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits:   { cpu: "1", memory: "1Gi" }
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          readinessProbe:
+            httpGet: { path: /readyz, port: 8080 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+# Example FeatureStore CR
+apiVersion: feast.dev/v1alpha1
+kind: FeatureStore
+metadata:
+  name: hyper-os-fs
+  namespace: data
+spec:
+  registry: gs://REPLACE_BUCKET/feast/registry.db
+  onlineStore:
+    type: redis
+    host: redis.data.svc.cluster.local
+    port: 6379
+  offlineStore:
+    type: bigquery
+    dataset: feast_features
+---
+# Example FeatureView CR
+apiVersion: feast.dev/v1alpha1
+kind: FeatureView
+metadata:
+  name: stock-factors
+  namespace: data
+spec:
+  entities:
+    - ticker
+  features:
+    - pe_ratio
+    - momentum_30d
+    - volatility
+  ttl: 86400s

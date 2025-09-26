@@ -1,0 +1,302 @@
+# credit/fields.yaml
+# Canonical field definitions, aliases, and examples for the Credit domain.
+# Keep this vendor-agnostic; vendor mnemonics are mapped in `aliases`.
+
+version: 1
+
+# ---------------------------------------------------------------------------
+# Reuse global macros/types conceptually; validators in your pipeline should
+# already know macros like: not_null, non_negative, pct_0_1, no_future_date.
+# ---------------------------------------------------------------------------
+
+# ------------------------------- FIELD DEFS ---------------------------------
+fields:
+
+  # --- Identity / keys ---
+  entity_id:
+    type: string
+    desc: "Internal reference entity (issuer) identifier."
+
+  entity_name:
+    type: string
+    nullable: true
+    desc: "Human-readable issuer/reference entity name."
+
+  issuer_id:
+    type: string
+    nullable: true
+    desc: "Internal issuer id (ratings history)."
+
+  index_code:
+    type: string
+    nullable: true
+    desc: "Credit index code (e.g., CDXIG, CDXHY, ITRAXXEUR)."
+
+  series:
+    type: string
+    nullable: true
+    desc: "Index series (e.g., '42')."
+
+  version:
+    type: string
+    nullable: true
+    desc: "Index version/roll (e.g., '1')."
+
+  agency:
+    type: string
+    nullable: true
+    desc: "Ratings agency (MOODY|SNP|FITCH|DBRS|...)."
+
+  # --- Contract qualifiers ---
+  doc_clause:
+    type: string
+    nullable: true
+    desc: "CDS documentation clause (e.g., CR, MM, XR)."
+
+  tier:
+    type: string
+    nullable: true
+    desc: "Seniority tier (e.g., SR, SUB, SNRFOR, SNRUNSEC)."
+
+  # --- Tenor / time ---
+  tenor_yrs:
+    type: float64
+    unit: years
+    quality: [non_negative]
+    desc: "Tenor in years (e.g., 1,3,5,7,10)."
+
+  dt:
+    type: date
+    quality: [not_null, no_future_date]
+    desc: "Business date."
+
+  ts:
+    type: timestamp
+    quality: [not_null]
+    nullable: true
+    desc: "Event timestamp (UTC)."
+
+  # --- Currency context ---
+  currency:
+    type: string
+    nullable: true
+    desc: "ISO 4217 currency (pricing/quote context)."
+
+  # --- Market measures (CDS / indices) ---
+  spread_bp:
+    type: float64
+    unit: bp
+    quality: [non_negative]
+    desc: "Quoted mid spread in basis points."
+
+  upfront_pct:
+    type: float64
+    unit: pct
+    nullable: true
+    quality: [non_negative]
+    desc: "Upfront (as fraction 0–1 unless dataset states otherwise)."
+
+  recovery:
+    type: float64
+    unit: pct
+    nullable: true
+    quality: [pct_0_1]
+    desc: "Assumed recovery rate."
+
+  total_return:
+    type: float64
+    unit: pct
+    nullable: true
+    desc: "Total return index level or rebased return (dataset should document)."
+
+  # --- Corporate bond measures ---
+  oas_bp:
+    type: float64
+    unit: bp
+    nullable: true
+    quality: [non_negative]
+    desc: "Option-adjusted spread (bp)."
+
+  z_spread:
+    type: float64
+    unit: bp
+    nullable: true
+    quality: [non_negative]
+    desc: "Zero-volatility spread (bp)."
+
+  yield:
+    type: float64
+    unit: pct
+    nullable: true
+    desc: "Yield-to-maturity mid (fraction 0–1 unless specified)."
+
+  duration:
+    type: float64
+    nullable: true
+    quality: [non_negative]
+    desc: "Modified duration."
+
+  convexity:
+    type: float64
+    nullable: true
+    desc: "Convexity."
+
+  rating_moody:
+    type: string
+    nullable: true
+    desc: "Moody's rating (e.g., A1, Baa2)."
+
+  rating_sp:
+    type: string
+    nullable: true
+    desc: "S&P rating (e.g., A+, BBB-)."
+
+  # --- Ratings events ---
+  rating:
+    type: string
+    nullable: true
+    desc: "Point-in-time rating value."
+
+  action:
+    type: string
+    nullable: true
+    desc: "UPGRADE|DOWNGRADE|AFFIRM|INIT|WITHDRAWN|... (dataset should normalize)."
+
+  outlook:
+    type: string
+    nullable: true
+    desc: "POS|NEG|STABLE|EWN|... (dataset should normalize)."
+
+  watch:
+    type: string
+    nullable: true
+    desc: "Watch flag/status."
+
+  # --- Derived curve measures ---
+  hazard:
+    type: float64
+    unit: pct
+    nullable: true
+    quality: [non_negative]
+    desc: "Instantaneous hazard rate (annualized fraction)."
+
+  survival:
+    type: float64
+    unit: pct
+    nullable: true
+    quality: [pct_0_1]
+    desc: "Survival probability to tenor."
+
+  method:
+    type: string
+    nullable: true
+    desc: "Bootstrap/curve build method id."
+
+# ------------------------------- FIELD GROUPS -------------------------------
+groups:
+  cds_single_name:
+    fields: [entity_id, doc_clause, tier, tenor_yrs, spread_bp, upfront_pct, recovery, currency]
+    quality: [non_negative]
+
+  credit_indices:
+    fields: [index_code, series, version, dt, spread_bp, total_return, currency]
+    quality: [non_negative]
+
+  corp_bond_measures:
+    fields: [dt, ticker, oas_bp, z_spread, yield, duration, convexity, rating_moody, rating_sp, currency]
+    quality: [non_negative]
+
+  ratings_event:
+    fields: [ts, dt, issuer_id, agency, rating, action, outlook, watch]
+    quality: [not_null]
+
+  cds_curves_derived:
+    fields: [dt, entity_id, tenor_yrs, hazard, survival, recovery, method]
+    quality: [non_negative]
+
+# --------------------------------- ALIASES ----------------------------------
+# Map vendor mnemonics → canonical fields. Storage/search must use canonical.
+aliases:
+  # Single-name CDS (Bloomberg)
+  CDS_SPREAD_MID: spread_bp
+  CDS_UPFRONT_MID: upfront_pct
+  RECOVERY_RATE: recovery
+
+  # Credit indices
+  CDS_INDEX_SPREAD_MID: spread_bp
+  TOTAL_RETURN_INDEX: total_return
+
+  # Corporate bonds
+  OAS_SPREAD_MID: oas_bp
+  Z_SPREAD_MID: z_spread
+  YLD_YTM_MID: yield
+  MOD_DUR_MID: duration
+  CONVEXITY_MID: convexity
+
+  # Ratings
+  RTG_MOODY: rating_moody
+  RTG_SP: rating_sp
+
+  # Generic names seen in flat files
+  ENTITY_ID: entity_id
+  ENTITY_NAME: entity_name
+  ISSUER_ID: issuer_id
+  INDEX: index_code
+  SERIES: series
+  VERSION: version
+  CURRENCY: currency
+
+# -------------------------------- EXAMPLES ----------------------------------
+examples:
+
+  cds_row:
+    dt: "2025-01-03"
+    entity_id: "ISSU-000123"
+    entity_name: "Acme Corp"
+    doc_clause: "CR"
+    tier: "SR"
+    tenor_yrs: 5
+    spread_bp: 123.4
+    upfront_pct: 0.02
+    recovery: 0.4
+    currency: "USD"
+
+  credit_index_row:
+    dt: "2025-01-03"
+    index_code: "CDXIG"
+    series: "42"
+    version: "1"
+    spread_bp: 78.9
+    total_return: 0.0015
+    currency: "USD"
+
+  corp_bond_row:
+    dt: "2025-01-03"
+    ticker: "ACME 4.0 2030"
+    currency: "USD"
+    oas_bp: 145.0
+    z_spread: 150.0
+    yield: 0.0512
+    duration: 6.8
+    convexity: 0.42
+    rating_moody: "Baa2"
+    rating_sp: "BBB"
+
+  ratings_event_row:
+    ts: "2025-01-03T12:34:56Z"
+    dt: "2025-01-03"
+    issuer_id: "ISSU-000123"
+    agency: "SNP"
+    rating: "BBB"
+    action: "AFFIRM"
+    outlook: "STABLE"
+    watch: null
+
+  cds_curve_row:
+    dt: "2025-01-03"
+    entity_id: "ISSU-000123"
+    tenor_yrs: 5
+    hazard: 0.012
+    survival: 0.941
+    recovery: 0.4
+    method: "boot_ho_lee_v1"

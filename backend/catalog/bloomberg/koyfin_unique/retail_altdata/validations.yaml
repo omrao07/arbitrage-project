@@ -1,0 +1,449 @@
+# retail_altdata/validations.yaml
+# Runbook-friendly validations for Retail Alt-Data:
+# - Card spend (merchant)
+# - Foot traffic (POI)
+# - Web traffic (domain)
+# - App rankings/usage (app_id,country,platform)
+# - Price basket (weekly retailer basket)
+# - Retail entity map (cross-IDs)
+#
+# Notes:
+# - Percentages are FRACTIONS (1% => 0.01).
+# - Dates are UTC. Booleans true/false.
+
+version: 1
+
+# -----------------------------------------------------------------------------
+# Global defaults (override per-dataset as needed)
+# -----------------------------------------------------------------------------
+defaults:
+  timezone: "UTC"
+  severity:
+    freshness_breach: warn          # warn|error
+    schema_mismatch: error
+    null_violation: error
+    range_violation: error
+    join_unmatched: warn
+    duplicate_pk: error
+    variance_spike: warn
+  freshness_sla_min: 1440           # 24h for daily datasets
+  baseline_window_days: 28
+  row_count_variance_pct: 50
+  price_eps: 1e-9
+
+# -----------------------------------------------------------------------------
+# Reusable macros (engine implements)
+# -----------------------------------------------------------------------------
+macros:
+  - not_null
+  - non_negative
+  - pct_0_1
+  - no_future_date
+
+# -----------------------------------------------------------------------------
+# Dataset-specific validations
+# -----------------------------------------------------------------------------
+datasets:
+
+  # ======================= 1) Card Spend – merchant ==========================
+  alt_retail_card_spend_daily:
+    freshness_sla_min: 1440
+    primary_key: ["dt","merchant_id"]
+
+    schema:
+      require_columns: ["dt","merchant_id","spend_total","transactions"]
+      types:
+        dt: date
+        merchant_id: string
+        merchant_name: string
+        ticker: string
+        country: string
+        region: string
+        currency: string
+        spend_total: float64
+        transactions: float64
+        customers: float64
+        avg_ticket: float64
+        share_of_wallet: float64
+        panel_coverage: float64
+        method: string
+
+    row_rules:
+      - { name: dt_present,          columns: ["dt"],            check: not_null }
+      - { name: dt_not_future,       columns: ["dt"],            check: no_future_date }
+      - { name: merchant_present,    columns: ["merchant_id"],   check: not_null }
+      - { name: nonneg_spend_txns,   columns: ["spend_total","transactions"], check: non_negative }
+      - { name: nonneg_customers,    columns: ["customers"],     check: non_negative }
+      - name: avg_ticket_identity_soft
+        sql: >
+          avg_ticket IS NULL OR spend_total IS NULL OR transactions IS NULL OR transactions = 0 OR
+          ABS(avg_ticket - (spend_total/transactions)) <= 0.05 * GREATEST(1.0, ABS(spend_total/transactions))
+      - name: sow_fraction
+        sql: "share_of_wallet IS NULL OR (share_of_wallet >= 0 AND share_of_wallet <= 1)"
+      - name: coverage_fraction
+        sql: "panel_coverage IS NULL OR (panel_coverage >= 0 AND panel_coverage <= 1)"
+
+    ranges:
+      - { field: spend_total,     min: 0,     max: 1e12 }
+      - { field: transactions,    min: 0,     max: 1e9 }
+      - { field: customers,       min: 0,     max: 1e9 }
+      - { field: avg_ticket,      min: 0,     max: 1e6 }
+      - { field: share_of_wallet, min: 0,     max: 1 }
+      - { field: panel_coverage,  min: 0,     max: 1 }
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 28
+      max_delta_pct: 60
+
+  # ======================= 2) Foot Traffic – POI =============================
+  alt_retail_foot_traffic_daily:
+    freshness_sla_min: 1440
+    primary_key: ["dt","location_id"]
+
+    schema:
+      require_columns: ["dt","location_id","visits"]
+      types:
+        dt: date
+        location_id: string
+        merchant_id: string
+        ticker: string
+        country: string
+        region: string
+        visits: float64
+        unique_visitors: float64
+        dwell_median_min: float64
+        visits_index: float64
+        closures_flag: bool
+        method: string
+
+    row_rules:
+      - { name: dt_present,        columns: ["dt"],            check: not_null }
+      - { name: dt_not_future,     columns: ["dt"],            check: no_future_date }
+      - { name: poi_present,       columns: ["location_id"],   check: not_null }
+      - { name: visits_nonneg,     columns: ["visits"],        check: non_negative }
+      - { name: uniq_nonneg,       columns: ["unique_visitors"], check: non_negative }
+      - name: uniq_le_visits
+        sql: "unique_visitors IS NULL OR visits IS NULL OR unique_visitors <= visits"
+      - name: dwell_nonneg
+        sql: "dwell_median_min IS NULL OR dwell_median_min >= 0"
+      - name: visits_index_pos
+        sql: "visits_index IS NULL OR visits_index > 0"
+
+    ranges:
+      - { field: visits,           min: 0,     max: 1e9 }
+      - { field: unique_visitors,  min: 0,     max: 1e9 }
+      - { field: dwell_median_min, min: 0,     max: 1e3 }
+      - { field: visits_index,     min: 0,     max: 100 }
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 28
+      max_delta_pct: 60
+
+  # ======================= 3) Web Traffic – domain ===========================
+  alt_retail_web_traffic_daily:
+    freshness_sla_min: 1440
+    primary_key: ["dt","domain"]
+
+    schema:
+      require_columns: ["dt","domain","visits"]
+      types:
+        dt: date
+        domain: string
+        merchant_id: string
+        ticker: string
+        country: string
+        visits: float64
+        unique_visitors: float64
+        pages_per_visit: float64
+        avg_session_sec: float64
+        bounce_rate: float64
+        method: string
+
+    row_rules:
+      - { name: dt_present,      columns: ["dt"],     check: not_null }
+      - { name: dt_not_future,   columns: ["dt"],     check: no_future_date }
+      - { name: domain_present,  columns: ["domain"], check: not_null }
+      - name: domain_lowercase
+        sql: "domain = LOWER(domain)"
+      - { name: visits_nonneg,   columns: ["visits","unique_visitors"], check: non_negative }
+      - name: ppv_reasonable
+        sql: "pages_per_visit IS NULL OR (pages_per_visit >= 0 AND pages_per_visit <= 100)"
+      - name: avg_session_reasonable
+        sql: "avg_session_sec IS NULL OR (avg_session_sec >= 0 AND avg_session_sec <= 86400)"
+      - name: bounce_fraction
+        sql: "bounce_rate IS NULL OR (bounce_rate >= 0 AND bounce_rate <= 1)"
+
+    ranges:
+      - { field: visits,           min: 0,     max: 1e12 }
+      - { field: unique_visitors,  min: 0,     max: 1e12 }
+      - { field: pages_per_visit,  min: 0,     max: 100 }
+      - { field: avg_session_sec,  min: 0,     max: 86400 }
+      - { field: bounce_rate,      min: 0,     max: 1 }
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 28
+      max_delta_pct: 70
+
+  # ======================= 4) App Rankings / Usage ===========================
+  alt_retail_app_ranking_daily:
+    freshness_sla_min: 1440
+    primary_key: ["dt","app_id","country","platform"]
+
+    schema:
+      require_columns: ["dt","app_id","country","platform"]
+      types:
+        dt: date
+        app_id: string
+        app_name: string
+        platform: string
+        country: string
+        category: string
+        rank_free: float64
+        rank_grossing: float64
+        dau: float64
+        mau: float64
+        rating: float64
+        rating_count: float64
+        merchant_id: string
+        ticker: string
+        method: string
+
+    row_rules:
+      - { name: dt_present,        columns: ["dt"],       check: not_null }
+      - { name: dt_not_future,     columns: ["dt"],       check: no_future_date }
+      - { name: app_present,       columns: ["app_id"],   check: not_null }
+      - name: platform_allowed
+        sql: "platform IN ('ios','android')"
+      - name: ranks_positive
+        sql: "(rank_free   IS NULL OR rank_free   >= 1) AND (rank_grossing IS NULL OR rank_grossing >= 1)"
+      - { name: dau_nonneg,        columns: ["dau","mau","rating_count"], check: non_negative }
+      - name: rating_bounds
+        sql: "rating IS NULL OR (rating >= 0 AND rating <= 5)"
+      - name: dau_le_mau
+        sql: "dau IS NULL OR mau IS NULL OR dau <= mau"
+
+    ranges:
+      - { field: rank_free,     min: 1,   max: 1e6 }
+      - { field: rank_grossing, min: 1,   max: 1e6 }
+      - { field: dau,           min: 0,   max: 1e10 }
+      - { field: mau,           min: 0,   max: 1e10 }
+      - { field: rating,        min: 0,   max: 5 }
+      - { field: rating_count,  min: 0,   max: 1e9 }
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 28
+      max_delta_pct: 70
+
+  # ======================= 5) Price Basket – weekly ==========================
+  alt_retail_price_basket_weekly:
+    freshness_sla_min: 10080     # 7 days
+    primary_key: ["week","retailer_id","basket_id"]
+
+    schema:
+      require_columns: ["week","retailer_id","basket_id","price_basket"]
+      types:
+        week: date
+        retailer_id: string
+        retailer_name: string
+        ticker: string
+        country: string
+        currency: string
+        basket_id: string
+        basket_name: string
+        sku_count: int32
+        price_basket: float64
+        promo_pct: float64
+        oos_pct: float64
+        method: string
+
+    row_rules:
+      - { name: week_present,       columns: ["week"],            check: not_null }
+      - { name: week_not_future,    columns: ["week"],            check: no_future_date }
+      - { name: ids_present,        columns: ["retailer_id","basket_id"], check: not_null }
+      - { name: price_nonneg,       columns: ["price_basket"],    check: non_negative }
+      - { name: sku_nonneg,         columns: ["sku_count"],       check: non_negative }
+      - name: promo_fraction
+        sql: "promo_pct IS NULL OR (promo_pct >= 0 AND promo_pct <= 1)"
+      - name: oos_fraction
+        sql: "oos_pct IS NULL OR (oos_pct >= 0 AND oos_pct <= 1)"
+
+    ranges:
+      - { field: sku_count,    min: 0,    max: 100000 }
+      - { field: price_basket, min: 0,    max: 1e8 }
+      - { field: promo_pct,    min: 0,    max: 1 }
+      - { field: oos_pct,      min: 0,    max: 1 }
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 16
+      max_delta_pct: 40
+
+  # ======================= 6) Retail Entity Map – reference ==================
+  retail_entity_map:
+    freshness_sla_min: 43200     # 30 days (ad hoc)
+    primary_key: ["entity_id"]
+
+    schema:
+      require_columns: ["entity_id"]
+      types:
+        entity_id: string
+        merchant_id: string
+        merchant_name: string
+        ticker: string
+        domains: string[]
+        app_ids: string[]
+        poi_location_ids: string[]
+        country: string
+        brand_tags: string[]
+        as_of: date
+
+    row_rules:
+      - { name: entity_present,     columns: ["entity_id"], check: not_null }
+      - name: at_least_one_id
+        sql: >
+          (COALESCE(merchant_id,'') <> '') OR
+          (domains IS NOT NULL AND CARDINALITY(domains) > 0) OR
+          (app_ids IS NOT NULL AND CARDINALITY(app_ids) > 0) OR
+          (poi_location_ids IS NOT NULL AND CARDINALITY(poi_location_ids) > 0)
+
+    duplicate_pk:
+      enabled: true
+
+# -----------------------------------------------------------------------------
+# Cross-dataset integrity checks
+# -----------------------------------------------------------------------------
+cross_checks:
+
+  # ---- Card spend: avg_ticket identity health (last 7d) ---------------------
+  - name: card_avg_ticket_identity_7d
+    description: "Median |avg_ticket - spend/txns| / max(1, spend/txns) ≤ 5% over last 7 days."
+    sql: >
+      WITH w AS (
+        SELECT dt, merchant_id,
+               spend_total, transactions, avg_ticket,
+               CASE WHEN transactions IS NULL OR transactions=0 OR spend_total IS NULL OR avg_ticket IS NULL
+                    THEN NULL
+                    ELSE ABS(avg_ticket - (spend_total/transactions)) / GREATEST(1.0, ABS(spend_total/transactions))
+               END AS rel_err
+        FROM alt_retail_card_spend_daily
+        WHERE dt >= dateadd('day', -7, current_date)
+      )
+      SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY rel_err) AS p50_rel_err
+      FROM w
+      WHERE rel_err IS NOT NULL
+    expect:
+      p50_rel_err_lte: 0.05
+
+  # ---- Foot traffic: closures imply near-zero visits ------------------------
+  - name: closures_imply_low_visits
+    description: "When closures_flag = true, p95(visits) ≤ 5 over last 30 days."
+    sql: >
+      SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY visits) AS p95_visits
+      FROM alt_retail_foot_traffic_daily
+      WHERE closures_flag = TRUE
+        AND dt >= dateadd('day', -30, current_date)
+    expect:
+      p95_visits_lte: 5
+
+  # ---- Web traffic: domain maps to an entity (coverage metric) --------------
+  - name: web_domain_maps_to_entity_coverage
+    description: "≥80% of web rows have domain present in some entity's domains."
+    sql: >
+      WITH exploded AS (
+        SELECT e.entity_id, LOWER(d) AS domain
+        FROM retail_entity_map e
+        CROSS JOIN UNNEST(e.domains) AS t(d)
+      ),
+      joined AS (
+        SELECT w.dt, w.domain, CASE WHEN e.entity_id IS NULL THEN 0 ELSE 1 END AS has_map
+        FROM alt_retail_web_traffic_daily w
+        LEFT JOIN exploded e ON w.domain = e.domain
+        WHERE w.dt >= dateadd('day', -30, current_date)
+      )
+      SELECT AVG(has_map)::float AS coverage
+      FROM joined
+    expect:
+      coverage_gte: 0.80
+
+  # ---- App rankings: app_id maps to an entity (coverage metric) -------------
+  - name: app_id_maps_to_entity_coverage
+    description: "≥80% of app rows have app_id present in some entity's app_ids."
+    sql: >
+      WITH exploded AS (
+        SELECT e.entity_id, a AS app_id
+        FROM retail_entity_map e
+        CROSS JOIN UNNEST(e.app_ids) AS t(a)
+      ),
+      joined AS (
+        SELECT a.dt, a.app_id, CASE WHEN e.entity_id IS NULL THEN 0 ELSE 1 END AS has_map
+        FROM alt_retail_app_ranking_daily a
+        LEFT JOIN exploded e ON a.app_id = e.app_id
+        WHERE a.dt >= dateadd('day', -30, current_date)
+      )
+      SELECT AVG(has_map)::float AS coverage
+      FROM joined
+    expect:
+      coverage_gte: 0.80
+
+  # ---- Foot traffic: POI maps to an entity (coverage metric) ----------------
+  - name: poi_maps_to_entity_coverage
+    description: "≥75% of POI rows map to an entity's poi_location_ids."
+    sql: >
+      WITH exploded AS (
+        SELECT e.entity_id, p AS poi_id
+        FROM retail_entity_map e
+        CROSS JOIN UNNEST(e.poi_location_ids) AS t(p)
+      ),
+      joined AS (
+        SELECT f.dt, f.location_id, CASE WHEN e.entity_id IS NULL THEN 0 ELSE 1 END AS has_map
+        FROM alt_retail_foot_traffic_daily f
+        LEFT JOIN exploded e ON f.location_id = e.poi_id
+        WHERE f.dt >= dateadd('day', -30, current_date)
+      )
+      SELECT AVG(has_map)::float AS coverage
+      FROM joined
+    expect:
+      coverage_gte: 0.75
+
+  # ---- Card spend: merchant maps to an entity (coverage metric) -------------
+  - name: merchant_maps_to_entity_coverage
+    description: "≥85% of card-spend rows have merchant_id present in entity map."
+    sql: >
+      SELECT AVG(CASE WHEN m.merchant_id IS NULL THEN 0 ELSE 1 END)::float AS coverage
+      FROM alt_retail_card_spend_daily c
+      LEFT JOIN retail_entity_map m ON c.merchant_id = m.merchant_id
+      WHERE c.dt >= dateadd('day', -30, current_date)
+    expect:
+      coverage_gte: 0.85
+
+# -----------------------------------------------------------------------------
+# Alert routing hints
+# -----------------------------------------------------------------------------
+alerts:
+  routes:
+    - match: { dataset: "alt_retail_card_spend_daily", type: "schema_mismatch" }
+      to: ["slack:#altdata-pipeline"]
+    - match: { dataset: "alt_retail_foot_traffic_daily", type: "variance_spike" }
+      to: ["slack:#altdata-quality"]
+    - match: { dataset: "alt_retail_web_traffic_daily", type: "range_violation" }
+      to: ["slack:#altdata-web"]
+    - match: { dataset: "alt_retail_app_ranking_daily", type: "duplicate_pk" }
+      to: ["slack:#altdata-apps"]
+    - match: { dataset: "alt_retail_price_basket_weekly", type: "freshness_breach" }
+      to: ["slack:#altdata-pricing"]
+    - match: { dataset: "retail_entity_map", type: "schema_mismatch" }
+      to: ["slack:#altdata-reference"]

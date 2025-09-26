@@ -1,0 +1,61 @@
+# ===========================
+# General Settings
+# ===========================
+
+# Run mode: PAPER / LIVE / BACKTEST
+RUN_MODE=PAPER
+
+# Strategy selector: round_robin / bandit / rl
+STRATEGY_SELECTOR=bandit
+
+# ===========================
+# Data Sources & APIs
+# ===========================
+
+# Yahoo Finance (yfinance doesn’t require a key, but placeholder for uniformity)
+YF_API_KEY=
+
+# News API / sentiment (optional)
+NEWS_API_KEY=
+NEWS_PROVIDER=polygon  # polygon / newsapi / bloomberg (if integrated)
+
+# ===========================
+# Brokers & Execution
+# ===========================
+
+# Interactive Brokers Gateway / TWS
+IBKR_HOST=127.0.0.1
+IBKR_PORT=4001
+IBKR_CLIENT_ID=123
+
+# Alpaca (paper/live trading)
+ALPACA_KEY_ID=
+ALPACA_SECRET_KEY=
+ALPACA_BASE_URL=https://paper-api.alpaca.markets
+
+# Zerodha Kite Connect (India)
+ZERODHA_API_KEY=
+ZERODHA_API_SECRET=
+ZERODHA_ACCESS_TOKEN=
+
+# Binance (for crypto)
+BINANCE_API_KEY=
+BINANCE_SECRET_KEY=
+
+# ===========================
+# Infrastructure
+# ===========================
+
+# Redis (for live job pub/sub bus)
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_DB=0
+
+# Database (optional, for storing runs)
+DB_URI=sqlite:///runs.db
+# Example for Postgres:
+# DB_URI=postgresql://user:pass@localhost:5432/hedgefund
+
+# Logging
+LOG_LEVEL=INFO
+LOG_PATH=logs/app.log

@@ -1,0 +1,74 @@
+import pandas as pd
+from openpyxl import Workbook
+from openpyxl.utils.dataframe import dataframe_to_rows
+from openpyxl.chart import LineChart, Reference
+
+OUT_FILE = "dcf_templates.xlsx"
+
+def build_dcf_template():
+    wb = Workbook()
+
+    # --- Assumptions sheet ---
+    ws1 = wb.active
+    ws1.title = "Assumptions"
+    assumptions = [
+        ["Input", "Value", "Notes"],
+        ["Base Revenue", 100000000000, "Starting revenue ($)"],
+        ["Revenue Growth (yrs 1-5)", "0.10,0.08,0.06,0.05,0.03", "comma-separated list"],
+        ["Operating Margin", 0.20, "EBIT % of sales"],
+        ["Tax Rate", 0.21, ""],
+        ["Capex % Sales", 0.05, ""],
+        ["D&A % Sales", 0.03, ""],
+        ["Change in WC % Sales", 0.01, ""],
+        ["WACC", 0.09, ""],
+        ["Terminal Growth", 0.025, ""],
+        ["Shares Outstanding", 5000000000, ""],
+        ["Net Debt", 20000000000, ""],
+    ]
+    for row in assumptions:
+        ws1.append(row)
+
+    # --- Projections template ---
+    ws2 = wb.create_sheet("Projections")
+    proj_cols = [
+        "Year", "Revenue", "EBIT", "Tax", "NOPAT",
+        "Capex", "D&A", "Change in WC", "Reinvestment",
+        "FCFF", "Discount Factor", "PV of FCFF"
+    ]
+    ws2.append(proj_cols)
+    for year in range(1, 6):  # 5 forecast years
+        ws2.append([2024+year, "", "", "", "", "", "", "", "", "", "", ""])
+
+    # --- DCF Valuation sheet ---
+    ws3 = wb.create_sheet("Valuation")
+    ws3.append(["Metric", "Value"])
+    ws3.append(["PV of Forecast FCFF", ""])
+    ws3.append(["PV of Terminal Value", ""])
+    ws3.append(["Enterprise Value", ""])
+    ws3.append(["Net Debt", ""])
+    ws3.append(["Equity Value", ""])
+    ws3.append(["Fair Value per Share", ""])
+
+    # --- Sensitivity sheet ---
+    ws4 = wb.create_sheet("Sensitivity")
+    ws4.append(["WACC \\ g", "2%", "2.5%", "3%", "3.5%", "4%"])
+    for w in [0.07, 0.08, 0.09, 0.10, 0.11]:
+        ws4.append([f"{int(w*100)}%"] + [""]*5)
+
+    # --- Charts sheet ---
+    ws5 = wb.create_sheet("Charts")
+    chart = LineChart()
+    chart.title = "FCFF Projection"
+    chart.y_axis.title = "Free Cash Flow ($)"
+    chart.x_axis.title = "Year"
+    data = Reference(ws2, min_col=10, min_row=1, max_row=6)  # FCFF col
+    cats = Reference(ws2, min_col=1, min_row=2, max_row=6)
+    chart.add_data(data, titles_from_data=True)
+    chart.set_categories(cats)
+    ws5.add_chart(chart, "B2")
+
+    wb.save(OUT_FILE)
+    print(f"✅ {OUT_FILE} created")
+
+if __name__ == "__main__":
+    build_dcf_template()

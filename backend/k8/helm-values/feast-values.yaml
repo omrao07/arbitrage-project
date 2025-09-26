@@ -1,0 +1,203 @@
+# -----------------------------------------------------------------------------
+# Feast (Feature Store) — Helm values
+# Namespace: data
+# Matches your infra: GCS/S3 registry, BigQuery offline store, Redis online store
+# -----------------------------------------------------------------------------
+
+fullnameOverride: feast
+namespace: data
+
+labels:
+  project: hyper-os
+  tier: data
+
+# -----------------------------------------------------------------------------
+# Service Account (IRSA / Workload Identity friendly)
+# -----------------------------------------------------------------------------
+serviceAccount:
+  create: true
+  name: feast
+  annotations: {}
+    # EKS IRSA:
+    # eks.amazonaws.com/role-arn: arn:aws:iam::<ACCOUNT_ID>:role/hyper-os-sa-feast
+    # GKE Workload Identity:
+    # iam.gke.io/gcp-service-account: feast@<PROJECT_ID>.iam.gserviceaccount.com
+
+# -----------------------------------------------------------------------------
+# Registry (choose ONE: GCS or S3)
+# -----------------------------------------------------------------------------
+registry:
+  refreshInterval: 60s
+  type: gcs           # gcs | s3 | file
+  gcs:
+    bucket: REPLACE_GCS_BUCKET_curated
+    path: feast/registry.db           # gs://<bucket>/feast/registry.db
+  s3:
+    bucket: REPLACE_S3_BUCKET_curated
+    path: feast/registry.db           # s3://<bucket>/feast/registry.db
+
+# -----------------------------------------------------------------------------
+# Offline Store (training / historical retrieval)
+# -----------------------------------------------------------------------------
+offlineStore:
+  type: bigquery      # recommended for your stack
+  bigquery:
+    projectId: REPLACE_GCP_PROJECT_ID
+    dataset: feast_features           # created by terraform/bigquery.tf or manually
+    stagingBucket: gs://REPLACE_GCS_BUCKET_curated/feast/staging/
+
+# -----------------------------------------------------------------------------
+# Online Store (low-latency serving)
+# -----------------------------------------------------------------------------
+onlineStore:
+  type: redis
+  redis:
+    host: redis.data.svc.cluster.local
+    port: 6379
+    db: 0
+    poolSize: 64
+    tls: false
+
+# -----------------------------------------------------------------------------
+# Feature Server (Python gRPC/HTTP)
+# -----------------------------------------------------------------------------
+featureServer:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ghcr.io/feast-dev/feast-feature-server
+    tag: "latest"               # pin to a tested version in prod (e.g., 0.37.x / 0.40.x)
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    ports:
+      http: 8080
+      grpc: 6566
+  env:
+    - name: FEAST_USAGE_MODE
+      value: "online"
+    - name: FEAST_PROJECT
+      value: "default"
+  extraEnvFrom: []              # mount secrets/ConfigMaps if needed
+  resources:
+    requests: { cpu: "250m", memory: "512Mi" }
+    limits:   { cpu: "1",    memory: "1Gi" }
+  podSecurityContext:
+    runAsNonRoot: true
+    fsGroup: 1000
+  securityContext:
+    allowPrivilegeEscalation: false
+    runAsUser: 1000
+    runAsNonRoot: true
+  livenessProbe:
+    httpGet: { path: /, port: 8080 }
+    initialDelaySeconds: 10
+    periodSeconds: 20
+  readinessProbe:
+    httpGet: { path: /, port: 8080 }
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+
+# -----------------------------------------------------------------------------
+# Job Service (manages batch/stream ingestion jobs)
+# -----------------------------------------------------------------------------
+jobService:
+  enabled: true
+  image:
+    repository: ghcr.io/feast-dev/feast-job-service
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8081
+  resources:
+    requests: { cpu: "200m", memory: "256Mi" }
+    limits:   { cpu: "1",    memory: "512Mi" }
+  env:
+    - name: FEAST_USAGE_MODE
+      value: "jobservice"
+  # If you run Spark/Flink externally, point the job service at that control plane here:
+  externalRuntimes:
+    flink:
+      enabled: true
+      # If using the Flink K8s Operator we installed, Jobs are created in-cluster.
+      # Provide defaults for checkpointing and storage:
+      defaults:
+        checkpointDir: s3://REPLACE_S3_BUCKET_curated/flink/checkpoints/   # or gs://...
+        savepointDir:   s3://REPLACE_S3_BUCKET_curated/flink/savepoints/
+    spark:
+      enabled: false
+
+# -----------------------------------------------------------------------------
+# Streaming ingestion (example: Kafka → Flink) — optional
+# -----------------------------------------------------------------------------
+streamIngestion:
+  enabled: false
+  engine: flink                            # or spark
+  kafka:
+    brokers: "REPLACE_KAFKA_BROKERS"
+    topic: "feast-events"
+    groupId: "feast-ingestor"
+    security:
+      sasl: false
+      ssl:  false
+  # When enabled, the chart/templates should produce a FlinkDeployment referencing these:
+  flink:
+    parallelism: 2
+    checkpointIntervalMs: 30000
+    stateBackend: rocksdb
+    stateDir: s3://REPLACE_S3_BUCKET_curated/flink/checkpoints/  # or gs://...
+
+# -----------------------------------------------------------------------------
+# Access (Ingress optional; keep internal for now)
+# -----------------------------------------------------------------------------
+ingress:
+  enabled: false
+  className: nginx
+  hosts:
+    - host: feast.your-domain.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: feature-server
+          port: 8080
+  tls: []  # set a secret via cert-manager if exposing
+
+# -----------------------------------------------------------------------------
+# RBAC / Network / Misc
+# -----------------------------------------------------------------------------
+rbac:
+  create: true
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# -----------------------------------------------------------------------------
+# Secrets (mounted via envFrom if you’re not using IRSA/WI)
+# -----------------------------------------------------------------------------
+secrets:
+  create: false
+  name: feast-secrets
+  data: {}
+  # examples (base64 in actual Secret):
+  #  GOOGLE_APPLICATION_CREDENTIALS_JSON: |
+  #  AWS_ACCESS_KEY_ID: ...
+  #  AWS_SECRET_ACCESS_KEY: ...
+
+# -----------------------------------------------------------------------------
+# Telemetry
+# -----------------------------------------------------------------------------
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: false  # set true if you run Prometheus Operator

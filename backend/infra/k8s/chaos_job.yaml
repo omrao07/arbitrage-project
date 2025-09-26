@@ -1,0 +1,37 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: chaos-kill-analyst
+  namespace: trading
+  labels:
+    app.kubernetes.io/name: chaos
+    app.kubernetes.io/part-of: hedgefund
+spec:
+  completions: 1
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: chaos
+    spec:
+      restartPolicy: Never
+      serviceAccountName: analyst-sa
+      containers:
+        - name: chaos-injector
+          image: litmuschaos/chaos-runner:2.13.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - /bin/bash
+            - -c
+            - |
+              echo "[chaos] Killing 1 analyst pod for resiliency test..."
+              kubectl delete pod -l app.kubernetes.io/name=analyst -n trading --grace-period=0 --force
+              echo "[chaos] Sleeping for 30s before exit"
+              sleep 30
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

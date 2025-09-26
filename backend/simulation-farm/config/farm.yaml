@@ -1,0 +1,72 @@
+# simulation-farm/config/farm.yaml
+# Master config for the Simulation Farm job runners.
+
+runner:
+  # Default runner: local | ray | k8s
+  default: local
+
+  local:
+    processes: 4          # number of parallel worker processes
+    use_multiprocessing: true
+
+  ray:
+    address: auto         # or "ray://host:port" for cluster
+    num_cpus: 8
+    num_gpus: 0
+    namespace: simfarm
+    dashboard: true
+
+  k8s:
+    namespace: simfarm
+    image: simfarm:latest
+    backoff_limit: 2
+    ttl_seconds_after_finished: 600
+    resources:
+      limits:
+        cpu: "4"
+        memory: "8Gi"
+      requests:
+        cpu: "2"
+        memory: "4Gi"
+    node_selector: {}
+    tolerations: []
+    affinity: {}
+
+scheduler:
+  max_concurrent_jobs: 10
+  retry_on_failure: true
+  retry_delay_s: 60
+  heartbeat_interval_s: 15
+
+resources:
+  default_cash: 1000000
+  timezone: UTC
+  trading_days_per_year: 252
+
+exporters:
+  default: local
+
+  local:
+    root: artifacts/reports/out
+
+  s3:
+    bucket: my-simfarm-reports
+    prefix: runs/
+    region: us-east-1
+    public: false
+    gzip_text: true
+
+  gcs:
+    bucket: my-simfarm-reports
+    prefix: runs/
+    project: my-gcp-project
+    make_public: false
+    gzip_text: true
+
+logging:
+  level: INFO
+  log_to_file: true
+  file: artifacts/logs/simfarm.log
+  rotation:
+    max_bytes: 10_000_000
+    backup_count: 5

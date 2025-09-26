@@ -1,0 +1,18 @@
+id: CIT-0006
+firm: Citadel
+name: ADR vs Local Dual-Listing #6
+description: Systematic volatility premia.
+discipline: Macro
+family: Rates & Basis
+region: Global
+horizon: Swing
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

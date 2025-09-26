@@ -1,0 +1,222 @@
+# config/feature_store.yaml
+project: hyper_trading_os
+registry: ${FEAST_REGISTRY_PATH:registry/feast/registry.db}
+provider: local
+
+online_store:
+  type: redis
+  connection_string: ${REDIS_URL:redis://redis:6379/0}
+
+offline_store:
+  # Pick ONE of these; the app selects by OFFLINE_STORE env
+  type: file
+  # Parquet on S3/MinIO for dev/staging; set S3 creds via env
+  # For BigQuery, comment 'file' out and use the bigquery block below.
+  # file:
+  #   # Feast uses local paths; use s3fs/fsspec mounts in containers if needed
+  #   # Nothing to configure here—data sources reference s3:// paths directly.
+
+  # BigQuery alternative:
+  # type: bigquery
+  # dataset: ${BQ_DATASET:feast_core}
+  # project_id: ${BQ_PROJECT:fund-core}
+
+# Optional Kafka source configs (used by FeatureViews below)
+stream_sources:
+  kafka:
+    brokers: ${KAFKA_BROKERS:broker:9092}
+    security:
+      sasl: ${KAFKA_SASL:false}
+      tls: ${KAFKA_TLS:true}
+
+entity_key_serialization_version: 2
+
+# ===========================
+# Entities
+# ===========================
+entities:
+  - name: instrument
+    join_keys: [instrument_id]
+    description: "Any tradable instrument (equity, future, fx, option root)"
+  - name: portfolio
+    join_keys: [portfolio_id]
+    description: "Portfolio/account scope for portfolio-level features"
+
+# ===========================
+# Data Sources (offline & stream)
+# ===========================
+data_sources:
+  # Prices & returns (Parquet or BQ table)
+  prices_offline:
+    name: prices_offline
+    type: file
+    path: ${PRICES_PARQUET:s3://os-processed/equities/returns.parquet}
+    timestamp_field: ts
+    created_timestamp_column: ingested_at
+
+  prices_stream:
+    name: prices_stream
+    type: kafka
+    bootstrap_servers: ${KAFKA_BROKERS:broker:9092}
+    topic: ${TOPIC_TICKS:market.ticks.v1}
+    message_format: json
+    timestamp_field: event_time
+
+  news_signals_offline:
+    name: news_signals_offline
+    type: file
+    path: ${NEWS_SIGNALS_PARQUET:s3://os-processed/news/signals.parquet}
+    timestamp_field: publish_time
+    created_timestamp_column: ingest_time
+
+  news_signals_stream:
+    name: news_signals_stream
+    type: kafka
+    bootstrap_servers: ${KAFKA_BROKERS:broker:9092}
+    topic: ${TOPIC_NEWS_SIGNALS:news.signals.v1}
+    message_format: json
+    timestamp_field: ingest_time
+
+  liquidity_offline:
+    name: liquidity_offline
+    type: file
+    path: ${LIQ_PARQUET:s3://os-processed/equities/liquidity.parquet}
+    timestamp_field: ts
+
+  factors_offline:
+    name: factors_offline
+    type: file
+    path: ${FACTORS_PARQUET:s3://os-processed/equities/factors.parquet}
+    timestamp_field: ts
+
+# ===========================
+# Feature Views
+# ===========================
+feature_views:
+  # 1) Rolling price/volatility features
+  - name: instrument_price_features
+    entities: [instrument]
+    ttl: 86400s
+    online: true
+    source: prices_offline
+    stream_source: prices_stream
+    tags: {domain: "market", group: "prices"}
+    schema:
+      - name: price_close
+        dtype: DOUBLE
+      - name: ret_1d
+        dtype: DOUBLE
+      - name: ret_5d
+        dtype: DOUBLE
+      - name: vol_20d
+        dtype: DOUBLE
+      - name: vol_60d
+        dtype: DOUBLE
+      - name: beta_60d
+        dtype: DOUBLE
+
+  # 2) News/NLP features (your news.signal feed)
+  - name: instrument_news_features
+    entities: [instrument]
+    ttl: 43200s
+    online: true
+    source: news_signals_offline
+    stream_source: news_signals_stream
+    tags: {domain: "news", group: "nlp"}
+    schema:
+      - name: news_score
+        dtype: DOUBLE          # primary signed alpha in [-1,1]
+      - name: news_sentiment
+        dtype: DOUBLE          # sentiment.score
+      - name: news_relevance
+        dtype: FLOAT
+      - name: news_novelty
+        dtype: FLOAT
+      - name: news_vol_impact
+        dtype: FLOAT
+
+  # 3) Liquidity features (for pre-trade limits, slippage)
+  - name: instrument_liquidity_features
+    entities: [instrument]
+    ttl: 172800s
+    online: true
+    source: liquidity_offline
+    tags: {domain: "market", group: "liquidity"}
+    schema:
+      - name: adv_20d
+        dtype: DOUBLE
+      - name: spread_bps
+        dtype: DOUBLE
+      - name: turnover_20d
+        dtype: DOUBLE
+      - name: is_hard_to_borrow
+        dtype: BOOL
+
+  # 4) Factor exposures (for risk/selection)
+  - name: instrument_factor_features
+    entities: [instrument]
+    ttl: 604800s
+    online: true
+    source: factors_offline
+    tags: {domain: "risk", group: "factors"}
+    schema:
+      - name: factor_value
+        dtype: DOUBLE
+      - name: factor_quality
+        dtype: DOUBLE
+      - name: factor_momentum
+        dtype: DOUBLE
+      - name: factor_size
+        dtype: DOUBLE
+      - name: factor_low_vol
+        dtype: DOUBLE
+      - name: factor_growth
+        dtype: DOUBLE
+
+# ===========================
+# On-Demand Feature Views (optional)
+# ===========================
+on_demand_feature_views:
+  - name: intraday_spread_ratio
+    inputs:
+      - feature_view: instrument_price_features
+        features: [price_close]
+      - feature_view: instrument_liquidity_features
+        features: [spread_bps]
+    transformation: |
+      # python
+      def transform(df):
+          # spread ratio ~ spread_bps relative to price (bps -> ratio)
+          df["spread_ratio"] = (df["spread_bps"] / 10000.0) / df["price_close"]
+          return df
+    output_schema:
+      - name: spread_ratio
+        dtype: DOUBLE
+
+# ===========================
+# Materialization / Infra
+# ===========================
+materialization:
+  batch:
+    schedule_cron: "*/30 * * * *"    # every 30 min
+    backfill_days: 7
+  streaming:
+    enabled: true
+    # Feast stream ingestion runs separately (feast materialize-incremental or operator)
+
+# ===========================
+# Monitoring
+# ===========================
+monitoring:
+  data_drift:
+    enabled: true
+    window_days: 7
+    thresholds:
+      ks_stat: 0.2
+      mean_shift_sigma: 3.0
+  freshness:
+    max_lag_seconds:
+      instrument_price_features: 300
+      instrument_news_features: 180
+      instrument_liquidity_features: 3600
+      instrument_factor_features: 86400

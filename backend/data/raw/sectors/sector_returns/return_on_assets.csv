@@ -1,0 +1,51 @@
+import os
+import pandas as pd
+import numpy as np
+
+OUT_PATH = "data/adamodar/curated/return_on_assets.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def seed_roa() -> pd.DataFrame:
+    rows = [
+        ("United States","region","United States","2023-01-01",1.95e12,55.0e12,0.035,"","","Baseline"),
+        ("United States","region","United States","2024-01-01",2.10e12,56.5e12,0.037,"","","Improving efficiency"),
+        ("United States","region","United States","2025-01-01",2.25e12,58.0e12,0.039,"","","High profits vs assets"),
+        ("Emerging Mkts","region","EM Aggregate","2023-01-01",0.95e12,28.0e12,0.034,"","","Baseline"),
+        ("Emerging Mkts","region","EM Aggregate","2024-01-01",1.02e12,29.2e12,0.035,"","","Stable"),
+        ("Emerging Mkts","region","EM Aggregate","2025-01-01",1.10e12,30.5e12,0.036,"","","FX resilient"),
+        ("Tech Sector","sector","United States","2023-01-01",0.95e12,7.0e12,0.136,"","","Big Tech dominance"),
+        ("Tech Sector","sector","United States","2024-01-01",1.02e12,7.4e12,0.138,"","","Cloud boost"),
+        ("Tech Sector","sector","United States","2025-01-01",1.09e12,7.8e12,0.140,"","","Margins + scale"),
+    ]
+    return pd.DataFrame(rows, columns=[
+        "entity","entity_type","region","as_of","net_income_usd","total_assets_usd",
+        "roa","roa_change_yoy","roa_3y_avg","notes"
+    ])
+
+def compute_roa_changes(df: pd.DataFrame) -> pd.DataFrame:
+    d = df.copy()
+    d["as_of"] = pd.to_datetime(d["as_of"])
+    d.sort_values(["entity","as_of"], inplace=True)
+
+    # recompute ROA
+    d["roa"] = d["net_income_usd"] / d["total_assets_usd"]
+
+    # YoY change
+    d["roa_change_yoy"] = d.groupby("entity")["roa"].diff()
+
+    # trailing 3y avg
+    d["roa_3y_avg"] = d.groupby("entity")["roa"].rolling(3).mean().reset_index(level=0, drop=True)
+
+    return d
+
+def write_csv(df: pd.DataFrame, path: str = OUT_PATH):
+    ensure_dirs(path)
+    df.to_csv(path, index=False)
+
+if __name__ == "__main__":
+    df = seed_roa()
+    df = compute_roa_changes(df)
+    write_csv(df)
+    print(f"✅ return_on_assets.csv written to {OUT_PATH} with {len(df)} rows")

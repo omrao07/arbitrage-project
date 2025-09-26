@@ -1,0 +1,15 @@
+date,issuer,agency_rating,category,numeric_score
+2025-09-01,Apple Inc,AA+,Investment Grade,2
+2025-09-01,Microsoft Corp,AAA,Investment Grade,1
+2025-09-01,Tesla Inc,BBB,Investment Grade,4
+2025-09-01,US HY Index,B+,High Yield,8
+2025-09-01,US IG Index,A-,Investment Grade,3
+2025-09-01,Emerging Market Sovereign,BB,High Yield,6
+2025-09-01,Frontier Market Sovereign,CCC,Distressed,10date,issuer,agency_rating,category,numeric_score
+2025-09-01,Apple Inc,AA+,Investment Grade,2
+2025-09-01,Microsoft Corp,AAA,Investment Grade,1
+2025-09-01,Tesla Inc,BBB,Investment Grade,4
+2025-09-01,US HY Index,B+,High Yield,8
+2025-09-01,US IG Index,A-,Investment Grade,3
+2025-09-01,Emerging Market Sovereign,BB,High Yield,6
+2025-09-01,Frontier Market Sovereign,CCC,Distressed,10

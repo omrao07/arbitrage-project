@@ -1,0 +1,87 @@
+import os
+from datetime import date
+import pandas as pd
+import numpy as np
+
+OUT_PATH = "data/adamodar/curated/cashflow_growth.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def _cagr(start, end, years):
+    if start is None or end is None or years is None or years <= 0:
+        return None
+    try:
+        return (end / start) ** (1 / years) - 1
+    except Exception:
+        return None
+
+def seed_cashflow_growth() -> pd.DataFrame:
+    """Create a small seeded dataset you can replace with your ETL outputs."""
+    rows = [
+        ("United States","region","United States","2023-01-01",2.50e12,1.90e12,"","","","", "Baseline year"),
+        ("United States","region","United States","2024-01-01",2.65e12,2.05e12,"","","","", "Broad-based growth"),
+        ("United States","region","United States","2025-01-01",2.78e12,2.20e12,"","","","", "CAGR fields filled from 2023"),
+        ("Emerging Mkts","region","Emerging Mkts","2023-01-01",1.20e12,0.80e12,"","","","", "Baseline"),
+        ("Emerging Mkts","region","Emerging Mkts","2024-01-01",1.30e12,0.85e12,"","","","", "Reinvestment heavy"),
+        ("Emerging Mkts","region","Emerging Mkts","2025-01-01",1.40e12,0.90e12,"","","","", "Weighted EM"),
+        ("Tech Sector","sector","United States","2023-01-01",0.90e12,0.62e12,"","","","", "Large cap tech"),
+        ("Tech Sector","sector","United States","2024-01-01",0.98e12,0.66e12,"","","","", "AI capex cycle"),
+        ("Tech Sector","sector","United States","2025-01-01",1.04e12,0.70e12,"","","","", "Margins steady"),
+    ]
+    df = pd.DataFrame(rows, columns=[
+        "entity","entity_type","region","as_of","ocf","fcf",
+        "ocf_growth_yoy","fcf_growth_yoy","ocf_3y_cagr","fcf_3y_cagr","notes"
+    ])
+    return df
+
+def compute_growths(df: pd.DataFrame) -> pd.DataFrame:
+    """Compute YoY growth and multi-year CAGRs per entity."""
+    d = df.copy()
+    d["as_of"] = pd.to_datetime(d["as_of"])
+    d.sort_values(["entity","as_of"], inplace=True)
+
+    # YoY growths
+    for m in ["ocf","fcf"]:
+        d[f"{m}_growth_yoy"] = d.groupby("entity")[m].pct_change()
+
+    # 3Y CAGR (uses values 3 periods apart; assumes annual frequency)
+    for m in ["ocf","fcf"]:
+        start = d.groupby("entity")[m].shift(2)  # two rows back -> 3rd year inclusive
+        end = d[m]
+        years = (d["as_of"] - d.groupby("entity")["as_of"].shift(2)).dt.days / 365.25
+        d[f"{m}_3y_cagr"] = np.where(start.notna() & end.notna() & years.notna(),
+                                     (end / start) ** (1 / years) - 1, np.nan)
+    return d
+
+def upsert_row(df: pd.DataFrame, row: dict) -> pd.DataFrame:
+    """Idempotent upsert by (entity, as_of)."""
+    key_cols = ["entity","as_of"]
+    for k in key_cols:
+        if k not in row:
+            raise ValueError(f"Missing key '{k}' in upsert row")
+
+    # Normalize date
+    row = row.copy()
+    row["as_of"] = pd.to_datetime(row["as_of"]).strftime("%Y-%m-%d")
+
+    mask = (df["entity"] == row["entity"]) & (pd.to_datetime(df["as_of"]) == pd.to_datetime(row["as_of"]))
+    if mask.any():
+        for k, v in row.items():
+            df.loc[mask, k] = v
+    else:
+        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+    return df
+
+def write_csv(df: pd.DataFrame, path: str = OUT_PATH):
+    ensure_dirs(path)
+    df.to_csv(path, index=False)
+
+if __name__ == "__main__":
+    # 1) seed
+    df = seed_cashflow_growth()
+    # 2) compute growth metrics
+    df = compute_growths(df)
+    # 3) write
+    write_csv(df)
+    print(f"✅ cashflow_growth.csv written to {OUT_PATH} with {len(df)} rows")

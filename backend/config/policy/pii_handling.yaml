@@ -1,0 +1,213 @@
+apiVersion: v1
+kind: PIIHandlingPolicy
+metadata:
+  name: pii-handling
+  version: 1.0.0
+  owners:
+    - role: CCO
+      contact: compliance@yourfund.com
+    - role: DPO
+      contact: privacy@yourfund.com
+labels:
+  environment: prod
+  scope: client-and-employee-data
+standards_mapping:
+  gdpr:  [Art.5, Art.6, Art.9, Art.15-23, Art.25, Art.30, Art.32-34, Art.44]
+  ccpa:  [§1798.100, §1798.105, §1798.110, §1798.115, §1798.125, §1798.130]
+  iso27001: [A.5, A.8, A.9, A.10, A.12, A.18]
+  soc2:  [CC2.1, CC6.1, CC7.2, CC8.1]
+
+data_catalog:
+  classes:
+    - id: PII_BASIC
+      examples: [name, email, phone, username]
+      lawful_bases: [CONSENT, CONTRACT, LEGITIMATE_INTEREST]
+    - id: PII_SENSITIVE
+      examples: [government_id, passport, ssn, biometric]
+      lawful_bases: [EXPLICIT_CONSENT, LEGAL_OBLIGATION]
+    - id: FINANCIAL
+      examples: [bank_account, tax_id, payment_tokens]
+      lawful_bases: [CONTRACT, LEGAL_OBLIGATION]
+  default_class: PII_BASIC
+  record_of_processing_required: true
+
+collection:
+  data_minimization: true
+  purpose_limited: true
+  consent:
+    required_for_pii_sensitive: true
+    capture_method: "UI checkbox + signed DPA"
+    evidence_store: "grc/consents"
+  children_data_prohibited: true
+
+storage:
+  encryption_at_rest:
+    required: true
+    algorithm: AES-256
+    kms: AWS-KMS
+  segregation_of_duties: true
+  allowed_stores:
+    - s3://pii-raw              # RESTRICTED, object lock enabled
+    - s3://pii-processed        # CONFIDENTIAL
+    - rds://client-registry     # RESTRICTED
+  object_lock:
+    enabled: true
+    retention_days: 30
+  backups:
+    encrypted: true
+    tested_restore_quarterly: true
+
+in_transit:
+  tls_min_version: "1.2"
+  mTLS_internal: true
+  no_plain_http: true
+
+access_control:
+  model: RBAC + ABAC
+  mfa_required_roles: [ADMIN, OPS, DATA_STEWARD]
+  least_privilege: true
+  just_in_time:
+    enabled: true
+    max_hours: 4
+    approvals: [DPO, Security]
+  break_glass:
+    vault_secret: "kv/break-glass"
+    timebox_minutes: 30
+    mandatory_postmortem: true
+
+masking_redaction:
+  default_masking: PARTIAL   # FULL/PARTIAL/NONE
+  rules:
+    - field: email
+      mask: "hash_prefix:8"
+    - field: phone
+      mask: "last4"
+    - field: government_id
+      mask: "tokenize:vault"
+    - field: ip_address
+      mask: "truncate:/24"
+  irreversible_tokenization_for:
+    - government_id
+    - ssn
+    - bank_account
+  logs_redaction: true
+
+retention_and_deletion:
+  schedules:
+    - dataset: onboarding-kyc
+      min_days: 2555           # ~7 years regulatory
+      legal_hold_supported: true
+    - dataset: support-tickets
+      min_days: 365
+    - dataset: marketing-crm
+      min_days: 730
+  purge:
+    automated: true
+    method: "cryptographic-erase"
+    approvals: [DPO, CISO]
+    evidence_bucket: "grc-evidence"
+  data_subject_rights:
+    srr_portal: "https://privacy/requests"
+    sla_days: 30
+    export_format: "JSON+CSV"
+    deletion_scope: "primary+backups-after-window"
+
+cross_border_transfers:
+  allowed_regions: ["US","EU","UK","APAC"]
+  mechanisms:
+    - SCCs
+    - adequacy_decision
+  vendor_requirements:
+    dpa_signed: true
+    subprocessor_register: "vendors/subprocessors.json"
+    transfer_impact_assessment_required: true
+
+third_parties:
+  risk_tiering: [LOW, MEDIUM, HIGH, CRITICAL]
+  required_controls: [SOC2, ISO27001, PenTest, DPA]
+  continuous_monitoring: true
+  pii_sharing_minimization: true
+
+incident_response:
+  pii_breach_notification_hours: 72
+  runbook: "runbooks/ir-pii.md"
+  forensic_logging_required: true
+  regulator_contacts: ["SEC","ICO","CNIL"]
+  client_notification_templates: "comms/pii_breach_templates/"
+
+logging_and_audit:
+  siem: "Elastic/Splunk"
+  pii_access_logs:
+    enabled: true
+    retention_days: 730
+    fields: [who, when, why, dataset, records, ip, mfa]
+  integrity:
+    append_only_indices: true
+    tamper_evident_hashing: true
+  sampling_for_nonprod: 0.0   # never ingest PII into non-prod
+
+engineering_controls:
+  ci_cd_gates:
+    - name: block-pii-in-nonprod
+      tool: "opa/conftest"
+      policy: "policy/pipelines/pii_nonprod.rego"
+    - name: secret-scan
+      tool: "gitleaks"
+    - name: dependency-scan
+      tool: "snyk"
+  runtime_guards:
+    - name: s3-public-block
+      policy: "guardrails/s3_block_public"
+    - name: kms-required
+      policy: "guardrails/kms_mandatory"
+  data_quality_checks:
+    schema_registry: "avro"
+    contracts_required: true
+    drift_monitoring: true
+
+testing_and_synthetic_data:
+  use_synthetic_in_dev: true
+  generators:
+    - "faker-basic"
+    - "sdv-tabular"
+  k_anonymity_min_k: 10
+  reidentification_testing: annual
+
+training_and_awareness:
+  required_roles: [All-Employees, Engineers, Traders, Support]
+  cadence: annual
+  completion_threshold_pct: 100
+  modules:
+    - Privacy fundamentals
+    - Secure handling of client data
+    - Phishing & social engineering
+
+audits_and_reviews:
+  internal_audit: annual
+  external_audit: biennial
+  evidence:
+    bucket: "grc-evidence"
+    artifacts:
+      - "access_reviews/*.csv"
+      - "dpa/*.pdf"
+      - "dsar/*.json"
+
+exceptions:
+  process:
+    request_form: "grc/exception-request.md"
+    timebound_days_max: 90
+    compensating_controls_required: true
+  registry_bucket: "grc-exceptions"
+
+enforcement_hooks:
+  opa:
+    bundles:
+      - name: privacy-core
+        url: "oci://registry.example.com/opa/privacy-core:1.0.0"
+  terraform:
+    required_modules:
+      - "guardrails/no_public_sg"
+      - "guardrails/s3_block_public"
+      - "guardrails/kms_mandatory"
+  siem:
+    index_prefix: "privacy-"

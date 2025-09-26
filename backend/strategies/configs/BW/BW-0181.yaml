@@ -1,0 +1,18 @@
+id: BW-0181
+firm: Bridgewater
+name: EURUSD Carry (Global)
+description: ECB vs Fed carry premia.
+discipline: Macro
+family: FX
+region: Global
+horizon: Macro
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: macro
+created_at: 2025-09-10
+updated_at: 2025-09-10

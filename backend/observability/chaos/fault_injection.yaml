@@ -1,0 +1,49 @@
+# observability/chaos/fault_injection.yaml
+# Chaos scenarios for testing system resilience.
+
+defaults:
+  enabled: false              # master switch
+  probability: 0.0            # chance [0.0–1.0] fault is injected
+  duration_ms: 0              # fault duration (0 = no delay)
+  scope: global               # "global" | "service:<name>" | "topic:<bus-topic>"
+
+scenarios:
+  - name: "inject_latency_api"
+    description: "Introduce latency into API responses"
+    enabled: true
+    probability: 0.2          # 20% of requests delayed
+    duration_ms: 500          # 500ms extra latency
+    scope: service:api        # only affect API service
+
+  - name: "drop_bus_messages"
+    description: "Randomly drop messages from Redis/Kafka bus"
+    enabled: false
+    probability: 0.05         # 5% drop rate
+    scope: topic:orders       # only affect 'orders' topic
+
+  - name: "cpu_stress"
+    description: "Simulate CPU load spike"
+    enabled: false
+    probability: 0.1
+    duration_ms: 2000         # run busy loop for 2s
+    scope: service:strategy   # impact strategy engine
+
+  - name: "memory_leak"
+    description: "Simulate memory leak in process"
+    enabled: false
+    probability: 0.05
+    scope: service:simulator
+
+  - name: "kill_process"
+    description: "Abruptly kill a service"
+    enabled: false
+    probability: 0.01
+    scope: service:execution-layer
+    action: SIGKILL
+
+  - name: "network_partition"
+    description: "Simulate network partition (drop traffic)"
+    enabled: false
+    probability: 0.05
+    duration_ms: 5000
+    scope: global

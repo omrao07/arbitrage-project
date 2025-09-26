@@ -1,0 +1,28 @@
+import pandas as pd
+from datetime import date
+import os
+
+def build_globalequities(as_of: str | None = None) -> pd.DataFrame:
+    if as_of is None:
+        as_of = str(date.today())
+
+    rows = [
+        # region,          as_of, market_cap_usd, erp_implied, crp,   rf,    unlev, lev,   PE,  PB,  EV/EBITDA, div_yield, notes
+        ("United States",   as_of, 45e12,          0.052,       0.000, 0.037, 0.88, 1.00, 18,  3.5, 10.0,       0.015,     "Global anchor, deepest market"),
+        ("Developed ex-US", as_of, 35e12,          0.051,       0.000, 0.027, 0.87, 1.02, 15,  1.6, 8.5,        0.028,     "Europe, Japan, Canada, Aus"),
+        ("Emerging Mkts",   as_of, 12e12,          0.076,       0.029, 0.066, 0.95, 1.18, 12,  1.6, 7.1,        0.034,     "Higher CRP, higher volatility"),
+        ("Frontier Mkts",   as_of, 2e12,           0.085,       0.050, 0.080, 1.05, 1.30, 10,  1.2, 6.0,        0.045,     "Thin liquidity, high risk"),
+        ("Global Avg",      as_of, 94e12,          0.055,       0.010, 0.036, 0.90, 1.05, 16,  2.5, 8.7,        0.025,     "Weighted across all regions"),
+    ]
+
+    return pd.DataFrame(rows, columns=[
+        "region","as_of","market_cap_usd","erp_implied","crp","rf_rate",
+        "unlevered_beta","levered_beta","pe","pb","ev_ebitda","dividend_yield","notes"
+    ])
+
+if __name__ == "__main__":
+    df = build_globalequities()
+    out_path = "data/adamodar/curated/globalequities.csv"
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    df.to_csv(out_path, index=False)
+    print(f"✅ globalequities.csv written to {out_path}")

@@ -1,0 +1,30 @@
+import pandas as pd
+from datetime import date
+
+def build_fundamentals(as_of: str = None):
+    if as_of is None:
+        as_of = str(date.today())
+
+    rows = [
+        ("AAPL","Apple Inc.","Technology","US",as_of,385000,115000,96000,395000,80000,110000,12000,0.12,0.09,0.30,0.25,0.30,"Latest FY snapshot"),
+        ("MSFT","Microsoft","Technology","US",as_of,245000,100000,85000,320000,120000,95000,15000,0.14,0.11,0.41,0.35,0.20,"Cloud + software"),
+        ("TSLA","Tesla","Consumer Discretionary","US",as_of,100000,15000,12000,120000,40000,14000,5000,0.30,0.10,0.15,0.12,0.50,"EV leader snapshot"),
+        ("JPM","JPMorgan","Financials","US",as_of,150000,60000,45000,4000000,350000,70000,8000,0.13,0.01,0.40,0.30,5.00,"Leverage includes deposits"),
+        ("XOM","ExxonMobil","Energy","US",as_of,430000,65000,50000,350000,180000,60000,20000,0.28,0.14,0.15,0.12,0.95,"Oil & gas major"),
+    ]
+
+    df = pd.DataFrame(rows, columns=[
+        "ticker","company_name","sector","region","as_of",
+        "revenue_musd","ebit_musd","net_income_musd",
+        "total_assets_musd","total_equity_musd",
+        "operating_cf_musd","capex_musd",
+        "roe","roa","ebit_margin","net_margin",
+        "debt_to_equity","notes"
+    ])
+    return df
+
+if __name__ == "__main__":
+    df = build_fundamentals()
+    out_path = "data/adamodar/curated/fundamentals.csv"
+    df.to_csv(out_path, index=False)
+    print(f"✅ fundamentals.csv written to {out_path}")

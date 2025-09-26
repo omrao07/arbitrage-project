@@ -1,0 +1,355 @@
+# meta/fields/types.yaml
+# Ultra-clean, dependency-free catalog of canonical field definitions.
+# No YAML tricks, no anchors, no regex evals — just plain strings.
+
+version: 2
+
+# ---------------------------------------------------------------------------
+# Allowed primitive types and units (match your warehouse types one-to-one)
+# ---------------------------------------------------------------------------
+dtypes:
+  - string
+  - text
+  - bool
+  - int32
+  - int64
+  - float32
+  - float64
+  - decimal
+  - date        # YYYY-MM-DD
+  - timestamp   # ISO8601 UTC
+
+units:
+  - USD
+  - EUR
+  - GBP
+  - JPY
+  - INR
+  - shares
+  - contracts
+  - pct
+  - bp
+  - pips
+  - years
+
+# ---------------------------------------------------------------------------
+# Reusable quality macros (simple names — your validator decides semantics)
+# ---------------------------------------------------------------------------
+quality_macros:
+  - not_null
+  - non_negative
+  - pct_0_1
+  - no_future_date
+  - ohlc_bounds
+
+# ---------------------------------------------------------------------------
+# Canonical fields (keep this minimal; extend per-vendor in dataset specs)
+# Each field: name, type, optional unit, nullable (default false), desc,
+# optional quality [].
+# ---------------------------------------------------------------------------
+fields:
+
+  # identity / keys
+  - name: id
+    type: string
+    nullable: true
+    desc: Opaque unique identifier.
+
+  - name: dataset_id
+    type: string
+    nullable: true
+    desc: Catalog dataset id.
+
+  - name: dt
+    type: date
+    quality: [not_null, no_future_date]
+    desc: Business date.
+
+  - name: ts
+    type: timestamp
+    quality: [not_null]
+    desc: Event timestamp (UTC).
+
+  - name: ticker
+    type: string
+    desc: Canonical internal symbol (uppercased).
+
+  - name: mic
+    type: string
+    nullable: true
+    desc: ISO 10383 market identifier code.
+
+  - name: exchange_code
+    type: string
+    nullable: true
+    desc: Vendor exchange code.
+
+  - name: currency
+    type: string
+    nullable: true
+    desc: ISO 4217 currency code.
+
+  # prices / market data
+  - name: px_open
+    type: float64
+    unit: USD
+    nullable: true
+    quality: [non_negative]
+    desc: Open price.
+
+  - name: px_high
+    type: float64
+    unit: USD
+    nullable: true
+    quality: [non_negative]
+    desc: High price.
+
+  - name: px_low
+    type: float64
+    unit: USD
+    nullable: true
+    quality: [non_negative]
+    desc: Low price.
+
+  - name: px_last
+    type: float64
+    unit: USD
+    quality: [not_null, non_negative]
+    desc: Close/last price.
+
+  - name: px_adj
+    type: float64
+    unit: USD
+    nullable: true
+    quality: [non_negative]
+    desc: Adjusted close.
+
+  - name: volume
+    type: float64
+    unit: shares
+    nullable: true
+    quality: [non_negative]
+    desc: Trading volume.
+
+  - name: vwap
+    type: float64
+    unit: USD
+    nullable: true
+    quality: [non_negative]
+    desc: Volume-weighted average price.
+
+  - name: turnover
+    type: float64
+    unit: USD
+    nullable: true
+    quality: [non_negative]
+    desc: Value traded (price*volume).
+
+  - name: bid
+    type: float64
+    unit: USD
+    nullable: true
+    quality: [non_negative]
+    desc: Best bid.
+
+  - name: ask
+    type: float64
+    unit: USD
+    nullable: true
+    quality: [non_negative]
+    desc: Best ask.
+
+  - name: bid_sz
+    type: float64
+    unit: shares
+    nullable: true
+    quality: [non_negative]
+    desc: Bid size.
+
+  - name: ask_sz
+    type: float64
+    unit: shares
+    nullable: true
+    quality: [non_negative]
+    desc: Ask size.
+
+  - name: mid
+    type: float64
+    unit: USD
+    nullable: true
+    quality: [non_negative]
+    desc: (bid+ask)/2.
+
+  # returns
+  - name: ret_1d
+    type: float64
+    unit: pct
+    nullable: true
+    quality: [pct_0_1]
+    desc: 1-day simple return.
+
+  - name: ret_log
+    type: float64
+    unit: pct
+    nullable: true
+    desc: Log return.
+
+  # reference / fundamentals
+  - name: name
+    type: string
+    nullable: true
+    desc: Security name.
+
+  - name: sector
+    type: string
+    nullable: true
+    desc: GICS sector.
+
+  - name: industry
+    type: string
+    nullable: true
+    desc: GICS industry.
+
+  - name: shares_out
+    type: float64
+    unit: shares
+    nullable: true
+    quality: [non_negative]
+    desc: Shares outstanding.
+
+  - name: mkt_cap
+    type: float64
+    unit: USD
+    nullable: true
+    quality: [non_negative]
+    desc: Market capitalization.
+
+  # FX spot / forwards
+  - name: pair
+    type: string
+    nullable: true
+    desc: FX pair (e.g., EURUSD).
+
+  - name: tenor
+    type: string
+    nullable: true
+    desc: Tenor label (1W,1M,3M,1Y).
+
+  - name: fwd_pts
+    type: float64
+    unit: pips
+    nullable: true
+    desc: Forward points.
+
+  - name: fwd_rate
+    type: float64
+    nullable: true
+    quality: [non_negative]
+    desc: All-in forward rate.
+
+  # FX vol surface
+  - name: delta
+    type: float64
+    unit: pct
+    nullable: true
+    quality: [pct_0_1]
+    desc: Option delta (10/25/50).
+
+  - name: vol
+    type: float64
+    unit: pct
+    nullable: true
+    quality: [non_negative]
+    desc: Implied volatility.
+
+  - name: rr
+    type: float64
+    unit: pct
+    nullable: true
+    desc: Risk reversal.
+
+  - name: bf
+    type: float64
+    unit: pct
+    nullable: true
+    desc: Butterfly.
+
+  # curves
+  - name: tenor_yrs
+    type: float64
+    unit: years
+    nullable: true
+    quality: [non_negative]
+    desc: Tenor in years.
+
+  - name: yield
+    type: float64
+    unit: pct
+    nullable: true
+    desc: Yield / zero rate.
+
+  - name: spread_bp
+    type: float64
+    unit: bp
+    nullable: true
+    desc: Spread in basis points.
+
+  # news / text
+  - name: headline
+    type: string
+    nullable: true
+    desc: Normalized headline.
+
+  - name: source
+    type: string
+    nullable: true
+    desc: Publisher / vendor.
+
+  - name: url
+    type: string
+    nullable: true
+    desc: Canonical URL.
+
+  - name: sentiment
+    type: float64
+    unit: pct
+    nullable: true
+    desc: Sentiment score.
+
+# ---------------------------------------------------------------------------
+# Vendor → canonical alias map (flat strings only)
+# ---------------------------------------------------------------------------
+aliases:
+  PX_OPEN: px_open
+  PX_HIGH: px_high
+  PX_LOW: px_low
+  PX_LAST: px_last
+  CRNCY_ADJ_PX_LAST: px_adj
+  VOL: volume
+  VWAP: vwap
+  BID: bid
+  ASK: ask
+  BID_SIZE: bid_sz
+  ASK_SIZE: ask_sz
+  MID: mid
+
+  SECURITY_NAME: name
+  INDUSTRY_SECTOR: sector
+  INDUSTRY_GROUP: industry
+  EQY_SH_OUT: shares_out
+  CUR_MKT_CAP: mkt_cap
+
+  CURRENCY_PAIR: pair
+  EXPIRY_TENOR: tenor
+  FORWARD_PTS: fwd_pts
+  ALL_IN_FWD: fwd_rate
+
+  DELTA: delta
+  IMPLIED_VOL: vol
+  RISK_REVERSAL: rr
+  BUTTERFLY: bf
+
+  HEADLINE: headline
+  PUBLISHER: source
+  LINK: url
+  SENTIMENT_SCORE: sentiment

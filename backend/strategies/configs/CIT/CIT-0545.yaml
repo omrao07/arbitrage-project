@@ -1,0 +1,18 @@
+id: CIT-0545
+firm: Citadel
+name: ETF Creation/Redemption Arb #545
+description: Cross-asset factor strategy.
+discipline: Equities
+family: Event-Driven
+region: Global
+horizon: Intraday
+status: research
+engine: equity_ls
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

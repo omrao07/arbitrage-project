@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: List
+items:
+  - apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: data
+      labels:
+        project: hyper-os
+        tier: data
+        istio-injection: enabled
+  - apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: analytics
+      labels:
+        project: hyper-os
+        tier: analytics
+        istio-injection: enabled
+  - apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: exec
+      labels:
+        project: hyper-os
+        tier: execution
+        istio-injection: enabled
+  - apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: risk
+      labels:
+        project: hyper-os
+        tier: risk
+        istio-injection: enabled
+  - apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: os
+      labels:
+        project: hyper-os
+        tier: platform
+        istio-injection: enabled
+  - apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: monitoring
+      labels:
+        project: hyper-os
+        tier: monitoring
+        istio-injection: enabled

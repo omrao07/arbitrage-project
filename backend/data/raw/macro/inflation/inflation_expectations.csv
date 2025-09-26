@@ -1,0 +1,71 @@
+import pandas as pd
+from datetime import date
+import os
+
+OUT_PATH = "data/macro/inflation/inflation_expectations.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def init_inflation_expectations(seed: bool = True) -> pd.DataFrame:
+    """
+    Schema:
+    date, region, exp_1y, exp_5y, exp_10y, source, notes
+    - exp_* values are decimals (0.02 = 2%)
+    """
+    ensure_dirs(OUT_PATH)
+    cols = ["date","region","exp_1y","exp_5y","exp_10y","source","notes"]
+
+    if not seed:
+        df = pd.DataFrame(columns=cols)
+        df.to_csv(OUT_PATH, index=False)
+        return df
+
+    today = str(date.today())
+    rows = [
+        ("2025-01-01","United States",0.029,0.023,0.021,"U. Mich / TIPS","U. Mich survey & 5y5y breakeven"),
+        ("2025-01-01","Developed ex-US",0.026,0.022,0.020,"ECB Survey","ECB SPF, Euro breakevens"),
+        ("2025-01-01","Emerging Mkts",0.043,0.033,0.030,"IMF / Nat’l","Higher FX + commodity pass-thru"),
+        ("2025-01-01","Frontier Mkts",0.055,0.045,0.040,"IMF / Surveys","Volatile, low anchor"),
+        ("2025-01-01","Global Avg",0.034,0.027,0.024,"IMF/OECD","Trade-weighted expectations"),
+        ("2025-02-01","United States",0.028,0.023,0.021,"U. Mich / TIPS","Expectations anchored"),
+        ("2025-02-01","Developed ex-US",0.025,0.022,0.020,"ECB Survey","Euro area easing"),
+        ("2025-02-01","Emerging Mkts",0.042,0.033,0.031,"IMF / Nat’l","Stable EM but elevated"),
+        ("2025-02-01","Frontier Mkts",0.054,0.045,0.041,"IMF / Surveys","Still volatile"),
+        ("2025-02-01","Global Avg",0.033,0.027,0.024,"IMF/OECD","Weighted global"),
+        (today,"United States",None,None,None,"Manual","Placeholder for update"),
+    ]
+    df = pd.DataFrame(rows, columns=cols)
+    df.to_csv(OUT_PATH, index=False)
+    return df
+
+# ---------- Analytics helpers ----------
+
+def load_inflation_expectations(path: str = OUT_PATH) -> pd.DataFrame:
+    df = pd.read_csv(path)
+    df["date"] = pd.to_datetime(df["date"])
+    return df
+
+def anchor_score(df: pd.DataFrame, region: str = "United States") -> pd.DataFrame:
+    """
+    Measure how 'anchored' long-term expectations are vs short-term.
+    If exp_10y ~ exp_5y << exp_1y, expectations are well anchored.
+    """
+    d = df[df["region"] == region].sort_values("date").copy()
+    d["anchoring_gap"] = d["exp_1y"] - d["exp_10y"]
+    return d
+
+def inflation_regime_shift(df: pd.DataFrame, region: str = "United States", threshold: float = 0.01) -> pd.DataFrame:
+    """
+    Detects shifts: if 1y expectations move > threshold in a month.
+    """
+    d = df[df["region"] == region].sort_values("date").copy()
+    d["shift"] = d["exp_1y"].diff().abs() > threshold
+    return d
+
+if __name__ == "__main__":
+    df = init_inflation_expectations(seed=True)
+    print(f"✅ inflation_expectations.csv written to {OUT_PATH} with {len(df)} rows")
+    # Example usage:
+    # us = anchor_score(load_inflation_expectations())
+    # print(us.tail())

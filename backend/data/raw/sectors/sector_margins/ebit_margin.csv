@@ -1,0 +1,51 @@
+import os
+import pandas as pd
+import numpy as np
+
+OUT_PATH = "data/adamodar/curated/ebit_margin.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def seed_ebit_margin() -> pd.DataFrame:
+    rows = [
+        ("United States","region","United States","2023-01-01",22.0e12,3.10e12,0.141,"","","Baseline"),
+        ("United States","region","United States","2024-01-01",23.2e12,3.40e12,0.147,"","","Margins stable"),
+        ("United States","region","United States","2025-01-01",24.2e12,3.60e12,0.149,"","","AI-driven productivity"),
+        ("Emerging Mkts","region","EM Aggregate","2023-01-01",10.5e12,1.25e12,0.119,"","","Baseline"),
+        ("Emerging Mkts","region","EM Aggregate","2024-01-01",11.3e12,1.38e12,0.122,"","","Improved efficiencies"),
+        ("Emerging Mkts","region","EM Aggregate","2025-01-01",12.0e12,1.45e12,0.121,"","","FX headwinds"),
+        ("Tech Sector","sector","United States","2023-01-01",5.6e12,1.40e12,0.250,"","","Big tech dominance"),
+        ("Tech Sector","sector","United States","2024-01-01",6.1e12,1.58e12,0.259,"","","Cloud growth"),
+        ("Tech Sector","sector","United States","2025-01-01",6.55e12,1.66e12,0.253,"","","Capex drag"),
+    ]
+    return pd.DataFrame(rows, columns=[
+        "entity","entity_type","region","as_of","revenue_usd","ebit_usd",
+        "ebit_margin","margin_change_yoy","margin_3y_avg","notes"
+    ])
+
+def compute_margin_changes(df: pd.DataFrame) -> pd.DataFrame:
+    d = df.copy()
+    d["as_of"] = pd.to_datetime(d["as_of"])
+    d.sort_values(["entity","as_of"], inplace=True)
+
+    # recompute EBIT margin from inputs
+    d["ebit_margin"] = d["ebit_usd"] / d["revenue_usd"]
+
+    # YoY change
+    d["margin_change_yoy"] = d.groupby("entity")["ebit_margin"].diff()
+
+    # trailing 3-year avg margin
+    d["margin_3y_avg"] = d.groupby("entity")["ebit_margin"].rolling(3).mean().reset_index(level=0, drop=True)
+
+    return d
+
+def write_csv(df: pd.DataFrame, path: str = OUT_PATH):
+    ensure_dirs(path)
+    df.to_csv(path, index=False)
+
+if __name__ == "__main__":
+    df = seed_ebit_margin()
+    df = compute_margin_changes(df)
+    write_csv(df)
+    print(f"✅ ebit_margin.csv written to {OUT_PATH} with {len(df)} rows")

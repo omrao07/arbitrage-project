@@ -1,0 +1,18 @@
+id: GLB-0190
+firm: Global
+name: Semiconductor Capex Cycle Tracker (ZA)
+description: Worldwide diversified strategy in Credit & Structured — region: ZA.
+discipline: Credit
+family: Credit & Structured
+region: ZA
+horizon: Swing
+status: research
+engine: credit_cds
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: credit
+created_at: 2025-09-10
+updated_at: 2025-09-10

@@ -1,0 +1,16 @@
+import pandas as pd
+from pathlib import Path
+
+RAW_NEWS = [
+    "data/cache/raw/news/bloomberg_feed.json",
+    "data/cache/raw/news/reuters_feed.json",
+    "data/cache/raw/news/rss_dump.xml"
+]
+
+OUT_PARQUET = Path("data/cache/processed/news/news_index.parquet")
+
+# Assume you’ve already parsed & run sentiment scoring in news_bridge.py
+df = pd.read_json("normalized_news.json")  # intermediate output
+df.to_parquet(OUT_PARQUET, engine="pyarrow", index=False)
+
+print(f"✅ news_index.parquet written with {len(df)} rows")

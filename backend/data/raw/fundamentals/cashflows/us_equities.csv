@@ -1,0 +1,31 @@
+import pandas as pd
+from datetime import date
+import os
+
+def build_us_equities_cashflows(as_of: str | None = None):
+    if as_of is None:
+        as_of = str(date.today())
+
+    rows = [
+        ("Large Cap",as_of,1.2e12,9.0e11,4.0e11,3.5e11,5.0e11,0.035,0.65,"S&P 500 proxy"),
+        ("Small Cap",as_of,2.0e11,1.2e11,0.5e10,0.1e11,1.5e11,0.040,0.30,"Russell 2000 proxy"),
+        ("Growth",as_of,5.0e11,3.0e11,0.6e10,0.5e11,3.0e11,0.025,0.22,"Nasdaq 100 proxy"),
+        ("Value",as_of,4.0e11,2.8e11,1.5e11,0.8e11,1.5e11,0.045,0.58,"Dividend/value tilt"),
+        ("Dividend",as_of,3.0e11,2.5e11,1.6e11,0.4e11,1.0e11,0.050,0.67,"High yield equity basket"),
+        ("Tech Sector",as_of,6.0e11,4.0e11,0.9e10,1.0e11,3.5e11,0.030,0.25,"Cash reinvestment priority"),
+        ("Energy",as_of,2.0e11,1.5e11,0.7e11,0.3e11,0.8e11,0.060,0.65,"Strong payouts in cycles"),
+        ("US Total",as_of,3.0e12,2.2e12,8.1e11,6.6e11,1.46e12,0.037,0.55,"Weighted across US equities"),
+    ]
+
+    df = pd.DataFrame(rows, columns=[
+        "style","as_of","aggregate_net_income","free_cash_flow","dividends_paid",
+        "buybacks","capex","fcf_yield","payout_ratio","notes"
+    ])
+    return df
+
+if __name__ == "__main__":
+    df = build_us_equities_cashflows()
+    out_path = "data/adamodar/curated/cashflows/us_equities.csv"
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    df.to_csv(out_path, index=False)
+    print(f"✅ US equities cashflows dataset written to {out_path}")

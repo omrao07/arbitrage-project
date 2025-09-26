@@ -1,0 +1,18 @@
+id: CIT-0560
+firm: Citadel
+name: Ensemble ML Residual Alpha #560
+description: ETF NAV dislocation model.
+discipline: Equities
+family: Stat-Arb
+region: Global
+horizon: Intraday
+status: research
+engine: equity_ls
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

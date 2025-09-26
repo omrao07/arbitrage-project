@@ -35,5 +35,9 @@
   },
   "files.associations": {
     "*.json": "jsonc"
-  }
+  },
+  "python.analysis.extraPaths": [
+    "./backend/tests/unit/test_"
+  ],
+  "C_Cpp.errorSquiggles": "disabled"
 }

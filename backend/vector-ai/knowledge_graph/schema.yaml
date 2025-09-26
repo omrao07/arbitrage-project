@@ -1,0 +1,94 @@
+# knowledge_graph/schema.yaml
+#
+# Schema for knowledge graph
+# Defines node types and edge (relationship) types
+
+nodes:
+  - label: Company
+    key: id
+    props:
+      - name
+      - sector
+      - country
+      - market_cap
+      - currency
+
+  - label: Person
+    key: id
+    props:
+      - name
+      - role
+      - nationality
+
+  - label: Asset
+    key: ticker
+    props:
+      - name
+      - class      # e.g., Equity, Bond, FX, Commodity
+      - region
+      - currency
+
+  - label: Strategy
+    key: name
+    props:
+      - type       # e.g., macro, equity long-short, stat arb
+      - description
+
+  - label: Factor
+    key: name
+    props:
+      - category   # e.g., style, macro, sentiment
+      - value_type # numeric, categorical
+
+  - label: News
+    key: id
+    props:
+      - headline
+      - source
+      - published_at
+      - sentiment
+
+edges:
+  - rel_type: WORKS_AT
+    src_label: Person
+    src_key: id
+    dst_label: Company
+    dst_key: id
+    props:
+      - title
+      - since
+
+  - rel_type: LISTED_ON
+    src_label: Company
+    src_key: id
+    dst_label: Asset
+    dst_key: ticker
+
+  - rel_type: USES
+    src_label: Strategy
+    src_key: name
+    dst_label: Factor
+    dst_key: name
+
+  - rel_type: MENTIONS
+    src_label: News
+    src_key: id
+    dst_label: Asset
+    dst_key: ticker
+
+  - rel_type: INFLUENCES
+    src_label: Factor
+    src_key: name
+    dst_label: Asset
+    dst_key: ticker
+    props:
+      - strength
+
+  - rel_type: RELATED_TO
+    src_label: Asset
+    src_key: ticker
+    dst_label: Asset
+    dst_key: ticker
+    props:
+      - correlation
+      - window

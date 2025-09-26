@@ -1,0 +1,39 @@
+import pandas as pd
+from datetime import date
+
+def build_unlevered_betas_by_region(as_of: str | None = None) -> pd.DataFrame:
+    """
+    Unlevered betas by region (Damodaran-style).
+    - unlevered_beta is derived from sector/firm regressions after removing leverage:
+      Beta_U = Beta_L / (1 + (1 - tax_rate) * D/E)
+    - This file stores the *unlevered* rollups only.
+    """
+    if as_of is None:
+        as_of = str(date.today())
+
+    rows = [
+        # region,        as_of,      unlevered_beta, source,        lookback_years, n_firms, tax_rate_assumed,           notes
+        ("North America", as_of,      0.88,          "Damodaran",   5,              3800,    0.23,              "Weighted US+Canada"),
+        ("Europe",        as_of,      0.85,          "Damodaran",   5,              4100,    0.24,              "Eurozone + UK"),
+        ("Asia Pacific",  as_of,      0.92,          "Damodaran",   5,              5200,    0.25,              "Japan, China, India, ASEAN"),
+        ("Latin America", as_of,      0.95,          "Damodaran",   5,              1600,    0.26,              "Brazil, Mexico, Chile, others"),
+        ("Middle East",   as_of,      1.00,          "Damodaran",   5,               950,    0.25,              "Oil-weighted economies"),
+        ("Africa",        as_of,      1.05,          "Damodaran",   5,               700,    0.28,              "High CRP + volatility"),
+        ("Global",        as_of,      0.90,          "Damodaran",   5,             16450,    0.24,              "Weighted global average"),
+    ]
+
+    df = pd.DataFrame(rows, columns=[
+        "region","as_of","unlevered_beta",
+        "source","lookback_years","n_firms",
+        "tax_rate_assumed","notes"
+    ])
+    return df
+
+if __name__ == "__main__":
+    df = build_unlevered_betas_by_region()
+    out_path = "data/adamodar/raw/betas/unlevered/by_region.csv"
+    # Ensure parent dirs exist if you run in a clean environment
+    import os
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    df.to_csv(out_path, index=False)
+    print(f"✅ Unlevered betas by region written to {out_path}")

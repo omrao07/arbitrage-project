@@ -1,0 +1,29 @@
+import pandas as pd
+from datetime import date
+import os
+
+def build_efficiency_ratios(as_of: str | None = None) -> pd.DataFrame:
+    if as_of is None:
+        as_of = str(date.today())
+
+    rows = [
+        ("United States",as_of,0.80,6.5,8.2,7.0,45,"Strong asset efficiency"),
+        ("Developed ex-US",as_of,0.75,5.8,7.5,6.5,55,"Slightly lower efficiency"),
+        ("Emerging Mkts",as_of,0.65,5.0,6.8,5.5,70,"Longer cycles, higher WC needs"),
+        ("Frontier Mkts",as_of,0.55,4.2,5.5,4.8,85,"Weak infra, liquidity issues"),
+        ("Global Avg",as_of,0.72,5.6,7.0,6.0,60,"Weighted global efficiency"),
+    ]
+
+    df = pd.DataFrame(rows, columns=[
+        "region","as_of","asset_turnover","inventory_turnover",
+        "receivables_turnover","payables_turnover",
+        "cash_conversion_cycle","notes"
+    ])
+    return df
+
+if __name__ == "__main__":
+    df = build_efficiency_ratios()
+    out_path = "data/adamodar/curated/efficiency_ratios.csv"
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    df.to_csv(out_path, index=False)
+    print(f"✅ Efficiency ratios dataset written to {out_path}")

@@ -1,0 +1,44 @@
+# easyocr.yaml
+# Config for EasyOCR (Optical Character Recognition)
+# Place under kb/ocr/configs/
+
+ocr:
+  engine: easyocr
+  languages: [en]              # list of language codes, e.g. [en, fr, de]
+  gpu: true                    # use GPU if available
+  model_storage_dir: models/easyocr
+  download_enabled: true       # auto-download missing models
+
+preprocess:
+  grayscale: true              # convert images to grayscale
+  denoise: true                # light denoising before OCR
+  binarize: true               # adaptive thresholding
+  deskew: true                 # deskew skewed scans
+  resize_factor: 2.0           # upscale images before OCR
+  pad: 10                      # pad pixels around text regions
+
+inference:
+  text_threshold: 0.7          # lower threshold for text detection
+  low_text: 0.4                # link low-confidence chars
+  link_threshold: 0.4
+  decoder: greedy              # greedy|beamsearch
+  batch_size: 16
+  workers: 2                   # dataloader workers
+  detail: 1                    # 0=text only, 1=with boxes, 2=full output
+
+postprocess:
+  spellcheck: false            # run external spellchecker
+  correct_confusable: true     # map confusable chars (0→O, 1→l, etc.)
+  min_length: 2                # drop tokens shorter than N chars
+  uppercase: false             # force uppercase
+  lowercase: true              # force lowercase
+
+runtime:
+  device: auto                 # auto|cpu|cuda
+  log_level: INFO
+
+output:
+  results_dir: outputs/ocr/easyocr/
+  save_format: jsonl           # jsonl|txt
+  include_boxes: true
+  include_confidence: true

@@ -1,0 +1,18 @@
+id: BW-0347
+firm: Bridgewater
+name: Corn vs Soybeans Acreage (EM)
+description: Planting allocation arb.
+discipline: Macro
+family: Curves & Spreads
+region: EM
+horizon: Macro
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: macro
+created_at: 2025-09-10
+updated_at: 2025-09-10

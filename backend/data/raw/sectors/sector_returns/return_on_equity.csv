@@ -1,0 +1,51 @@
+import os
+import pandas as pd
+import numpy as np
+
+OUT_PATH = "data/adamodar/curated/return_on_equity.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def seed_roe() -> pd.DataFrame:
+    rows = [
+        ("United States","region","United States","2023-01-01",1.95e12,10.5e12,0.186,"","","Baseline"),
+        ("United States","region","United States","2024-01-01",2.10e12,11.0e12,0.191,"","","Earnings up, buybacks steady"),
+        ("United States","region","United States","2025-01-01",2.25e12,11.5e12,0.196,"","","High profitability"),
+        ("Emerging Mkts","region","EM Aggregate","2023-01-01",0.95e12,6.2e12,0.153,"","","Baseline"),
+        ("Emerging Mkts","region","EM Aggregate","2024-01-01",1.02e12,6.5e12,0.157,"","","Improving margins"),
+        ("Emerging Mkts","region","EM Aggregate","2025-01-01",1.10e12,6.9e12,0.159,"","","Resilient FX"),
+        ("Tech Sector","sector","United States","2023-01-01",0.95e12,3.2e12,0.297,"","","Asset-light, high margins"),
+        ("Tech Sector","sector","United States","2024-01-01",1.02e12,3.4e12,0.300,"","","Cloud/AI boost"),
+        ("Tech Sector","sector","United States","2025-01-01",1.09e12,3.6e12,0.303,"","","Still elevated"),
+    ]
+    return pd.DataFrame(rows, columns=[
+        "entity","entity_type","region","as_of",
+        "net_income_usd","avg_equity_usd","roe","roe_change_yoy","roe_3y_avg","notes"
+    ])
+
+def compute_roe(df: pd.DataFrame) -> pd.DataFrame:
+    d = df.copy()
+    d["as_of"] = pd.to_datetime(d["as_of"])
+    d.sort_values(["entity","as_of"], inplace=True)
+
+    # Recompute ROE from inputs (overwrites seed ratios if present)
+    d["roe"] = d["net_income_usd"] / d["avg_equity_usd"]
+
+    # YoY change in ROE
+    d["roe_change_yoy"] = d.groupby("entity")["roe"].diff()
+
+    # Trailing 3y average ROE
+    d["roe_3y_avg"] = d.groupby("entity")["roe"].rolling(3).mean().reset_index(level=0, drop=True)
+
+    return d
+
+def write_csv(df: pd.DataFrame, path: str = OUT_PATH):
+    ensure_dirs(path)
+    df.to_csv(path, index=False)
+
+if __name__ == "__main__":
+    df = seed_roe()
+    df = compute_roe(df)
+    write_csv(df)
+    print(f"✅ return_on_equity.csv written to {OUT_PATH} with {len(df)} rows")

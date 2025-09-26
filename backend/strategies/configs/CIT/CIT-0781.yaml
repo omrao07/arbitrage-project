@@ -1,0 +1,18 @@
+id: CIT-0781
+firm: Citadel
+name: US Stat-Arb: Mean Reversion #781
+description: Concrete stat-arb microstructure model.
+discipline: Macro
+family: Cross-Asset
+region: Global
+horizon: Swing
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

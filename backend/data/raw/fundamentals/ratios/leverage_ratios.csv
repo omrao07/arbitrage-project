@@ -1,0 +1,28 @@
+import pandas as pd
+from datetime import date
+import os
+
+def build_leverage_ratios(as_of: str | None = None) -> pd.DataFrame:
+    if as_of is None:
+        as_of = str(date.today())
+
+    rows = [
+        ("United States",as_of,1.2,0.35,2.0,8.5,2.5,"Stable leverage, high coverage"),
+        ("Developed ex-US",as_of,1.3,0.37,2.2,7.5,2.7,"Slightly higher debt loads"),
+        ("Emerging Mkts",as_of,1.7,0.45,3.0,4.0,3.3,"Higher FX & credit risk"),
+        ("Frontier Mkts",as_of,2.1,0.50,4.0,2.5,3.8,"Weak coverage, external debt"),
+        ("Global Avg",as_of,1.4,0.38,2.3,6.5,2.9,"Weighted leverage globally"),
+    ]
+
+    df = pd.DataFrame(rows, columns=[
+        "region","as_of","debt_to_equity","debt_to_assets",
+        "net_debt_to_ebitda","interest_coverage","equity_multiplier","notes"
+    ])
+    return df
+
+if __name__ == "__main__":
+    df = build_leverage_ratios()
+    out_path = "data/adamodar/curated/leverage_ratios.csv"
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    df.to_csv(out_path, index=False)
+    print(f"✅ Leverage ratios dataset written to {out_path}")

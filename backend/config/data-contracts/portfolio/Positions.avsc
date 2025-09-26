@@ -1,0 +1,88 @@
+{
+  "type": "record",
+  "namespace": "portfolio",
+  "name": "Position",
+  "doc": "Point-in-time position snapshot (multi-asset) with FX context and optional lots/greeks.",
+  "fields": [
+    { "name": "position_id",  "type": "string", "doc": "Unique id for this position row (e.g., <portfolio>-<instrument>-<ts>)" },
+    { "name": "portfolio_id", "type": "string", "doc": "Portfolio/account identifier" },
+    { "name": "strategy_tag", "type": ["null","string"], "default": null, "doc": "Optional strategy/book tag" },
+
+    { "name": "instrument_id",   "type": "string", "doc": "Instrument key (ticker/ISIN/contract id)" },
+    { "name": "instrument_type", "type": ["null", { "type":"enum", "name":"InstrumentType",
+        "symbols": ["EQUITY","ETF","FUTURE","OPTION","SWAP","BOND","FX","CRYPTO","OTHER"] } ],
+      "default": null, "doc": "Asset class hint (optional)" },
+
+    { "name": "side", "type": { "type":"enum", "name":"Side", "symbols": ["LONG","SHORT","FLAT"] }, "doc": "Directional sign" },
+
+    /* Quantities & pricing (local currency) */
+    { "name": "quantity",         "type": "double", "doc": "Current position size (shares/contracts/units; signed by side)" },
+    { "name": "available_quantity","type": ["null","double"], "default": null, "doc": "Free-to-trade quantity (after locks/borrows)" },
+    { "name": "avg_entry_price",  "type": "double", "doc": "VWAP cost basis per unit in local_ccy" },
+    { "name": "cost_basis",       "type": "double", "doc": "Total cost basis = avg_entry_price * quantity (local_ccy; signed)" },
+    { "name": "market_price",     "type": "double", "doc": "Mark/close price in local_ccy" },
+    { "name": "market_value",     "type": "double", "doc": "Mark-to-market value = market_price * quantity (local_ccy; signed)" },
+
+    /* Currency / FX */
+    { "name": "local_ccy",  "type": "string", "doc": "Instrument currency (e.g., USD, EUR)" },
+    { "name": "report_ccy", "type": "string", "doc": "Reporting/base currency for portfolio" },
+    { "name": "fx_rate_l2r","type": "double", "doc": "FX rate local->report used for conversion" },
+    { "name": "market_value_report", "type": "double", "doc": "Market value converted to report_ccy" },
+    { "name": "unrealized_pnl_report","type": "double", "doc": "MTM P&L in report_ccy for this position snapshot" },
+
+    /* Risk/Exposure helpers (reporting currency unless noted) */
+    { "name": "gross_notional_report", "type": ["null","double"], "default": null, "doc": "|quantity| * market_price * contract_multiplier (if any), in report_ccy" },
+    { "name": "beta_to_bm",            "type": ["null","double"], "default": null, "doc": "Beta vs benchmark (window per engine)" },
+    { "name": "leverage",              "type": ["null","double"], "default": null, "doc": "Position leverage if applicable" },
+    { "name": "borrow_rate",           "type": ["null","double"], "default": null, "doc": "Annualized borrow rate (shorts)" },
+    { "name": "accrued_income",        "type": ["null","double"], "default": null, "doc": "Accrued coupons/dividends (report_ccy)" },
+
+    /* Derivatives context (optional) */
+    { "name": "contract_multiplier", "type": ["null","double"], "default": null, "doc": "Units per contract (e.g., 100 shares, $ notional)" },
+    { "name": "expiry_date", "type": ["null", { "type":"int", "logicalType":"date" }], "default": null, "doc": "Expiry (FUT/OPT/SWAP)" },
+    { "name": "strike",      "type": ["null","double"], "default": null, "doc": "Strike (options)" },
+    { "name": "option_type", "type": ["null", { "type":"enum", "name":"OptionType", "symbols": ["CALL","PUT"] }], "default": null, "doc": "Option flavor" },
+
+    /* Greeks (optional; per-contract or position-level — define in docstring of engine) */
+    { "name": "delta", "type": ["null","double"], "default": null },
+    { "name": "gamma", "type": ["null","double"], "default": null },
+    { "name": "vega",  "type": ["null","double"], "default": null },
+    { "name": "theta", "type": ["null","double"], "default": null },
+    { "name": "rho",   "type": ["null","double"], "default": null },
+
+    /* Optional lot-level breakdown (local_ccy amounts) */
+    { "name": "lots",
+      "type": ["null", {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "Lot",
+          "fields": [
+            { "name": "lot_id",     "type": "string", "doc": "Internal lot identifier" },
+            { "name": "qty",        "type": "double", "doc": "Signed lot quantity" },
+            { "name": "entry_price","type": "double", "doc": "Lot entry price (local_ccy)" },
+            { "name": "entry_time", "type": { "type":"long","logicalType":"timestamp-millis" }, "doc": "Lot open time" },
+            { "name": "fees",       "type": ["null","double"], "default": null, "doc": "Transaction fees for this lot (local_ccy)" },
+            { "name": "notes",      "type": ["null","string"], "default": null }
+          ]
+        }
+      }],
+      "default": null,
+      "doc": "Per-lot cost tracking for FIFO/LIFO/AVG accounting"
+    },
+
+    /* Provenance & timing */
+    { "name": "as_of_time", "type": { "type":"long", "logicalType":"timestamp-millis" }, "doc": "Snapshot timestamp (UTC)" },
+    { "name": "source",
+      "type": ["null", {
+        "type":"record",
+        "name":"PositionSource",
+        "fields":[
+          { "name":"engine",  "type":"string", "doc":"Computation source (e.g., realtime-positions, backtest-v2)" },
+          { "name":"version", "type":"string", "doc":"Semantic version/git SHA" }
+        ]
+      }],
+      "default": null
+    }
+  ]
+}

@@ -1,0 +1,90 @@
+import os
+import pandas as pd
+from datetime import date
+
+OUT_PATH = "data/macro/inflation/us_cpi.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def init_us_cpi(seed: bool = True) -> pd.DataFrame:
+    """
+    Create us_cpi.csv with schema:
+    date (YYYY-MM-01), headline_cpi_yoy, core_cpi_yoy, cpi_mom_sa,
+    cpi_index_sa, core_index_sa, source, notes
+    All rates are decimals (0.02 = 2%).
+    """
+    ensure_dirs(OUT_PATH)
+    cols = ["date","headline_cpi_yoy","core_cpi_yoy","cpi_mom_sa",
+            "cpi_index_sa","core_index_sa","source","notes"]
+
+    if not seed:
+        df = pd.DataFrame(columns=cols)
+        df.to_csv(OUT_PATH, index=False)
+        return df
+
+    rows = [
+        ("2025-01-01",0.031,0.032,0.002,309.5,324.1,"BLS","Early-year disinflation"),
+        ("2025-02-01",0.030,0.031,0.001,309.8,324.6,"BLS","Energy softness"),
+        ("2025-03-01",0.030,0.031,0.002,310.4,325.3,"BLS","Sticky core"),
+        (str(date.today()),None,None,None,None,None,"Manual","Placeholder for next update"),
+    ]
+    df = pd.DataFrame(rows, columns=cols)
+    df.to_csv(OUT_PATH, index=False)
+    return df
+
+# ----------------- Analytics helpers -----------------
+
+def load_us_cpi(path: str = OUT_PATH) -> pd.DataFrame:
+    df = pd.read_csv(path)
+    df["date"] = pd.to_datetime(df["date"])
+    return df
+
+def headline_core_gap(df: pd.DataFrame, window: int = 6) -> pd.DataFrame:
+    """
+    Returns dataframe with headline-core gap and its rolling mean.
+    Positive gap => energy/food pushing headline above core.
+    """
+    d = df.sort_values("date").copy()
+    d["headline_minus_core"] = d["headline_cpi_yoy"] - d["core_cpi_yoy"]
+    d[f"gap_ma_{window}m"] = d["headline_minus_core"].rolling(window).mean()
+    return d
+
+def inflation_regime_flags(df: pd.DataFrame, high_th: float = 0.04, low_th: float = 0.02) -> pd.DataFrame:
+    """
+    Classify regimes using YoY headline CPI.
+    > high_th => 'high', < low_th => 'low', else 'mid'
+    """
+    d = df.sort_values("date").copy()
+    def label(x):
+        if pd.isna(x): return None
+        if x >= high_th: return "high"
+        if x <= low_th: return "low"
+        return "mid"
+    d["inflation_regime"] = d["headline_cpi_yoy"].apply(label)
+    return d
+
+def monthly_annualized(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Convert MoM SA CPI change to annualized rate: (1 + m/m)^12 - 1
+    """
+    d = df.sort_values("date").copy()
+    d["cpi_mom_annualized"] = (1 + d["cpi_mom_sa"])**12 - 1
+    return d
+
+def join_with_expectations(df_cpi: pd.DataFrame, df_exp: pd.DataFrame) -> pd.DataFrame:
+    """
+    Merge US CPI with inflation expectations (from inflation/inflation_expectations.csv).
+    Expects df_exp columns: date, region == 'United States', exp_1y/5y/10y
+    """
+    exp_us = df_exp[df_exp["region"] == "United States"][["date","exp_1y","exp_5y","exp_10y"]].copy()
+    return pd.merge(df_cpi, exp_us, on="date", how="left")
+
+if __name__ == "__main__":
+    df = init_us_cpi(seed=True)
+    print(f"✅ us_cpi.csv written to {OUT_PATH} with {len(df)} rows")
+    # Quick checks:
+    # d = load_us_cpi()
+    # print(headline_core_gap(d).tail())
+    # print(inflation_regime_flags(d).tail())
+    # print(monthly_annualized(d).tail())

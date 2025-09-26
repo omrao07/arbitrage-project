@@ -1,0 +1,96 @@
+import os
+import pandas as pd
+from datetime import date
+
+OUT_PATH = "data/macro/inflation/global_cpi.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def init_global_cpi(seed: bool = True) -> pd.DataFrame:
+    """
+    Create global_cpi.csv with schema:
+    date (YYYY-MM-01), region, headline_cpi_yoy, core_cpi_yoy, cpi_mom_sa,
+    inflation_expectations_5y, source, notes
+    """
+    ensure_dirs(OUT_PATH)
+    cols = ["date","region","headline_cpi_yoy","core_cpi_yoy","cpi_mom_sa",
+            "inflation_expectations_5y","source","notes"]
+
+    if not seed:
+        df = pd.DataFrame(columns=cols)
+        df.to_csv(OUT_PATH, index=False)
+        return df
+
+    rows = [
+        ("2025-01-01","United States",0.031,0.032,0.002,0.023,"BEA/BLS","Fed disinflation trend"),
+        ("2025-01-01","Developed ex-US",0.027,0.028,0.002,0.022,"OECD/Eurostat","Mixed EU prints"),
+        ("2025-01-01","Emerging Mkts",0.048,0.044,0.004,0.033,"IMF/National Stats","Food & FX pass-through"),
+        ("2025-01-01","Frontier Mkts",0.062,0.055,0.006,0.045,"IMF/National Stats","Volatile baskets"),
+        ("2025-01-01","Global Avg",0.036,0.034,0.003,0.026,"IMF/OECD Weighted","Trade-weighted aggregate"),
+        ("2025-02-01","United States",0.030,0.031,0.001,0.023,"BEA/BLS","Energy down"),
+        ("2025-02-01","Developed ex-US",0.026,0.027,0.001,0.022,"OECD/Eurostat","Core easing"),
+        ("2025-02-01","Emerging Mkts",0.047,0.044,0.003,0.033,"IMF/National Stats","Food stable"),
+        ("2025-02-01","Frontier Mkts",0.060,0.054,0.005,0.045,"IMF/National Stats","FX effects"),
+        ("2025-02-01","Global Avg",0.035,0.033,0.002,0.026,"IMF/OECD Weighted","—"),
+    ]
+
+    df = pd.DataFrame(rows, columns=cols)
+    df.to_csv(OUT_PATH, index=False)
+    return df
+
+# ---------- Analytics helpers ----------
+
+def load_global_cpi(path: str = OUT_PATH) -> pd.DataFrame:
+    df = pd.read_csv(path)
+    df["date"] = pd.to_datetime(df["date"])
+    return df
+
+def surprise_vs_expectations(df: pd.DataFrame, region: str, exp_col: str = "inflation_expectations_5y") -> pd.DataFrame:
+    """
+    Simple 'surprise': YoY headline minus expectation proxy.
+    (You can swap in survey/market-implied expectations later.)
+    """
+    d = df[df["region"] == region].sort_values("date").copy()
+    if exp_col in d.columns and d[exp_col].notna().any():
+        d["surprise_yoy"] = d["headline_cpi_yoy"] - d[exp_col]
+    else:
+        d["surprise_yoy"] = pd.NA
+    return d
+
+def rolling_core_gap(df: pd.DataFrame, region: str, window: int = 6) -> pd.DataFrame:
+    """
+    Rolling gap of headline minus core (6-month avg by default).
+    Positive gap suggests energy/food pressure; negative gap the opposite.
+    """
+    d = df[df["region"] == region].sort_values("date").copy()
+    d["headline_minus_core"] = d["headline_cpi_yoy"] - d["core_cpi_yoy"]
+    d[f"gap_ma_{window}m"] = d["headline_minus_core"].rolling(window).mean()
+    return d
+
+def inflation_regime_flag(df: pd.DataFrame, region: str, high_th: float = 0.04, low_th: float = 0.02) -> pd.DataFrame:
+    """
+    Classify regimes based on YoY headline CPI thresholds.
+    > high_th => 'high', < low_th => 'low', else 'mid'
+    """
+    d = df[df["region"] == region].sort_values("date").copy()
+    def label(x):
+        if pd.isna(x): return None
+        if x >= high_th: return "high"
+        if x <= low_th: return "low"
+        return "mid"
+    d["inflation_regime"] = d["headline_cpi_yoy"].apply(label)
+    return d
+
+def join_with_macro_signal(df_cpi: pd.DataFrame, df_other: pd.DataFrame, on_cols=("date","region")) -> pd.DataFrame:
+    """
+    Utility to join CPI with any other macro/ERP dataset on date+region.
+    """
+    return pd.merge(df_cpi, df_other, on=list(on_cols), how="left")
+
+if __name__ == "__main__":
+    df = init_global_cpi(seed=True)
+    print(f"✅ global_cpi.csv written to {OUT_PATH} with {len(df)} rows")
+    # Example quick checks:
+    # us = surprise_vs_expectations(load_global_cpi(), "United States").tail()
+    # em_gap = rolling_core_gap(load_global_cpi(), "Emerging Mkts", window=6).tail()

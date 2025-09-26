@@ -1,0 +1,25 @@
+# configs/risk_limits.yaml
+limits:
+  global:
+    max_gross_usd: 5000000          # cap on total gross exposure
+    max_order_rate_per_s: 5000      # order throttle
+    max_daily_loss_usd: 100000      # hard kill-switch if breached
+
+  per_symbol:
+    AAPL:
+      max_symbol_pos: 50000
+      max_notional_usd: 2000000
+    MSFT:
+      max_symbol_pos: 40000
+      max_notional_usd: 1500000
+    TSLA:
+      max_symbol_pos: 30000
+      max_notional_usd: 1000000
+
+  per_account:
+    default:
+      max_gross_usd: 2000000
+      max_symbol_pos: 20000
+    hedge_fund:
+      max_gross_usd: 10000000
+      max_symbol_pos: 100000

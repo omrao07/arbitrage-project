@@ -1,0 +1,188 @@
+{
+  "type": "record",
+  "namespace": "risk",
+  "name": "Scenario",
+  "doc": "Definition of a risk scenario (historical/hypothetical/parametric) with shocks, scope, and metadata.",
+  "fields": [
+    { "name": "scenario_id", "type": "string", "doc": "Unique id for this scenario (e.g., 2020-03-covid-shock)" },
+    { "name": "name",        "type": "string", "doc": "Human-readable name" },
+    { "name": "description", "type": ["null","string"], "default": null, "doc": "Optional long description / rationale" },
+
+    {
+      "name": "scenario_type",
+      "type": { "type":"enum", "name":"ScenarioType", "symbols":["HISTORICAL","HYPOTHETICAL","PARAMETRIC"] },
+      "doc": "Historical (replay), Hypothetical (what-if), or Parametric (model-based)"
+    },
+
+    {
+      "name": "application",
+      "type": { "type":"enum", "name":"ApplicationMode", "symbols":["INSTANTANEOUS","PATH"] },
+      "doc": "INSTANTANEOUS = apply all shocks at t0; PATH = sequence of dated shocks"
+    },
+
+    { "name": "horizon_days", "type": ["null","int"], "default": null, "doc": "Intended risk horizon in days (optional)" },
+    { "name": "base_currency", "type": ["null","string"], "default": null, "doc": "Reporting currency context (e.g., USD)" },
+
+    /* Severity / probability (optional, for stress testing / risk appetite) */
+    {
+      "name": "severity",
+      "type": ["null", { "type":"enum", "name":"Severity", "symbols":["MILD","MODERATE","SEVERE","EXTREME"] }],
+      "default": null,
+      "doc": "Qualitative severity bucket"
+    },
+    { "name": "probability", "type": ["null","float"], "default": null, "doc": "Optional probability in [0,1] if calibrated" },
+
+    /* Scope: where to apply */
+    {
+      "name": "scope",
+      "type": ["null", {
+        "type":"record",
+        "name":"Scope",
+        "fields":[
+          { "name":"portfolio_ids", "type":["null",{"type":"array","items":"string"}], "default": null, "doc":"Limit to these portfolios (if null=all)" },
+          { "name":"strategy_tags", "type":["null",{"type":"array","items":"string"}], "default": null, "doc":"Limit to strategies/books" },
+          { "name":"instrument_filters", "type":["null",{"type":"array","items":"string"}], "default": null, "doc":"Optional filters like 'country=US', 'asset=EQUITY', regex on tickers" }
+        ]
+      }],
+      "default": null
+    },
+
+    /* Instantaneous point/curve shocks (applied at t0 if application=INSTANTANEOUS) */
+    {
+      "name": "shocks",
+      "type": ["null", {
+        "type":"record",
+        "name":"ShockSet",
+        "fields":[
+          {
+            "name":"point_shocks",
+            "type":["null",{
+              "type":"array",
+              "items":{
+                "type":"record",
+                "name":"PointShock",
+                "fields":[
+                  {
+                    "name":"factor_type",
+                    "type": { "type":"enum", "name":"FactorType",
+                      "symbols":["PRICE","RETURN","RATE","SPREAD","VOL","FX","COMMODITY","BETA","MULTIPLIER"] },
+                    "doc":"Kind of risk factor being shocked"
+                  },
+                  { "name":"target_id", "type":"string", "doc":"Identifier (e.g., ticker, curve key, rate code, factor name)" },
+                  {
+                    "name":"shock_type",
+                    "type": { "type":"enum", "name":"ShockType",
+                      "symbols":["ABSOLUTE","RELATIVE","LOG_RETURN","BP","SIGMA"] },
+                    "doc":"How to interpret 'amount' (e.g., ABSOLUTE price units, RELATIVE %, BP = basis points)"
+                  },
+                  { "name":"amount", "type":"double", "doc":"Shock magnitude (signed)" },
+                  { "name":"tenor",  "type":["null","string"], "default": null, "doc":"Optional tenor/bucket (e.g., 2Y, 5Y) for curve points" },
+                  { "name":"notes",  "type":["null","string"], "default": null }
+                ]
+              }
+            }],
+            "default": null,
+            "doc":"Discrete shocks to single factors (e.g., AAPL -10%, USDJPY +5%, 10Y +75bp)"
+          },
+          {
+            "name":"curve_shocks",
+            "type":["null",{
+              "type":"array",
+              "items":{
+                "type":"record",
+                "name":"CurveShock",
+                "fields":[
+                  { "name":"curve_id", "type":"string", "doc":"Curve identifier (e.g., US_TSY, IG_SPREAD, VIX_TERM)" },
+                  { "name":"factor_type",
+                    "type": { "type":"enum", "name":"CurveFactorType", "symbols":["RATE","SPREAD","VOL","COMMODITY","FX"] } },
+                  {
+                    "name":"points",
+                    "type":{
+                      "type":"array",
+                      "items":{
+                        "type":"record",
+                        "name":"CurvePoint",
+                        "fields":[
+                          { "name":"tenor",  "type":"string", "doc":"e.g., 1M, 3M, 2Y, 10Y" },
+                          { "name":"shock_type",
+                            "type": { "type":"enum", "name":"CurveShockType",
+                              "symbols":["ABSOLUTE","RELATIVE","BP","SIGMA"] } },
+                          { "name":"amount", "type":"double" }
+                        ]
+                      }
+                    },
+                    "doc":"Per-tenor shocks"
+                  },
+                  { "name":"interpolation", "type":["null","string"], "default": null, "doc":"Interp hint (e.g., linear, log, cubic)" },
+                  { "name":"extrapolation","type":["null","string"], "default": null, "doc":"Extrapolation hint" },
+                  { "name":"notes", "type":["null","string"], "default": null }
+                ]
+              }
+            }],
+            "default": null,
+            "doc":"Shocks across a term structure or surface"
+          }
+        ]
+      }],
+      "default": null
+    },
+
+    /* Path scenarios (sequence of dated shock sets applied in order) */
+    {
+      "name": "path",
+      "type": ["null", {
+        "type":"array",
+        "items":{
+          "type":"record",
+          "name":"DatedShock",
+          "fields":[
+            { "name":"t", "type": { "type":"long","logicalType":"timestamp-millis" }, "doc":"Event time of this step (UTC)" },
+            { "name":"weight", "type":["null","float"], "default": null, "doc":"Optional mixture weight for Monte Carlo style mixing" },
+            { "name":"shocks", "type":"risk.ShockSet", "doc":"Shocks to apply at this step" }
+          ]
+        }
+      }],
+      "default": null,
+      "doc":"For ApplicationMode=PATH"
+    },
+
+    /* Correlation overrides (optional) */
+    {
+      "name": "correlation_overrides",
+      "type": ["null", {
+        "type":"array",
+        "items":{
+          "type":"record",
+          "name":"CorrelationOverride",
+          "fields":[
+            { "name":"factor_a", "type":"string", "doc":"First factor id (e.g., SPX, US10Y)" },
+            { "name":"factor_b", "type":"string", "doc":"Second factor id" },
+            { "name":"rho",      "type":"float",  "doc":"Correlation in [-1,1]" }
+          ]
+        }
+      }],
+      "default": null
+    },
+
+    /* Tags & metadata */
+    { "name": "tags", "type": ["null",{"type":"array","items":"string"}], "default": null, "doc":"Free-form labels (e.g., 'liquidity-crunch','rates-shock')" },
+    { "name": "created_by",   "type": "string", "doc": "Owner/author" },
+    { "name": "created_time", "type": { "type":"long","logicalType":"timestamp-millis" }, "doc":"When the scenario was created" },
+    { "name": "last_updated", "type": { "type":"long","logicalType":"timestamp-millis" }, "doc":"Last modification time" },
+
+    /* Provenance for audit */
+    {
+      "name": "source",
+      "type": ["null", {
+        "type":"record",
+        "name":"SourceInfo",
+        "fields":[
+          { "name":"kind",    "type":"string", "doc":"e.g., manual, model, backtest" },
+          { "name":"version", "type":"string", "doc":"Model/code version or doc link" },
+          { "name":"refs",    "type":["null",{"type":"array","items":"string"}], "default": null, "doc":"References/URLs" }
+        ]
+      }],
+      "default": null
+    }
+  ]
+}

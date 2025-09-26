@@ -1,0 +1,163 @@
+{
+ 
+  "$id": "catalog/catalog.schema.json",
+  "title": "Data Catalog: Dataset Descriptor",
+  "description": "Schema for dataset catalog entries used across modules (fx/credit/equity/options/extra/retail_altdata, etc.).",
+  "oneOf": [
+    { "$ref": "#/$defs/dataset" },
+    {
+      "type": "array",
+      "items": { "$ref": "#/$defs/dataset" },
+      "minItems": 1
+    }
+  ],
+  "$defs": {
+    "frequency": {
+      "type": "string",
+      "enum": [
+        "minutely",
+        "hourly",
+        "daily",
+        "weekly",
+        "monthly",
+        "quarterly",
+        "annual",
+        "ad_hoc"
+      ]
+    },
+    "sourceKind": {
+      "type": "string",
+      "enum": ["file", "rest", "bpipe"]
+    },
+    "primitiveType": {
+      "type": "string",
+      "description": "Canonical field type. Use [] suffix for arrays (e.g., string[], float64[]).",
+      "pattern": "^(string|bool|int32|int64|float32|float64|date|timestamp)(\\[\\])?$"
+    },
+    "column": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": { "$ref": "#/$defs/primitiveType" },
+        "unit": {
+          "type": "string",
+          "description": "Unit label (e.g., USD, pct, shares, contracts)."
+        },
+        "nullable": {
+          "type": "boolean",
+          "default": false
+        },
+        "quality": {
+          "type": "array",
+          "description": "Per-field quality hints/macros (e.g., not_null, non_negative).",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_]+$"
+          },
+          "uniqueItems": true
+        },
+        "desc": {
+          "type": "string"
+        }
+      }
+    },
+    "endpoint": {
+      "type": "object",
+      "description": "Where/how to pull the dataset from.",
+      "required": ["kind", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "$ref": "#/$defs/sourceKind" },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Endpoint path, file pattern, or BPipe mnemonic list."
+        },
+        "params": {
+          "type": "object",
+          "description": "Free-form parameter map (auth keys, tz, universe refs, etc.).",
+          "additionalProperties": true
+        }
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "vendor",
+        "source",
+        "version",
+        "frequency",
+        "description",
+        "primary_key",
+        "columns",
+        "endpoints"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9_\\.:-]+$",
+          "description": "Unique dataset identifier (e.g., blp_eq_px_eod)."
+        },
+        "title": {
+          "type": "string"
+        },
+        "vendor": {
+          "type": "string",
+          "description": "Data vendor name (e.g., bloomberg, koyfin, internal)."
+        },
+        "source": { "$ref": "#/$defs/sourceKind" },
+        "version": {
+          "type": "string",
+          "description": "Semver preferred.",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "frequency": { "$ref": "#/$defs/frequency" },
+        "description": {
+          "type": "string"
+        },
+        "primary_key": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true,
+          "description": "Logical primary key columns."
+        },
+        "partitions": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true,
+          "description": "Physical partition columns (e.g., dt, week)."
+        },
+        "columns": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/column" }
+        },
+        "endpoints": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/endpoint" }
+        },
+        "lineage": {
+          "type": "array",
+          "description": "Upstream dataset ids.",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

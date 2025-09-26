@@ -1,0 +1,73 @@
+import os
+import pandas as pd
+import numpy as np
+from datetime import date
+
+OUT_PATH = "data/adamodar/curated/mispricings_em.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def seed_mispricings() -> pd.DataFrame:
+    rows = [
+        ("2025-01-15","India","Emerging Asia","equity_index","NIFTY50","PE_vs_History",19800,21000,-0.057,-1.2,"short",90,"P/E in 85th pctile; earnings growth moderating","Use hedge via futures"),
+        ("2025-01-15","Brazil","LatAm","fx","BRLUSD","PPP",0.230,0.200,0.150,1.1,"long",120,"BRL ~15% cheap to PPP; terms-of-trade stable","Carry positive"),
+        ("2025-01-15","China","Emerging Asia","equity_index","CSI300","ERP_gap",4200,3800,0.105,0.8,"long",180,"Equity risk premium elevated vs DM","Policy support risk"),
+        ("2025-01-15","Mexico","LatAm","rate","MEX_10Y","Term_Premium",-0.002,0.001,-0.300,-0.9,"long",60,"Excess TP vs model suggests rally","Use bond futures"),
+        ("2025-01-15","South Africa","EMEA","credit","ZAF_5Y_CDS","CDS_vs_spread",180,210,-0.143,-1.6,"long",60,"Cash spread > CDS-implied","Liquidity dislocation"),
+        ("2025-01-15","Indonesia","Emerging Asia","sector","JCI Tech","EV_EBITDA_vs_Hist",9.0,11.0,-0.182,-1.0,"short",60,"Multiple rich vs 10y avg","Pair vs Energy"),
+    ]
+    return pd.DataFrame(rows, columns=[
+        "as_of","country","region","asset_type","instrument","metric",
+        "fair_value","market_value","mispricing_pct","zscore","signal","horizon_days","rationale","notes"
+    ])
+
+def compute_mispricing(df: pd.DataFrame, treat_as_level: bool = True) -> pd.DataFrame:
+    """
+    Recompute mispricing and signal if you update fair/market values.
+    For 'levels' (index level, FX rate, EV/EBITDA), mispricing_pct = fair/market - 1.
+    For 'rates' (yield/spread), set treat_as_level=False and store 'mispricing_bps' instead.
+    """
+    d = df.copy()
+    if treat_as_level:
+        d["mispricing_pct"] = d.apply(
+            lambda r: (np.nan if pd.isna(r["fair_value"]) or pd.isna(r["market_value"])
+                       else (r["fair_value"] / r["market_value"] - 1.0)),
+            axis=1
+        )
+    # basic rule-based signal (override as needed)
+    d["signal"] = d.apply(lambda r: ("long" if (pd.notna(r["mispricing_pct"]) and r["mispricing_pct"] > 0.03)
+                                     else "short" if (pd.notna(r["mispricing_pct"]) and r["mispricing_pct"] < -0.03)
+                                     else "flat"),
+                          axis=1)
+    return d
+
+def upsert_row(df: pd.DataFrame, row: dict) -> pd.DataFrame:
+    """Idempotent upsert by (as_of, instrument, metric)."""
+    needed = ["as_of","instrument","metric"]
+    for k in needed:
+        if k not in row:
+            raise ValueError(f"Missing key '{k}' in upsert row")
+    row = row.copy()
+    row["as_of"] = pd.to_datetime(row["as_of"]).strftime("%Y-%m-%d")
+    mask = (
+        (pd.to_datetime(df["as_of"]) == pd.to_datetime(row["as_of"])) &
+        (df["instrument"] == row["instrument"]) &
+        (df["metric"] == row["metric"])
+    )
+    if mask.any():
+        for k, v in row.items():
+            df.loc[mask, k] = v
+    else:
+        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+    return df
+
+def write_csv(df: pd.DataFrame, path: str = OUT_PATH):
+    ensure_dirs(path)
+    df.to_csv(path, index=False)
+
+if __name__ == "__main__":
+    df = seed_mispricings()
+    df = compute_mispricing(df, treat_as_level=True)
+    write_csv(df)
+    print(f"✅ mispricings_em.csv written to {OUT_PATH} with {len(df)} rows")

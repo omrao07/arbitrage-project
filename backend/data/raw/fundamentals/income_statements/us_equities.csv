@@ -1,0 +1,42 @@
+import pandas as pd
+from datetime import date
+import os
+
+def build_us_income_statements(as_of: str | None = None) -> pd.DataFrame:
+    if as_of is None:
+        as_of = str(date.today())
+
+    rows = [
+        ("Large Cap",as_of,8.0e12,5.0e12,2.0e12,1.4e12,2.5e12,1.8e11,3.0e11,0.17,0.31,"S&P 500 proxy"),
+        ("Small Cap",as_of,1.2e12,8.0e11,2.0e11,1.0e11,2.5e11,0.5e10,0.4e10,0.08,0.21,"Russell 2000 proxy"),
+        ("Growth",as_of,4.0e12,2.6e12,1.0e12,6.0e11,1.3e12,0.7e11,1.2e11,0.15,0.32,"Nasdaq 100 proxy"),
+        ("Value",as_of,3.5e12,2.4e12,8.0e11,5.0e11,1.0e12,0.6e11,0.9e11,0.14,0.29,"Russell 1000 Value proxy"),
+        ("Dividend",as_of,2.0e12,1.2e12,6.0e11,4.0e11,8.0e11,0.3e11,0.6e11,0.20,0.40,"High yield dividend stocks"),
+        ("Tech Sector",as_of,5.0e12,3.5e12,1.2e12,8.0e11,1.6e12,0.9e11,1.3e11,0.16,0.32,"High reinvestment"),
+        ("Energy",as_of,1.5e12,9.0e11,4.0e11,2.5e11,5.5e11,0.8e11,0.7e11,0.17,0.37,"Cyclical payouts"),
+    ]
+
+    df = pd.DataFrame(rows, columns=[
+        "style","as_of","revenue","cogs","operating_income","net_income",
+        "ebitda","interest_expense","tax_expense","net_margin","ebitda_margin","notes"
+    ])
+
+    # Add US Total
+    totals = df[["revenue","cogs","operating_income","net_income","ebitda","interest_expense","tax_expense"]].sum()
+    us_row = {
+        "style": "US Total",
+        "as_of": as_of,
+        **totals.to_dict(),
+        "net_margin": totals["net_income"] / totals["revenue"] if totals["revenue"] else None,
+        "ebitda_margin": totals["ebitda"] / totals["revenue"] if totals["revenue"] else None,
+        "notes": "Weighted US equities aggregate"
+    }
+    df = pd.concat([df, pd.DataFrame([us_row])], ignore_index=True)
+    return df
+
+if __name__ == "__main__":
+    df = build_us_income_statements()
+    out_path = "data/adamodar/curated/income_statements/us_equities.csv"
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    df.to_csv(out_path, index=False)
+    print(f"✅ US equities income statements dataset written to {out_path}")

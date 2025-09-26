@@ -1,0 +1,18 @@
+id: BW-0363
+firm: Bridgewater
+name: Inflation Hedge Basket (US)
+description: Commodities + TIPS overlay.
+discipline: Quant
+family: Cross-Asset Overlays
+region: US
+horizon: Macro
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

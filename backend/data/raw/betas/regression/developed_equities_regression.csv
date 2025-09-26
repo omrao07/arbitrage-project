@@ -1,0 +1,29 @@
+import pandas as pd
+from datetime import date
+
+def build_developed_equities_regression(as_of: str = None):
+    if as_of is None:
+        as_of = str(date.today())
+
+    rows = [
+        ("US","S&P 500",as_of,0.037,0.052,0.000,0.002,1.00,0.00,0.92,0.04,"Baseline regression"),
+        ("Europe","STOXX 600",as_of,0.025,0.050,0.005,0.003,0.95,0.10,0.88,0.05,"Eurozone anchor"),
+        ("Japan","TOPIX",as_of,0.010,0.048,0.000,0.001,0.85,0.02,0.85,0.06,"Deflation-adjusted"),
+        ("UK","FTSE 100",as_of,0.030,0.053,0.002,0.002,0.92,0.05,0.87,0.05,"Brexit-adjusted ERP"),
+        ("Canada","TSX Comp.",as_of,0.028,0.052,0.003,0.002,0.97,0.07,0.89,0.05,"Commodity linkage"),
+        ("Australia","ASX 200",as_of,0.029,0.051,0.004,0.003,0.96,0.08,0.88,0.05,"Mining heavy"),
+    ]
+
+    df = pd.DataFrame(rows, columns=[
+        "region","index","as_of",
+        "rf_rate","erp_factor","crp_factor",
+        "intercept","beta_mkt","beta_crp",
+        "r2","std_err","notes"
+    ])
+    return df
+
+if __name__ == "__main__":
+    df = build_developed_equities_regression()
+    out_path = "data/adamodar/curated/developed_equities_regression.csv"
+    df.to_csv(out_path, index=False)
+    print(f"✅ developed_equities_regression.csv written to {out_path}")

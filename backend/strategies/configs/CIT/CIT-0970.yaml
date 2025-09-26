@@ -1,0 +1,18 @@
+id: CIT-0970
+firm: Citadel
+name: PJM Congestion Spread #970
+description: Commodity curve relative value.
+discipline: Equities
+family: Microstructure
+region: Global
+horizon: Intraday
+status: research
+engine: equity_ls
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

@@ -1,0 +1,326 @@
+# credit/validations.yaml
+# Runbook-friendly validations for Credit datasets.
+# This file is intentionally simple: keys + thresholds. Your validator/executor
+# decides how to implement each rule (SQL, Spark, DuckDB, etc.).
+
+version: 1
+
+# ---------------------------------------------------------------------------
+# global defaults (can be overridden per-dataset)
+# ---------------------------------------------------------------------------
+defaults:
+  timezone: "UTC"
+  severity:
+    freshness_breach: warn         # warn|error
+    schema_mismatch: error
+    null_violation: error
+    range_violation: error
+    join_unmatched: warn
+    duplicate_pk: error
+    variance_spike: warn
+    monotonic_break: warn
+  freshness_sla_min: 1440          # default 24h if not specified
+  row_count_variance_pct: 30       # ±30% vs baseline window
+  baseline_window_days: 20         # for row-count & range baselines
+  allowed_currencies: ["USD","EUR","GBP","JPY","INR"]
+  numeric_eps: 1e-12
+
+# ---------------------------------------------------------------------------
+# reusable macros (names only; your engine implements the semantics)
+# ---------------------------------------------------------------------------
+macros:
+  - not_null
+  - non_negative
+  - pct_0_1
+  - no_future_date
+
+# ---------------------------------------------------------------------------
+# referential datasets (used by join checks)
+# ---------------------------------------------------------------------------
+references:
+  ref_issuers:
+    dataset: "refdata_issuers"
+    key: ["issuer_id"]
+  ref_entities:
+    dataset: "refdata_issuers"
+    key: ["entity_id"]
+  ref_credit_indices:
+    dataset: "credit/indices.universe"
+    key: ["index_code","series","version"]
+
+# ---------------------------------------------------------------------------
+# dataset-specific validations
+# ---------------------------------------------------------------------------
+datasets:
+
+  # =========================== 1) CDS spreads ===============================
+  blp_cds_spreads:
+    freshness_sla_min: 1440           # expect daily
+    primary_key: ["dt","entity_id","tenor_yrs"]
+
+    schema:
+      require_columns:
+        - dt
+        - entity_id
+        - tenor_yrs
+        - spread_bp
+      forbid_columns: []              # keep open-ended
+      types:
+        dt: date
+        entity_id: string
+        tenor_yrs: float64
+        spread_bp: float64
+        upfront_pct: float64
+        recovery: float64
+        currency: string
+
+    row_rules:
+      - name: dt_present
+        columns: ["dt"]
+        check: not_null
+      - name: dt_not_future
+        columns: ["dt"]
+        check: no_future_date
+      - name: nonneg_spread
+        columns: ["spread_bp"]
+        check: non_negative
+      - name: pct_bounds_fields
+        columns: ["upfront_pct","recovery"]
+        check: pct_0_1
+      - name: tenor_nonneg
+        columns: ["tenor_yrs"]
+        check: non_negative
+      - name: currency_enum
+        sql: "currency IS NULL OR currency IN (${allowed_currencies})"
+
+    duplicate_pk:
+      enabled: true
+
+    joins:
+      - name: entity_join_rate
+        left_key: ["entity_id"]
+        right_ref: ref_entities
+        max_unmatched_pct: 0.5
+
+    ranges:
+      # hard sanity bands (independent of baselines)
+      - field: spread_bp
+        min: 0
+        max: 2000
+      - field: upfront_pct
+        min: 0
+        max: 1
+      - field: recovery
+        min: 0
+        max: 1
+
+    variance:
+      row_count_window_days: 20
+      max_delta_pct: 40    # allow ±40% swings for CDS coverage
+
+  # ======================= 2) Credit indices (CDX / iTraxx) =================
+  blp_credit_indices:
+    freshness_sla_min: 1440
+    primary_key: ["dt","index_code","series","version"]
+
+    schema:
+      require_columns: ["dt","index_code","series","version"]
+      types:
+        dt: date
+        index_code: string
+        series: string
+        version: string
+        spread_bp: float64
+        px_last: float64
+        total_return: float64
+        currency: string
+
+    row_rules:
+      - { name: dt_present, columns: ["dt"], check: not_null }
+      - { name: dt_not_future, columns: ["dt"], check: no_future_date }
+      - { name: nonneg_spread, columns: ["spread_bp"], check: non_negative }
+
+    joins:
+      - name: index_membership
+        left_key: ["index_code","series","version"]
+        right_ref: ref_credit_indices
+        max_unmatched_pct: 0.0
+
+    ranges:
+      - { field: spread_bp, min: 0, max: 1000 }
+      - { field: total_return, min: -1, max: 5 } # rebased index may exceed 1
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 30
+      max_delta_pct: 25
+
+    monotonic:
+      - name: series_roll_monotone
+        by: ["index_code","series"]
+        order_by: ["dt"]
+        expr: "version IS NULL OR version >= lag(version)"   # non-decreasing versions within a series
+
+  # ======================= 3) Corporate bonds OAS / risk ====================
+  blp_corp_oas:
+    freshness_sla_min: 1440
+    primary_key: ["dt","ticker"]
+
+    schema:
+      require_columns: ["dt","ticker"]
+      types:
+        dt: date
+        ticker: string
+        oas_bp: float64
+        z_spread: float64
+        yield: float64
+        duration: float64
+        convexity: float64
+        currency: string
+        rating_moody: string
+        rating_sp: string
+
+    row_rules:
+      - { name: dt_present, columns: ["dt"], check: not_null }
+      - { name: dt_not_future, columns: ["dt"], check: no_future_date }
+      - { name: nonneg_spreads, columns: ["oas_bp","z_spread"], check: non_negative }
+      - { name: nonneg_risk, columns: ["duration","convexity"], check: non_negative }
+      - { name: yield_range, sql: "yield IS NULL OR (yield >= 0 AND yield <= 1)" }
+      - { name: currency_enum, sql: "currency IS NULL OR currency IN (${allowed_currencies})" }
+
+    ranges:
+      - { field: oas_bp, min: 0, max: 2000 }
+      - { field: z_spread, min: 0, max: 2000 }
+      - { field: duration, min: 0, max: 50 }
+      - { field: convexity, min: 0, max: 100 }
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 20
+      max_delta_pct: 35
+
+  # =========================== 4) Ratings history ===========================
+  blp_ratings_history:
+    freshness_sla_min: 1440
+    primary_key: ["ts","issuer_id","agency"]
+
+    schema:
+      require_columns: ["ts","dt","issuer_id","agency","rating"]
+      types:
+        ts: timestamp
+        dt: date
+        issuer_id: string
+        agency: string
+        rating: string
+        action: string
+        outlook: string
+        watch: string
+
+    row_rules:
+      - { name: ts_present, columns: ["ts"], check: not_null }
+      - { name: dt_present, columns: ["dt"], check: not_null }
+      - { name: dt_not_future, columns: ["dt"], check: no_future_date }
+
+    joins:
+      - name: issuer_join_rate
+        left_key: ["issuer_id"]
+        right_ref: ref_issuers
+        max_unmatched_pct: 0.5
+
+    domain:
+      agency:
+        allowed: ["MOODY","SNP","FITCH","DBRS","JCR","CARE","ICRA"]
+      action:
+        allowed: ["UPGRADE","DOWNGRADE","AFFIRM","INIT","WITHDRAWN","REVIEW","OUTLOOK"]
+      outlook:
+        allowed: ["POS","NEG","STABLE","EWN","NR","N/A"]
+
+    duplicate_pk:
+      enabled: false   # ratings may have re-issues in same second; allow multiple? If true, turn on & dedupe before
+
+    variance:
+      row_count_window_days: 60
+      max_delta_pct: 200   # events are spiky—allow wide swings
+
+  # ===================== 5) Derived CDS curves (internal) ===================
+  internal_cds_curves:
+    freshness_sla_min: 1440
+    primary_key: ["dt","entity_id","tenor_yrs"]
+
+    schema:
+      require_columns: ["dt","entity_id","tenor_yrs","hazard","survival"]
+      types:
+        dt: date
+        entity_id: string
+        tenor_yrs: float64
+        hazard: float64
+        survival: float64
+        recovery: float64
+        method: string
+
+    row_rules:
+      - { name: dt_present, columns: ["dt"], check: not_null }
+      - { name: tenor_nonneg, columns: ["tenor_yrs"], check: non_negative }
+      - { name: hazard_nonneg, columns: ["hazard"], check: non_negative }
+      - { name: survival_pct, columns: ["survival"], check: pct_0_1 }
+
+    ranges:
+      - { field: hazard, min: 0, max: 1 }        # annualized hazard fraction
+      - { field: survival, min: 0, max: 1 }
+
+    joins:
+      - name: entity_join_rate
+        left_key: ["entity_id"]
+        right_ref: ref_entities
+        max_unmatched_pct: 0.5
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 20
+      max_delta_pct: 40
+
+# ---------------------------------------------------------------------------
+# cross-dataset integrity checks (optional)
+# ---------------------------------------------------------------------------
+cross_checks:
+
+  - name: cds_vs_curves_entity_date_match
+    description: "For each (dt, entity_id) in CDS spreads, there should be at least one curve row."
+    left:
+      dataset: blp_cds_spreads
+      select: ["dt","entity_id"]
+      distinct: true
+    right:
+      dataset: internal_cds_curves
+      select: ["dt","entity_id"]
+      distinct: true
+    max_unmatched_pct: 5.0
+
+  - name: cds_recovery_consistency
+    description: "If recovery present in CDS, derived curves should use same recovery (within eps)."
+    sql: >
+      SELECT AVG(ABS(c.recovery - d.recovery)) AS avg_diff
+      FROM blp_cds_spreads c
+      JOIN internal_cds_curves d
+      ON c.dt = d.dt AND c.entity_id = d.entity_id
+      WHERE c.recovery IS NOT NULL AND d.recovery IS NOT NULL
+    expect:
+      avg_diff_lte: 0.05     # avg absolute diff ≤ 5 percentage points
+
+# ---------------------------------------------------------------------------
+# alert routing hints (your runner can map these to channels)
+# ---------------------------------------------------------------------------
+alerts:
+  routes:
+    - match: { dataset: "blp_cds_spreads", type: "freshness_breach" }
+      to: ["pager", "slack:#data-alerts"]
+    - match: { dataset: "blp_corp_oas", type: "schema_mismatch" }
+      to: ["slack:#credit-pipeline"]
+    - match: { dataset: "*", type: "duplicate_pk" }
+      to: ["slack:#data-quality"]

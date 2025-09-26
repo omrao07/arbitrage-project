@@ -1,0 +1,18 @@
+id: BW-0094
+firm: Bridgewater
+name: US 5s30s Flattener (Global)
+description: Inflation scare hedge.
+discipline: Macro
+family: Rates & Basis
+region: Global
+horizon: Macro
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: macro
+created_at: 2025-09-10
+updated_at: 2025-09-10

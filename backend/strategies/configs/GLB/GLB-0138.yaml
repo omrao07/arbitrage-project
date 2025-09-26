@@ -1,0 +1,18 @@
+id: GLB-0138
+firm: Global
+name: Uranium Miners Overlay (ZA)
+description: Worldwide diversified strategy in Rates & Sovereigns — region: ZA.
+discipline: Macro
+family: Rates & Sovereigns
+region: ZA
+horizon: Macro
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

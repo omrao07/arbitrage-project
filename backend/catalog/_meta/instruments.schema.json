@@ -1,0 +1,206 @@
+{
+  
+  "$id": "meta/instruments.schema.json",
+  "title": "Instrument",
+  "description": "Canonical instrument schema (vendor-agnostic).",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/$defs/EquityInstrument" },
+    { "$ref": "#/$defs/ETFInstrument" },
+    { "$ref": "#/$defs/FxInstrument" },
+    { "$ref": "#/$defs/FutureInstrument" },
+    { "$ref": "#/$defs/OptionInstrument" },
+    { "$ref": "#/$defs/BondInstrument" },
+    { "$ref": "#/$defs/IndexInstrument" },
+    { "$ref": "#/$defs/CryptoInstrument" },
+    { "$ref": "#/$defs/CommodityInstrument" },
+    { "$ref": "#/$defs/BaseInstrument" }
+  ],
+  "$defs": {
+    "ULID": {
+      "type": "string",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "ISO_CCY": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "MIC": {
+      "type": "string",
+      "pattern": "^[A-Z]{3,4}$"
+    },
+    "DATE": {
+      "type": "string",
+      "format": "date"
+    },
+    "Symbology": {
+      "type": "object",
+      "properties": {
+        "ticker": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "BBG":    { "type": "string" },
+        "RIC":    { "type": "string" },
+        "ISIN":   { "type": "string", "pattern": "^[A-Z0-9]{12}$" },
+        "CUSIP":  { "type": "string", "pattern": "^[A-Z0-9]{9}$" },
+        "SEDOL":  { "type": "string", "pattern": "^[A-Z0-9]{7}$" },
+        "MIC":    { "$ref": "#/$defs/MIC" },
+        "ExchangeCode": { "type": "string" },
+        "Currency": { "$ref": "#/$defs/ISO_CCY" }
+      },
+      "additionalProperties": false,
+      "anyOf": [
+        { "required": ["ticker"] },
+        { "required": ["BBG"] },
+        { "required": ["RIC"] },
+        { "required": ["ISIN"] },
+        { "required": ["CUSIP"] },
+        { "required": ["SEDOL"] }
+      ]
+    },
+    "BaseInstrument": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/ULID" },
+        "class": {
+          "type": "string",
+          "enum": ["Unknown", "Equity", "ETF", "FX", "Future", "Option", "Bond", "Index", "Crypto", "Commodity"]
+        },
+        "name": { "type": "string", "minLength": 1 },
+        "sym": { "$ref": "#/$defs/Symbology" },
+        "meta": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "required": ["class", "name", "sym"],
+      "additionalProperties": false
+    },
+    "EquityInstrument": {
+      "allOf": [
+        { "$ref": "#/$defs/BaseInstrument" },
+        {
+          "type": "object",
+          "properties": {
+            "class": { "const": "Equity" },
+            "sector": { "type": "string" },
+            "industry": { "type": "string" },
+            "sharesOutstanding": { "type": "number", "minimum": 0 }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ETFInstrument": {
+      "allOf": [
+        { "$ref": "#/$defs/EquityInstrument" },
+        {
+          "type": "object",
+          "properties": { "class": { "const": "ETF" } },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "FxInstrument": {
+      "allOf": [
+        { "$ref": "#/$defs/BaseInstrument" },
+        {
+          "type": "object",
+          "properties": {
+            "class": { "const": "FX" },
+            "pair": { "type": "string", "pattern": "^[A-Z]{6}$" },
+            "baseCCY": { "$ref": "#/$defs/ISO_CCY" },
+            "quoteCCY": { "$ref": "#/$defs/ISO_CCY" }
+          },
+          "required": ["pair"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "FutureInstrument": {
+      "allOf": [
+        { "$ref": "#/$defs/BaseInstrument" },
+        {
+          "type": "object",
+          "properties": {
+            "class": { "const": "Future" },
+            "root": { "type": "string" },
+            "expiry": { "$ref": "#/$defs/DATE" },
+            "multiplier": { "type": "number", "exclusiveMinimum": 0 },
+            "contractCurrency": { "$ref": "#/$defs/ISO_CCY" }
+          },
+          "required": ["expiry"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "OptionInstrument": {
+      "allOf": [
+        { "$ref": "#/$defs/BaseInstrument" },
+        {
+          "type": "object",
+          "properties": {
+            "class": { "const": "Option" },
+            "underlying": { "type": "string", "minLength": 1 },
+            "expiry": { "$ref": "#/$defs/DATE" },
+            "strike": { "type": "number", "exclusiveMinimum": 0 },
+            "right": { "type": "string", "enum": ["Put", "Call"] },
+            "style": { "type": "string", "enum": ["American", "European"] },
+            "contractCurrency": { "$ref": "#/$defs/ISO_CCY" }
+          },
+          "required": ["underlying", "expiry", "strike", "right"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "BondInstrument": {
+      "allOf": [
+        { "$ref": "#/$defs/BaseInstrument" },
+        {
+          "type": "object",
+          "properties": {
+            "class": { "const": "Bond" },
+            "country": { "type": "string", "pattern": "^[A-Z]{2}$" },
+            "couponPct": { "type": "number", "minimum": 0, "maximum": 1 },
+            "maturity": { "$ref": "#/$defs/DATE" },
+            "dayCount": { "type": "string", "enum": ["30/360", "ACT/360", "ACT/365", "ACT/ACT"] }
+          },
+          "required": ["maturity"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "IndexInstrument": {
+      "allOf": [
+        { "$ref": "#/$defs/BaseInstrument" },
+        {
+          "type": "object",
+          "properties": { "class": { "const": "Index" } },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "CryptoInstrument": {
+      "allOf": [
+        { "$ref": "#/$defs/BaseInstrument" },
+        {
+          "type": "object",
+          "properties": {
+            "class": { "const": "Crypto" },
+            "baseCCY": { "type": "string", "minLength": 2 },
+            "quoteCCY": { "$ref": "#/$defs/ISO_CCY" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "CommodityInstrument": {
+      "allOf": [
+        { "$ref": "#/$defs/BaseInstrument" },
+        {
+          "type": "object",
+          "properties": { "class": { "const": "Commodity" } },
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,199 @@
+# meta/providers.yaml
+# Central config for data providers, auth, throttling, and catalog wiring.
+
+version: 1
+
+# ------------------------------ global defaults ------------------------------
+defaults:
+  timezone: "UTC"
+  http:
+    connect_timeout_ms: 5000
+    read_timeout_ms: 15000
+    total_timeout_ms: 30000
+  retry:
+    max_retries: 3
+    backoff_ms: 400         # exponential backoff base
+    backoff_max_ms: 4000
+    retry_http: [408, 429, 500, 502, 503, 504]
+  dataset_schema_ref: "_meta/schema.dataset.yaml"
+  quality_rules_ref: "_meta/quality_rules.yaml"
+  fields_aliases_ref: "meta/fields/types.yaml#aliases"
+
+# Locations that the catalog loader should scan for dataset specs.
+datasets_roots:
+  - "bloomberg/baseline/datasets"
+  - "bloomberg/extra/datasets"
+  - "bloomberg/asset_specific/equities"
+  - "bloomberg/asset_specific/fx"
+  - "bloomberg/asset_specific/rates"
+  - "bloomberg/asset_specific/credit"
+  - "bloomberg/asset_specific/commodities"
+  - "koyfin_unique/datasets"
+  - "hammer_pro_unique/datasets"
+
+# Optional calendars (named references you can use from dataset endpoint params).
+calendars:
+  nyse:
+    tz: "America/New_York"
+    trading_hours: { mon_fri: "09:30-16:00" }
+    holidays_ref: "meta/calendars/nyse.holidays.yaml"
+  utc:
+    tz: "UTC"
+    trading_hours: { mon_fri: "00:00-23:59" }
+
+# ------------------------------- providers -----------------------------------
+providers:
+
+  bloomberg:
+    vendor: "bloomberg"
+    description: "Bloomberg B-PIPE / BLPAPI pulls (prices, refdata, FX vol, etc.)."
+    transports:
+      bpipe:
+        enabled: true
+        # Connection is supplied via env; runner/adapter reads these values.
+        host_env: "BLOOMBERG_BPIPE_HOST"       # e.g., blp01.internal
+        port_env: "BLOOMBERG_BPIPE_PORT"       # e.g., 8194
+        app_name_env: "BLOOMBERG_APP_NAME"     # if using app auth
+        # Session timeouts (override defaults.http if needed)
+        timeouts:
+          connect_timeout_ms: 4000
+          read_timeout_ms: 20000
+        rate_limits:
+          rps: 8               # requests/sec
+          burst: 16
+          concurrency: 4
+          universe_batch_size: 400   # symbols/universe per call
+          fields_batch_size: 50      # fields per call
+        schedules:
+          # Rule-of-thumb cadences; can be overridden per dataset in schedules.yaml
+          daily_eod: "22:30Z"        # run after U.S. cash close (buffered)
+          intraday_1m: "every 1m during trading"
+        symbology_mapping_ref: "bloomberg/baseline/symbology/mapping.yaml"
+        aliases_ref: "meta/fields/types.yaml#aliases"
+      blp:
+        enabled: true
+        host_env: "BLOOMBERG_BLP_HOST"         # desktop/server API host if used
+        port_env: "BLOOMBERG_BLP_PORT"         # typically 8194
+        rate_limits:
+          rps: 6
+          burst: 12
+          concurrency: 2
+        timeouts:
+          connect_timeout_ms: 4000
+          read_timeout_ms: 15000
+    compliance:
+      pii: false
+      export_controls: "internal use only"
+
+  koyfin:
+    vendor: "koyfin"
+    description: "Koyfin REST API (factor scores, baskets, insider, etc.)."
+    transports:
+      rest:
+        enabled: true
+        base_url_env: "KOYFIN_BASE_URL"        # default "https://api.koyfin.com"
+        auth:
+          kind: "bearer"
+          token_env: "KOYFIN_API_KEY"
+          header: "Authorization: Bearer ${token}"
+        headers:
+          "Accept": "application/json"
+          "User-Agent": "catalog/worker"
+        paging:
+          limit_param: "limit"
+          cursor_param: "cursor"
+          page_size: 500
+        rate_limits:
+          rps: 10
+          burst: 20
+          concurrency: 4
+        timeouts:
+          connect_timeout_ms: 3000
+          read_timeout_ms: 12000
+    compliance:
+      pii: false
+
+  hammer_pro:
+    vendor: "hammer_pro"
+    description: "Alternative/derived datasets (news sentiment, supply chain)."
+    transports:
+      rest:
+        enabled: true
+        base_url_env: "HAMMER_BASE_URL"        # e.g., https://api.hammerpro.io
+        auth:
+          kind: "key"
+          token_env: "HAMMER_API_KEY"
+          header: "X-API-Key: ${token}"
+        headers:
+          "Accept": "application/json"
+          "User-Agent": "catalog/worker"
+        paging:
+          limit_param: "limit"
+          cursor_param: "cursor"
+          page_size: 1000
+        rate_limits:
+          rps: 5
+          burst: 10
+          concurrency: 2
+        timeouts:
+          connect_timeout_ms: 3000
+          read_timeout_ms: 15000
+    compliance:
+      pii: false
+
+  internal:
+    vendor: "internal"
+    description: "Internal derived tables and file drops."
+    transports:
+      file:
+        enabled: true
+        # One of these is used by your adapter; keep both for portability.
+        s3_bucket_env: "INTERNAL_S3_BUCKET"    # e.g., s3://data-bucket/catalog
+        gcs_bucket_env: "INTERNAL_GCS_BUCKET"  # e.g., gs://data-bucket/catalog
+        root_prefix_env: "INTERNAL_DATA_PREFIX" # e.g., raw/ or stage/
+        format_defaults:
+          csv:
+            delimiter: ","
+            header: true
+            encoding: "utf-8"
+          parquet:
+            compression: "snappy"
+    compliance:
+      pii: false
+
+# ------------------------- normalization / policies --------------------------
+normalize:
+  symbol:
+    uppercase: true
+    trim: true
+  currency:
+    uppercase: true
+    allowed: ["USD","EUR","GBP","JPY","INR"]
+  fx_pair:
+    pattern: "^[A-Z]{6}$"    # EURUSD, USDJPY...
+    uppercase: true
+  tenor:
+    uppercase: true          # 1W, 1M, 3M, 6M, 1Y
+  time:
+    timezone: "UTC"
+    allow_future: false
+
+# ------------------------------ ops preferences ------------------------------
+ops:
+  logging:
+    level_env: "LOG_LEVEL"     # debug|info|warn|error
+    json_env: "LOG_JSON"       # "1" => JSON logs, else text
+    namespace: "catalog"
+  metrics:
+    enabled_env: "METRICS_ENABLED"   # "1" to enable
+    sink_env: "METRICS_SINK"         # e.g., "statsd://host:8125"
+  alerts:
+    channels:
+      webhook_env: "ALERTS_WEBHOOK_URL"
+      email_env: "ALERTS_EMAIL"
+    # thresholds for freshness checks (dataset → minutes)
+    freshness_min:
+      default: 180
+      blp_eod_prices: 720
+      blp_fx_vol_surface: 1440
+      koyfin_factor_scores: 1440

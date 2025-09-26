@@ -1,0 +1,86 @@
+import pandas as pd
+from datetime import date
+import os
+
+OUT_PATH = "data/fx/cross_rates.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def init_cross_rates(seed: bool = True) -> pd.DataFrame:
+    """
+    Create cross_rates.csv with schema: date, base_ccy, quote_ccy, rate, source, notes
+    """
+    ensure_dirs(OUT_PATH)
+    cols = ["date","base_ccy","quote_ccy","rate","source","notes"]
+
+    if not seed:
+        df = pd.DataFrame(columns=cols)
+        df.to_csv(OUT_PATH, index=False)
+        return df
+
+    today = str(date.today())
+    rows = [
+        ("2025-01-02","EUR","JPY",155.30,"ECB","EUR/JPY spot"),
+        ("2025-01-02","GBP","JPY",186.50,"BoE","GBP/JPY spot"),
+        ("2025-01-02","EUR","GBP",0.832,"ECB","EUR/GBP spot"),
+        ("2025-01-02","AUD","JPY",101.80,"RBA","AUD/JPY spot"),
+        ("2025-01-02","CNH","JPY",20.75,"PBoC","Offshore yuan vs JPY"),
+        ("2025-01-02","EUR","CHF",0.95,"SNB","EUR/CHF spot"),
+        ("2025-01-02","GBP","CHF",1.14,"BoE","GBP/CHF spot"),
+        ("2025-01-02","AUD","NZD",1.06,"RBA","AUD/NZD spot"),
+        (today,"EUR","JPY",None,"Manual","Placeholder for update"),
+    ]
+    df = pd.DataFrame(rows, columns=cols)
+    df.to_csv(OUT_PATH, index=False)
+    return df
+
+# ---------- Analytics helpers ----------
+
+def load_cross_rates(path: str = OUT_PATH) -> pd.DataFrame:
+    df = pd.read_csv(path)
+    df["date"] = pd.to_datetime(df["date"])
+    return df
+
+def get_rate(df: pd.DataFrame, base: str, quote: str, on_date: str | None = None) -> float | None:
+    """
+    Fetch single cross rate for given base/quote/date
+    """
+    if on_date:
+        date_val = pd.to_datetime(on_date)
+        d = df[(df["base_ccy"] == base) & (df["quote_ccy"] == quote) & (df["date"] == date_val)]
+    else:
+        d = df[(df["base_ccy"] == base) & (df["quote_ccy"] == quote)]
+    if d.empty:
+        return None
+    return float(d.sort_values("date").iloc[-1]["rate"])
+
+def triangular_arbitrage(df: pd.DataFrame, ccy1: str, ccy2: str, ccy3: str, on_date: str) -> dict:
+    """
+    Compute implied vs actual rates for a 3-currency loop
+    """
+    d = df[df["date"] == pd.to_datetime(on_date)]
+    def rate(a,b):
+        row = d[(d["base_ccy"] == a) & (d["quote_ccy"] == b)]
+        if not row.empty:
+            return float(row.iloc[0]["rate"])
+        row_inv = d[(d["base_ccy"] == b) & (d["quote_ccy"] == a)]
+        if not row_inv.empty:
+            return 1/float(row_inv.iloc[0]["rate"])
+        return None
+    
+    r12 = rate(ccy1,ccy2)
+    r23 = rate(ccy2,ccy3)
+    r13 = rate(ccy1,ccy3)
+    if None in [r12,r23,r13]:
+        return {"arbitrage":"insufficient data"}
+    implied = r12 * r23
+    diff = r13 - implied
+    return {"implied":implied, "actual":r13, "spread":diff}
+
+if __name__ == "__main__":
+    df = init_cross_rates(seed=True)
+    print(f"✅ cross_rates.csv written to {OUT_PATH} with {len(df)} rows")
+    # Example usage:
+    # arb = triangular_arbitrage(load_cross_rates(), "EUR","GBP","JPY","2025-01-02")
+    # print(arb)

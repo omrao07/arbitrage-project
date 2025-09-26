@@ -1,0 +1,18 @@
+id: P72-0433
+firm: Point72
+name: Credit CDS vs Cash Basis #433
+description: CDS-bond mispricing capture.
+discipline: Credit
+family: Point72-Style
+region: Global
+horizon: Swing
+status: research
+engine: credit_cds
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: credit
+created_at: 2025-09-10
+updated_at: 2025-09-10

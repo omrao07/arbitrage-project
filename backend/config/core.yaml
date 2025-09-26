@@ -1,0 +1,316 @@
+# config/core.yaml
+version: 1.0.0
+app:
+  name: hyper-trading-os
+  env: ${APP_ENV:prod}          # prod|staging|dev
+  region: ${REGION:us-east-1}
+  base_currency: USD
+  timezone: America/New_York
+  feature_flags:
+    enable_news_linkage: true
+    enable_live_trading: false       # guarded behind approvals
+    enable_multiple_venues: true
+    enable_backtest_api: true
+    enforce_zero_trust: true
+
+secrets:
+  provider: ${SECRETS_PROVIDER:aws-kms}  # aws-kms|gcp-kms|vault|local
+  path_prefix: ${SECRETS_PATH:kv/prod/hyper}  # logical prefix in KMS/Vault
+
+storage:
+  object_store:
+    kind: ${OBJ_STORE_KIND:s3}      # s3|gcs|minio
+    bucket_raw: ${BUCKET_RAW:os-raw}
+    bucket_processed: ${BUCKET_PROCESSED:os-processed}
+    bucket_evidence: ${BUCKET_EVIDENCE:grc-evidence}
+    kms_key: ${KMS_KEY_ID:alias/os-data}
+    object_lock: true
+  warehouse:
+    # Pick one; unused blocks are ignored by the app based on driver
+    driver: ${WH_DRIVER:clickhouse}    # clickhouse|bigquery|snowflake|postgres
+    clickhouse:
+      dsn: ${CH_DSN:tcp://clickhouse:9000?database=core}
+    bigquery:
+      project: ${BQ_PROJECT:fund-core}
+      dataset: ${BQ_DATASET:core}
+    snowflake:
+      account: ${SF_ACCOUNT:acc}
+      user: ${SF_USER:user}
+      role: ${SF_ROLE:ANALYST}
+      warehouse: ${SF_WH:COMPUTE_WH}
+      database: ${SF_DB:CORE}
+  vectordb:
+    driver: ${VDB_DRIVER:chromadb}    # chromadb|pgvector|pinecone|weaviate
+    dsn: ${VDB_DSN:sqlite:///vdb/chroma.db}
+
+messaging:
+  bus: ${BUS:kafka}                   # kafka|pubsub|sns
+  kafka:
+    brokers: ${KAFKA_BROKERS:broker:9092}
+    acks: all
+    compression: zstd
+    security:
+      sasl: ${KAFKA_SASL:false}
+      tls: ${KAFKA_TLS:true}
+  topics:
+    ticks: market.ticks.v1
+    orderbook: market.orderbook.v1
+    trades: market.trades.v1
+    news_headlines: news.headlines.v1
+    news_signals: news.signals.v1
+    orders: portfolio.orders.v1
+    fills: portfolio.fills.v1
+    positions: portfolio.positions.v1
+    pnl: portfolio.pnl.v1
+    risk_var: risk.var.v1
+    risk_stress: risk.stress.v1
+    audit: audit.events.v1
+
+data_feeds:
+  market:
+    equities:
+      provider: ${EQ_FEED:polygon}   # polygon|alpaca|bpipe|mock
+      api_key: ${EQ_API_KEY:}
+    futures:
+      provider: ${FUT_FEED:cme}
+      creds_ref: secrets/feeds/futures
+    fx:
+      provider: ${FX_FEED:twap}
+      creds_ref: secrets/feeds/fx}
+    crypto:
+      provider: ${CRYPTO_FEED:binance}
+  news:
+    primary: ${NEWS_PRIMARY:reuters}
+    secondary: ${NEWS_SECONDARY:bloomberg}
+    rss:
+      enabled: true
+      urls_file: news/rss_sources.yaml
+
+models:
+  registry: ${MODELS_REGISTRY:registry/models.yaml}
+  nlp:
+    headline_encoder: news-bert-v3
+    sentiment_model: sentiment-fast-v2
+  risk:
+    var:
+      method: HISTORICAL
+      confidence: 0.95
+      horizon_days: 1
+      window_days: 750
+    stress:
+      scenarios_dir: risk/scenarios/
+  execution:
+    venue_router: xrouter-v2
+    slippage_model: impl-shortfall-v1
+    max_order_rate_per_min: 120
+
+strategies:
+  registry_file: strategies/registry.yaml
+  config_dir: strategies/config/
+  genres:
+    - Equity L/S
+    - Stat Arb
+    - Futures Macro
+    - Options Vol
+    - Credit / CDS
+    - FX / Rates
+  defaults:
+    capital_fraction: 0.0025        # 0.25% NAV per strategy unless overridden
+    risk_budget_var_pct_nav: 0.40   # fraction of global VaR allocated
+    news_linkage: true
+  selection:
+    mode: ${STRAT_SELECT:auto}      # auto|manual
+    selector: selector/strategy_selector.py
+  runtime:
+    max_concurrent: 24
+    backtester: engines/backtest_runner.py
+    live_engine: engines/live_engine.py
+
+risk:
+  policies:
+    limits_file: policy/trade_limits.yaml
+    var_schema: schemas/risk/var.avsc
+    stress_schema: schemas/risk/stress.avsc
+  guards:
+    pre_trade: guards/pretrade.py
+    intra_day: guards/intraday.py
+    post_trade: guards/posttrade.py
+  kill_switch:
+    enabled: true
+    triggers:
+      - sev1_incident
+      - var_breach
+      - drawdown_3pct_day
+    action: HALT_NEW_ORDERS
+
+compliance:
+  zero_trust: policy/zero_trust.yaml
+  pii: policy/pii_handling.yaml
+  retention: policy/retention.yaml
+  audit: policy/audit.yaml
+  compliance_core: policy/compliance.yaml
+  trade_limits: policy/trade_limits.yaml
+  evidence_bucket: grc-evidence
+  restricted_list: compliance/restricted.json
+  watchlist: compliance/watchlist.json
+
+api:
+  http:
+    host: 0.0.0.0
+    port: ${API_PORT:8080}
+    request_limit_rps: 50
+  auth:
+    oidc_issuer: ${OIDC_ISSUER:https://idp.local/}
+    audience: ${OIDC_AUD:trading-os}
+    jwks_cache_ttl_sec: 300
+    mfa_required: true
+  rate_limits:
+    default_rps: 10
+    trader_rps: 30
+    admin_rps: 60
+  cors:
+    allowed_origins: ["https://app.yourfund.com"]
+    allowed_headers: ["Authorization","Content-Type"]
+    allowed_methods: ["GET","POST","PUT","DELETE","OPTIONS"]
+
+ui:
+  base_url: ${UI_URL:https://app.yourfund.com}
+  features:
+    show_factor_risk: true
+    show_news_impact: true
+    show_execution_tca: true
+    dark_mode_default: true
+
+telemetry:
+  logging:
+    level: ${LOG_LEVEL:INFO}      # DEBUG|INFO|WARN|ERROR
+    json: true
+  tracing:
+    provider: ${OTEL_PROVIDER:otlp}
+    endpoint: ${OTEL_ENDPOINT:http://otel-collector:4317}
+    sample_ratio: 0.1
+  metrics:
+    provider: prometheus
+    port: 9100
+  audit:
+    topic: audit.events.v1
+    redact_pii: true
+
+scheduler:
+  cron:
+    - id: nightly-var
+      schedule: "0 23 * * MON-FRI"
+      task: risk/jobs/run_var.py
+    - id: nightly-stress
+      schedule: "30 23 * * MON-FRI"
+      task: risk/jobs/run_stress.py
+    - id: eod-pnl
+      schedule: "5 0 * * TUE-SAT"
+      task: pnl/jobs/close_pnl.py
+    - id: news-refresh
+      schedule: "*/10 * * * *"
+      task: news/jobs/pull_and_score.py
+
+execution:
+  ems:
+    gateway_url: ${EMS_URL:https://ems.internal}
+    venues:
+      - NYSE
+      - NASDAQ
+      - CBOE
+      - CME
+      - ICE
+      - EBS
+    throttle:
+      per_trader_per_min: 120
+      global_per_min: 2000
+  order_router:
+    path: execution/order_router.py
+    price_bands_pct: 0.10
+    tif_default: DAY
+  risk_integration:
+    pre_trade_hook: http://risk-guard:8081/check
+    post_trade_hook: http://risk-guard:8081/record
+
+artifacts:
+  paths:
+    logs: ${LOG_DIR:/var/log/hyper}
+    tmp: ${TMP_DIR:/tmp/hyper}
+    runs: runs/
+    models: models/
+    caches: .cache/
+  retention:
+    logs_days: 14
+    runs_days: 30
+    models_days: 365
+
+schemas:
+  root: schemas/
+  avro:
+    - market/tick.avsc
+    - market/orderbook.avsc
+      # add trades/derivatives if used
+    - market/trade.avsc
+    - market/derivatives.avsc
+    - news/headline.avsc
+    - news/signal.avsc
+    - news/source.avsc
+    - portfolio/orders.avsc
+    - portfolio/positions.avsc
+    - portfolio/pnl.avsc
+    - risk/scenario.avsc
+    - risk/stress.avsc
+    - risk/var.avsc
+
+workflows:
+  ingestion:
+    market:
+      tick_topic: market.ticks.v1
+      orderbook_topic: market.orderbook.v1
+      parser: ingestion/parsers/market_parser.py
+    news:
+      headline_topic: news.headlines.v1
+      nlp_pipeline: nlp/pipelines/news_signal.py
+  research:
+    notebooks_dir: research/
+    calibration:
+      mc_engine: research/models/mc.py
+      markov_engine: research/models/markov.py
+      regressors: research/models/regressors.py
+  backtesting:
+    engine: engines/backtest_runner.py
+    default:
+      start: 2018-01-01
+      end: 2025-01-01
+      initial_nav: 10_000_000
+      commission_bps: 0.5
+      borrow_bps: 100
+
+security:
+  zero_trust_enforced: true
+  allow_plain_http: false
+  tls_min_version: "1.2"
+  jwt_exp_minutes: 30
+  mfa_required_roles: [ADMIN, TRADER, OPS]
+  secrets_rotation_days: 90
+
+# Integration points for your policy-as-code (OPA, Terraform guardrails)
+enforcement_hooks:
+  opa:
+    url: ${OPA_URL:http://opa:8181}
+    bundles:
+      - name: zero-trust-core
+        package: policy.zero_trust
+      - name: trading-guards
+        package: policy.trading.guards
+  terraform_guardrails:
+    enabled: true
+  siem:
+    index_prefix: "os"
+    alerts:
+      - id: var_breach
+        severity: CRITICAL
+      - id: drawdown_daily
+        severity: CRITICAL
+      - id: mfa_bypass
+        severity: HIGH

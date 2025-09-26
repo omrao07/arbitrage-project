@@ -1,0 +1,78 @@
+# simulation-farm/config/jobs.yaml
+# Predefined job specs for the Simulation Farm.
+
+backtests:
+  momentum_us_equities:
+    type: backtest
+    strategy: momentum
+    universe: SP500
+    data: "data/sp500_daily.parquet"
+    cash: 1000000
+    params:
+      lookback_days: 90
+      entry_z: 1.5
+      exit_z: 0.5
+    start: "2020-01-01"
+    end: "2023-12-31"
+    output_prefix: runs/momentum_us/
+    runner: local
+
+  pairs_europe:
+    type: backtest
+    strategy: pairs_trading
+    universe: EUROSTOXX50
+    data: "data/eurostoxx50_daily.parquet"
+    cash: 500000
+    params:
+      pairs: [["SAN", "BBVA"], ["AIR", "BA"]]
+      z_entry: 2.0
+      z_exit: 0.5
+    start: "2019-01-01"
+    end: "2023-12-31"
+    output_prefix: runs/pairs_europe/
+    runner: ray
+
+stress_tests:
+  covid_crash:
+    type: stress
+    strategy: portfolio_optimizer
+    data: "data/sp500_daily.parquet"
+    cash: 2000000
+    scenario: "2020-02-15:2020-04-15"
+    shocks:
+      equity_drop: -0.25
+      vol_spike: 2.0
+    output_prefix: runs/stress_covid/
+    runner: local
+
+monte_carlo:
+  risk_mc_us:
+    type: monte_carlo
+    strategy: mean_reversion
+    universe: SP100
+    data: "data/sp100_daily.parquet"
+    cash: 750000
+    params:
+      lookback_days: 60
+      entry_z: 1.0
+      exit_z: 0.3
+    n_paths: 1000
+    horizon_days: 252
+    output_prefix: runs/mc_us/
+    runner: k8s
+
+replays:
+  nasdaq_intraday:
+    type: replay
+    strategy: momentum
+    universe: NASDAQ100
+    data: "data/nasdaq_intraday_2022.parquet"
+    cash: 250000
+    params:
+      window_minutes: 30
+      threshold: 0.8
+    start: "2022-01-01"
+    end: "2022-12-31"
+    speed: 4.0   # 4x real-time
+    output_prefix: runs/replay_nasdaq/
+    runner: local

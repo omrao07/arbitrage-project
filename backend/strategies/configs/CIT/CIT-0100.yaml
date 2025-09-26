@@ -1,0 +1,18 @@
+id: CIT-0100
+firm: Citadel
+name: Ensemble ML Residual Alpha #100
+description: Commodity curve relative value.
+discipline: Equities
+family: Stat-Arb
+region: Global
+horizon: Intraday
+status: research
+engine: equity_ls
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

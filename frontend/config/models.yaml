@@ -1,0 +1,107 @@
+# ===============================
+# Global model registry
+# ===============================
+
+# Fundamental valuation models
+fundamental:
+  damodaran_dcf:
+    type: dcf
+    description: >
+      Discounted Cash Flow model using Damodaran-style assumptions
+      (risk-free rate, ERP, terminal growth).
+    parameters:
+      risk_free_rate: 0.04
+      equity_risk_premium: 0.05
+      terminal_growth: 0.02
+  regression_factors:
+    type: regression
+    description: >
+      Multi-factor regression using valuation & macro ratios.
+    factors:
+      - pe_ratio
+      - pb_ratio
+      - roe
+      - ev_ebitda
+      - gdp_growth
+
+# Monte Carlo & scenario analysis
+simulation:
+  montecarlo_intrinsic:
+    type: montecarlo
+    description: >
+      Simulates intrinsic value distributions from random draws of discount rate & growth.
+    parameters:
+      runs: 5000
+      discount_rate_mean: 0.09
+      discount_rate_std: 0.02
+      growth_rate_mean: 0.03
+      growth_rate_std: 0.01
+  scenario_shocks:
+    type: scenario
+    description: >
+      Shock GDP, inflation, and commodity prices to stress valuation models.
+    shocks:
+      gdp: [-2%, +2%]
+      inflation: [1%, 5%]
+      oil_price: [50, 120]
+
+# Machine learning / ML alpha
+ml:
+  random_forest_alpha:
+    type: sklearn_random_forest
+    description: >
+      Predicts next-day return buckets using rolling factors.
+    parameters:
+      n_estimators: 500
+      max_depth: 6
+      min_samples_leaf: 20
+  xgboost_macro:
+    type: xgboost
+    description: >
+      Gradient boosted model trained on macro & cross-asset features.
+    parameters:
+      max_depth: 5
+      learning_rate: 0.05
+      n_estimators: 1000
+
+# Reinforcement learning strategy selector
+rl:
+  bandit_selector:
+    type: contextual_bandit
+    description: >
+      Multi-armed bandit choosing between strategy families
+      based on rolling Sharpe & drawdown stats.
+    parameters:
+      exploration: 0.1
+      window_days: 60
+  deep_q_executor:
+    type: deep_q
+    description: >
+      Reinforcement learning agent that optimizes order execution
+      (splitting, timing, dark pool routing).
+    parameters:
+      state_dim: 20
+      action_dim: 5
+      hidden_layers: [128, 64]
+      gamma: 0.95
+      epsilon_start: 1.0
+      epsilon_min: 0.05
+      epsilon_decay: 0.995
+
+# NLP / sentiment
+nlp:
+  news_sentiment:
+    type: transformer
+    description: >
+      Transformer model scoring sentiment from financial news
+      (positive, negative, neutral with intensity).
+    provider: finbert
+    parameters:
+      max_length: 512
+  earnings_transcripts:
+    type: llm_embedding
+    description: >
+      Embedding model applied to earnings transcripts for forward sentiment.
+    provider: openai
+    parameters:
+      model: text-embedding-ada-002

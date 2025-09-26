@@ -1,0 +1,319 @@
+apiVersion: v1
+kind: TradeLimitsPolicy
+metadata:
+  name: trading-os-trade-limits
+  version: 1.0.0
+  owners:
+    - role: CRO
+      contact: risk@yourfund.com
+    - role: CCO
+      contact: compliance@yourfund.com
+labels:
+  environment: prod
+  scope: pre-trade+intra-day+post-trade
+
+# === Global switches & references ===
+references:
+  restricted_list_file: "compliance/restricted.json"
+  watchlist_file: "compliance/watchlist.json"
+  short_locate_feed: "brokers/locate_availability.json"
+  sanctioned_entities_file: "compliance/sanctions.json"
+  concentration_benchmarks: "risk/benchmarks.json"  # e.g., sector weights
+  liquidity_curves: "risk/liquidity_curves.json"    # ADV/day buckets
+  factor_exposures_limits: "risk/factor_limits.json"
+  circuit_breakers: "risk/circuit_breakers.json"
+
+switches:
+  hard_kill_switch: true              # If true, reject all new orders
+  allow_test_mode_in_prod: false      # block test flags in prod
+  allow_unapproved_venues: false
+  enforce_mifid_best_exec: true
+
+# === Roles & applicability ===
+roles:
+  ADMIN:
+    bypass_non_regulatory: false      # Admins still obey regulatory blocks
+  TRADER:
+    can_short: true
+    can_use_leverage: true
+  QUANT:
+    can_short: false
+    can_use_leverage: false
+  OPS:
+    can_short: false
+    can_use_leverage: false
+  VIEWER:
+    trade_allowed: false
+
+# === Universal pre-trade checks (apply to all orders) ===
+pre_trade:
+  validations:
+    - id: restricted-security
+      description: "Reject if instrument on restricted/sanctions list"
+      type: LIST_BLOCK
+      params:
+        lists: ["${references.restricted_list_file}", "${references.sanctioned_entities_file}"]
+      action: REJECT
+      severity: CRITICAL
+
+    - id: watchlist-warning
+      description: "Warn & require justification for watchlist names"
+      type: LIST_WARN
+      params:
+        list: "${references.watchlist_file}"
+      action: REQUIRE_JUSTIFICATION
+      severity: MAJOR
+
+    - id: max_order_notional_pct_nav
+      description: "Cap single order notional vs NAV"
+      type: THRESHOLD
+      params:
+        metric: "order_notional_pct_nav"
+        max: 0.05                    # 5% of current portfolio NAV
+      action: REJECT
+      severity: CRITICAL
+
+    - id: position_limit_pct_nav
+      description: "Cap single-name exposure vs NAV (post-trade)"
+      type: THRESHOLD
+      params:
+        metric: "post_trade_single_name_pct_nav"
+        max: 0.10                    # 10% NAV per name
+      action: REJECT
+      severity: CRITICAL
+
+    - id: gross_exposure_limit
+      description: "Cap gross exposure (long+short) vs NAV"
+      type: THRESHOLD
+      params:
+        metric: "post_trade_gross_exposure_pct_nav"
+        max: 2.5                      # 250% NAV
+      action: REJECT
+      severity: CRITICAL
+
+    - id: net_exposure_limit
+      description: "Cap net exposure vs NAV"
+      type: THRESHOLD
+      params:
+        metric: "post_trade_net_exposure_pct_nav"
+        range: [-1.0, 1.0]            # -100% to +100%
+      action: REJECT
+      severity: CRITICAL
+
+    - id: var_limit
+      description: "Projected VaR at 95% must be below limit"
+      type: THRESHOLD
+      params:
+        metric: "post_trade_var_95_pct_nav"
+        max: 0.04                     # 4% NAV 1-day VaR
+      action: REJECT
+      severity: CRITICAL
+
+    - id: drawdown_guard_daily
+      description: "Block new risk if daily drawdown breached"
+      type: THRESHOLD
+      params:
+        metric: "todays_drawdown_pct_nav"
+        max: 0.03
+      action: REQUIRE_APPROVAL        # CRO + CCO
+      severity: CRITICAL
+      approvals: [CRO, CCO]
+
+    - id: liquidity_impact
+      description: "Limit order size vs ADV and participation rate"
+      type: LIQUIDITY_CHECK
+      params:
+        max_participation_pct: 0.15   # max 15% of ADV per day
+        max_daily_turnover_pct_nav: 0.30
+        curves_file: "${references.liquidity_curves}"
+      action: REJECT
+      severity: MAJOR
+
+    - id: short_locate_required
+      description: "Short sales require locate availability"
+      type: SHORT_LOCATE
+      params:
+        feed: "${references.short_locate_feed}"
+        allow_hard_to_borrow: false
+      scope:
+        sides: [SELL_SHORT]
+      action: REJECT
+      severity: CRITICAL
+
+    - id: price_bands
+      description: "Reject fat-finger prices outside % bands"
+      type: PRICE_BAND
+      params:
+        reference: MIDPOINT           # NBBO mid, mark, or last
+        relative_pct: 0.10            # +/-10%
+      action: REJECT
+      severity: MAJOR
+
+    - id: throttle_per_trader
+      description: "Rate-limit burst orders"
+      type: THROTTLE
+      params:
+        window_sec: 60
+        max_orders: 120
+      action: QUEUE                   # queue or reject
+      severity: MINOR
+
+    - id: venue_whitelist
+      description: "Only approved venues are allowed"
+      type: VENUE_FILTER
+      params:
+        allowed: ["NYSE","NASDAQ","CBOE","CME","ICE","EBS","LSE"]
+      action: REJECT
+      severity: CRITICAL
+
+# === Asset-class specific add-ons ===
+asset_class_overrides:
+  EQUITY:
+    extra_checks:
+      - id: ipo_lockup
+        type: CALENDAR_BLOCK
+        description: "Block trading during IPO lockup restricted windows"
+        params:
+          calendar: "compliance/ipo_lockups.json"
+        action: REQUIRE_APPROVAL
+        severity: MAJOR
+        approvals: [CCO]
+  FUTURES:
+    extra_checks:
+      - id: position_limits_exchange
+        type: EXCHANGE_LIMITS
+        description: "Honor exchange position limits & spot month caps"
+        params:
+          feed: "exchanges/position_limits.json"
+        action: REJECT
+        severity: CRITICAL
+  OPTIONS:
+    extra_checks:
+      - id: hard_delta_notional
+        type: THRESHOLD
+        description: "Cap delta-notional exposure"
+        params:
+          metric: "post_trade_delta_notional_pct_nav"
+          max: 1.0                     # 100% NAV
+        action: REJECT
+        severity: CRITICAL
+      - id: skew_tail_hedge_budget
+        type: THRESHOLD
+        description: "Budget for tail hedges vs NAV"
+        params:
+          metric: "premium_spend_rolling_30d_pct_nav"
+          max: 0.02
+        action: REQUIRE_APPROVAL
+        approvals: [CRO]
+        severity: MAJOR
+  CREDIT:
+    extra_checks:
+      - id: single_issuer_limit
+        type: THRESHOLD
+        description: "Single issuer notional cap"
+        params:
+          metric: "post_trade_issuer_notional_pct_nav"
+          max: 0.07
+        action: REJECT
+        severity: CRITICAL
+      - id: rating_floor
+        type: LIST_BLOCK
+        description: "Block purchases below rating floor unless approved"
+        params:
+          list: "credit/rating_floor.json"    # e.g., below B-
+        action: REQUIRE_APPROVAL
+        approvals: [CRO, CCO]
+        severity: MAJOR
+  FX:
+    extra_checks:
+      - id: settlement_risk
+        type: THRESHOLD
+        description: "Herstatt-settlement window cap by ccy pair"
+        params:
+          metric: "settlement_notional_pct_nav"
+          max: 0.50
+        action: REJECT
+        severity: MAJOR
+
+# === Portfolio-level guardrails ===
+portfolio_overrides:
+  default:
+    limits:
+      country_concentration_pct_nav_max: 0.35
+      sector_concentration_pct_nav_max: 0.30
+      single_name_pct_nav_max: 0.10
+      factor_exposure_max:
+        file: "${references.factor_exposures_limits}"  # e.g., |beta|<=0.6, |value|<=1.0
+    actions:
+      on_breach: REJECT
+      escalation: [DeskHead, RiskOnCall]
+  special_situations:
+    inherit: default
+    limits:
+      single_name_pct_nav_max: 0.15
+    actions:
+      on_breach: REQUIRE_APPROVAL
+      approvals: [CRO, CIO]
+
+# === Intraday dynamic limits (auto-tighten on volatility/liquidity) ===
+dynamic_adjustments:
+  volatility:
+    metric: "realized_vol_30m_vs_20d"
+    thresholds:
+      - if: "ratio >= 2.0"
+        tighten:
+          price_band_relative_pct: 0.05
+          max_participation_pct: 0.08
+          var_95_pct_nav_max: 0.03
+  liquidity_shock:
+    metric: "adv_drop_vs_20d"
+    thresholds:
+      - if: "drop_pct >= 0.5"
+        tighten:
+          max_participation_pct: 0.07
+          order_notional_pct_nav_max: 0.03
+
+# === Post-trade surveillance hooks (policy-level toggles) ===
+post_trade:
+  tca_required: true
+  spoofing_layering_rules: true
+  wash_trade_detection: true
+  off_hours_trade_review: true
+  large_trades_manual_review_notional_usd: 5_000_000
+
+# === Escalation & exceptions ===
+escalation_matrix:
+  REJECT: []
+  REQUIRE_JUSTIFICATION: [DeskHead]
+  REQUIRE_APPROVAL:
+    default: [CRO]
+    per_check:
+      drawdown_guard_daily: [CRO, CCO]
+      ipo_lockup: [CCO]
+      skew_tail_hedge_budget: [CRO]
+
+exceptions:
+  process:
+    request_form: "grc/exception-request.md"
+    max_days: 30
+    compensating_controls_required: true
+  registry_bucket: "grc-exceptions"
+  audit_log_required: true
+
+# === Enforcement wiring (so this policy is live, not shelfware) ===
+enforcement_hooks:
+  opa:
+    bundles:
+      - name: trading-guards
+        url: "oci://registry.example.com/opa/trading-guards:1.3.0"
+        package: "policy.trading.guards"
+  ems_gateway:
+    reject_http_status: 409
+    reason_field: "reject_reason"
+  siem:
+    index_prefix: "trade-limits"
+    alert_on: [REJECT, REQUIRE_APPROVAL]
+  telemetry:
+    emit_metrics: true
+    metrics_namespace: "risk.trade_limits"
+    dimensions: [portfolio_id, strategy_tag, asset_class, venue, trader]

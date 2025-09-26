@@ -1,0 +1,50 @@
+import pandas as pd
+from datetime import date
+import os
+
+OUT_PATH = "data/fx/usd_index.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def init_usd_index(seed: bool = True) -> pd.DataFrame:
+    """
+    Create usd_index.csv with schema: date, index_name, value, yoy_change, mtd_change, basket_desc, notes
+    """
+    ensure_dirs(OUT_PATH)
+    cols = ["date","index_name","value","yoy_change","mtd_change","basket_desc","notes"]
+
+    if not seed:
+        df = pd.DataFrame(columns=cols)
+        df.to_csv(OUT_PATH, index=False)
+        return df
+
+    today = str(date.today())
+    rows = [
+        ("2025-01-02","DXY",102.5,0.02,0.01,"57.6% EUR, 13.6% JPY, 11.9% GBP, others","ICE US Dollar Index"),
+        ("2025-01-02","Broad",118.0,0.03,0.01,"Fed Broad Dollar Index (trade-weighted)","Fed TWI"),
+        ("2025-01-02","EM FX",92.4,-0.05,-0.01,"USD vs weighted EM basket (BRL, MXN, INR)","Custom EM-focused index"),
+        (today,"DXY",None,None,None,"57.6% EUR, 13.6% JPY, 11.9% GBP, others","Placeholder for update"),
+    ]
+    df = pd.DataFrame(rows, columns=cols)
+    df.to_csv(OUT_PATH, index=False)
+    return df
+
+# ---------- Analytics helpers ----------
+
+def load_usd_index(path: str = OUT_PATH) -> pd.DataFrame:
+    df = pd.read_csv(path)
+    df["date"] = pd.to_datetime(df["date"])
+    return df
+
+def compute_returns(df: pd.DataFrame, index_name: str = "DXY") -> pd.DataFrame:
+    d = df[df["index_name"] == index_name].sort_values("date")
+    d["ret_1d"] = d["value"].pct_change()
+    return d
+
+if __name__ == "__main__":
+    df = init_usd_index(seed=True)
+    print(f"✅ usd_index.csv written to {OUT_PATH} with {len(df)} rows")
+    # Example usage:
+    # dxy = compute_returns(load_usd_index(), "DXY")
+    # print(dxy.tail())

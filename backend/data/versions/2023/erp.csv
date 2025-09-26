@@ -1,0 +1,29 @@
+import pandas as pd
+from datetime import date
+
+def build_erp(as_of: str = None):
+    if as_of is None:
+        as_of = str(date.today())
+
+    rows = [
+        ("United States","North Am",as_of,0.052,0.048,0.037,"AAA","Baseline ERP"),
+        ("Germany","Europe",as_of,0.050,0.047,0.025,"AAA","Eurozone anchor"),
+        ("UK","Europe",as_of,0.053,0.049,0.030,"AA","Brexit adjustments"),
+        ("India","Emerging",as_of,0.072,0.058,0.065,"BBB-","Higher CRP added"),
+        ("China","Emerging",as_of,0.068,0.055,0.030,"A","ERP with political risk adj."),
+        ("Brazil","Emerging",as_of,0.080,0.060,0.070,"BB+","ERP incl. country risk premia"),
+        ("Nigeria","Frontier",as_of,0.110,0.070,0.100,"B","Oil exposure + high inflation"),
+    ]
+
+    df = pd.DataFrame(rows, columns=[
+        "country","region","as_of",
+        "implied_erp","historical_erp","rf_rate",
+        "sovereign_rating","notes"
+    ])
+    return df
+
+if __name__ == "__main__":
+    df = build_erp()
+    out_path = "data/adamodar/curated/erp.csv"
+    df.to_csv(out_path, index=False)
+    print(f"✅ erp.csv written to {out_path}")

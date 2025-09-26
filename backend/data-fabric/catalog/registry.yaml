@@ -1,0 +1,153 @@
+# catalog/registry.yaml
+# Master registry of datasets in the Hyper-OS Lakehouse
+
+version: 1
+last_updated: 2025-09-15
+
+datasets:
+
+  # ================= EQUITIES =================
+  equities_prices:
+    description: "Equities OHLCV price history (bars, ticks)"
+    source: ["polygon", "yahoo"]
+    schema: lakehouse.sql:equities_prices
+    storage:
+      format: parquet
+      path: s3://hyper-lakehouse/equities/prices/
+      partitioned_by: ["date(ts)"]
+    refresh: daily
+    owners: ["quant-team", "data-eng"]
+
+  equities_factors:
+    description: "Equity factor exposures (momentum, quality, value)"
+    source: ["internal models"]
+    schema: lakehouse.sql:equities_factors
+    storage:
+      format: parquet
+      path: s3://hyper-lakehouse/equities/factors/
+      partitioned_by: ["ts"]
+    refresh: daily
+    owners: ["quant-research"]
+
+  equities_fundamentals:
+    description: "Equity fundamentals (ROE, EPS, balance sheet items)"
+    source: ["sec-edgar", "refinitiv", "polygon"]
+    schema: lakehouse.sql:equities_fundamentals
+    storage:
+      format: parquet
+      path: s3://hyper-lakehouse/equities/fundamentals/
+      partitioned_by: ["ts"]
+    refresh: quarterly
+    owners: ["fundamental-team"]
+
+  # ================= FX =================
+  fx_rates:
+    description: "FX spot and cross rates"
+    source: ["yahoo", "oanda"]
+    schema: lakehouse.sql:fx_rates
+    storage:
+      format: parquet
+      path: s3://hyper-lakehouse/fx/rates/
+      partitioned_by: ["date(ts)"]
+    refresh: intraday
+    owners: ["fx-desk"]
+
+  fx_vol_surface:
+    description: "Implied vol surface for FX options"
+    source: ["bloomberg", "reuters"]
+    schema: lakehouse.sql:fx_vol_surface
+    storage:
+      format: parquet
+      path: s3://hyper-lakehouse/fx/vol_surface/
+      partitioned_by: ["ts"]
+    refresh: daily
+    owners: ["fx-quant"]
+
+  # ================= MACRO =================
+  macro_series:
+    description: "Macro-economic time-series (FRED, WorldBank, IMF)"
+    source: ["fred", "worldbank", "imf"]
+    schema: lakehouse.sql:macro_series
+    storage:
+      format: parquet
+      path: s3://hyper-lakehouse/macro/series/
+      partitioned_by: ["ts", "source"]
+    refresh: monthly
+    owners: ["macro-research"]
+
+  # ================= NEWS =================
+  news_feed:
+    description: "News headlines and body text with sentiment + tags"
+    source: ["bloomberg", "reuters", "rss"]
+    schema: lakehouse.sql:news_feed
+    storage:
+      format: parquet
+      path: s3://hyper-lakehouse/news/feed/
+      partitioned_by: ["date(ts)", "source"]
+    refresh: realtime
+    owners: ["news-analytics"]
+
+  # ================= PORTFOLIO =================
+  portfolio_positions:
+    description: "Portfolio positions by account and ticker"
+    source: ["execution-engine"]
+    schema: lakehouse.sql:portfolio_positions
+    storage:
+      format: parquet
+      path: s3://hyper-lakehouse/portfolio/positions/
+      partitioned_by: ["date(ts)"]
+    refresh: intraday
+    owners: ["risk-team", "pm-desk"]
+
+  portfolio_pnl:
+    description: "Portfolio realized/unrealized PnL"
+    source: ["execution-engine"]
+    schema: lakehouse.sql:portfolio_pnl
+    storage:
+      format: parquet
+      path: s3://hyper-lakehouse/portfolio/pnl/
+      partitioned_by: ["date(ts)"]
+    refresh: intraday
+    owners: ["risk-team"]
+
+  portfolio_orders:
+    description: "Execution orders (live + historical)"
+    source: ["execution-engine"]
+    schema: lakehouse.sql:portfolio_orders
+    storage:
+      format: parquet
+      path: s3://hyper-lakehouse/portfolio/orders/
+      partitioned_by: ["date(ts)"]
+    refresh: realtime
+    owners: ["execution-desk"]
+
+  # ================= RISK =================
+  risk_scenarios:
+    description: "Risk scenario shocks and estimated PnL impact"
+    source: ["risk-engine"]
+    schema: lakehouse.sql:risk_scenarios
+    storage:
+      format: parquet
+      path: s3://hyper-lakehouse/risk/scenarios/
+    refresh: daily
+    owners: ["risk-team"]
+
+  risk_var:
+    description: "Value-at-Risk (VaR) metrics (95/99/confidence)"
+    source: ["risk-engine"]
+    schema: lakehouse.sql:risk_var
+    storage:
+      format: parquet
+      path: s3://hyper-lakehouse/risk/var/
+    refresh: daily
+    owners: ["risk-team"]
+
+  policy_audit:
+    description: "Audit log for compliance + security"
+    source: ["policy-engine"]
+    schema: lakehouse.sql:policy_audit
+    storage:
+      format: parquet
+      path: s3://hyper-lakehouse/policy/audit/
+    refresh: realtime
+    owners: ["compliance"]

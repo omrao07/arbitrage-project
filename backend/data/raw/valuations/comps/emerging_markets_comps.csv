@@ -1,0 +1,50 @@
+import os
+import pandas as pd
+
+OUT_PATH = "data/adamodar/curated/emerging_market_comps.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def seed_em_comps() -> pd.DataFrame:
+    rows = [
+        ("India","Emerging Asia","2023-01-01",3.2e12,1.5e12,0.16e12,3.4e12,0.40e12,20.0,2.13,8.5,3.5,0.16,0.09,"Strong growth + tech"),
+        ("India","Emerging Asia","2024-01-01",3.5e12,1.62e12,0.175e12,3.7e12,0.43e12,20.0,2.16,8.6,3.6,0.17,0.10,"Consumption boost"),
+        ("Brazil","LatAm","2023-01-01",1.2e12,0.8e12,0.085e12,1.3e12,0.18e12,14.1,1.50,7.2,2.1,0.12,0.07,"Commodity exposure"),
+        ("Brazil","LatAm","2024-01-01",1.3e12,0.85e12,0.088e12,1.4e12,0.19e12,14.8,1.53,7.4,2.2,0.12,0.07,"FX stable"),
+        ("China","Emerging Asia","2023-01-01",6.5e12,4.1e12,0.38e12,7.2e12,0.80e12,17.1,1.59,9.0,1.9,0.11,0.06,"Policy headwinds"),
+        ("China","Emerging Asia","2024-01-01",6.7e12,4.25e12,0.395e12,7.4e12,0.83e12,17.0,1.58,8.9,1.8,0.11,0.06,"Stabilization signs"),
+        ("South Africa","EMEA","2023-01-01",0.9e12,0.52e12,0.05e12,1.0e12,0.14e12,18.0,1.73,7.1,1.6,0.10,0.05,"Load-shedding drag"),
+        ("South Africa","EMEA","2024-01-01",0.95e12,0.55e12,0.052e12,1.06e12,0.145e12,18.3,1.73,7.3,1.7,0.10,0.05,"Stabilizing utilities"),
+    ]
+    return pd.DataFrame(rows, columns=[
+        "country","region","as_of","market_cap_usd","revenue_usd","net_income_usd","ev_usd","ebitda_usd",
+        "pe_ratio","psales_ratio","ev_ebitda","pb_ratio","roe","roa","notes"
+    ])
+
+def compute_multiples(df: pd.DataFrame) -> pd.DataFrame:
+    d = df.copy()
+    d["as_of"] = pd.to_datetime(d["as_of"])
+    d.sort_values(["country","as_of"], inplace=True)
+
+    # recompute valuation ratios
+    d["pe_ratio"] = d["market_cap_usd"] / d["net_income_usd"]
+    d["psales_ratio"] = d["market_cap_usd"] / d["revenue_usd"]
+    d["ev_ebitda"] = d["ev_usd"] / d["ebitda_usd"]
+    d["pb_ratio"] = d["market_cap_usd"] / (d["market_cap_usd"] / d["roe"].replace(0, pd.NA)) # fallback
+
+    # recompute profitability
+    d["roe"] = d["net_income_usd"] / (d["market_cap_usd"] / d["pb_ratio"])
+    d["roa"] = d["net_income_usd"] / (d["ev_usd"])  # rough proxy if asset data missing
+
+    return d
+
+def write_csv(df: pd.DataFrame, path: str = OUT_PATH):
+    ensure_dirs(path)
+    df.to_csv(path, index=False)
+
+if __name__ == "__main__":
+    df = seed_em_comps()
+    df = compute_multiples(df)
+    write_csv(df)
+    print(f"✅ emerging_market_comps.csv written to {OUT_PATH} with {len(df)} rows")

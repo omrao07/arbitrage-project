@@ -1,0 +1,53 @@
+# selector/config.yaml
+# -------------------------------------------------------------------
+# Configuration for Strategy Selector & A/B Testing
+# -------------------------------------------------------------------
+# This file controls how multiple strategies or agents are routed,
+# compared, and evaluated inside strategy-lab/selector.
+# -------------------------------------------------------------------
+
+ab_tests:
+  enabled: true
+  cadence_sec: 60            # how often to trigger rebalance across arms
+  router: hash               # hash | egreedy
+  arms: ["A", "B"]           # labels for experimental arms
+  hash_split:
+    shares:                  # optional weightings for hash split
+      A: 0.5
+      B: 0.5
+  egreedy:
+    eps: 0.1                 # exploration probability
+    decay: 0.1               # learning rate for value updates
+
+evaluation:
+  metrics:
+    - realized_cashflow      # cashflow approximation of realized PnL
+    - trades
+    - win_rate
+    - sharpe                 # computed externally from MonitoringAgent
+  report_interval_sec: 300   # how often to dump snapshots
+  output_format: jsonl       # jsonl | csv
+  output_path: ./logs/ab_reports.jsonl
+
+routing:
+  default_owner: A           # fallback if router can’t decide
+  min_trade_notional: 50.0   # enforce same cutoff as ExecutionAgent
+  eligible_symbols:          # restrict routing universe (optional)
+    - AAPL
+    - MSFT
+    - AMZN
+    - TSLA
+
+alerts:
+  enable: true
+  warn_on_zero_trades: true
+  drawdown_threshold: -0.05   # -5% for arm-specific equity if tracked
+  leverage_threshold: 5.0
+
+# -------------------------------------------------------------------
+# Notes:
+# - A/B runner reads this file to set up router + cadence.
+# - You can override values via CLI or env at runtime.
+# - Metrics beyond realized_cashflow/trades/win_rate can be added
+#   by wiring to MonitoringAgent or ResearchAgent outputs.
+# -------------------------------------------------------------------

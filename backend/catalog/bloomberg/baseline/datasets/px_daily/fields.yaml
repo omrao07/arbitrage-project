@@ -1,0 +1,297 @@
+# px_daily/fields.yaml
+# Canonical field definitions, groups, aliases, and examples for end-of-day prices.
+# Conventions:
+# - Returns are FRACTIONS (e.g., 1% => 0.01).
+# - Monetary values are in issuer quote currency (`currency`).
+
+version: 1
+
+# ---------------------------------------------------------------------------
+# FIELD DEFINITIONS (vendor-agnostic, normalized names)
+# ---------------------------------------------------------------------------
+fields:
+
+  # --- Keys / time ---
+  dt:
+    type: date
+    quality: [not_null, no_future_date]
+    desc: "Business date (UTC)."
+
+  ticker:
+    type: string
+    desc: "Internal canonical symbol."
+
+  currency:
+    type: string
+    nullable: true
+    desc: "ISO 4217 reporting/quote currency."
+
+  # --- Raw OHLCV (unadjusted) ---
+  px_open:
+    type: float64
+    quality: [non_negative]
+    desc: "Open price (official vendor open)."
+
+  px_high:
+    type: float64
+    quality: [non_negative]
+    desc: "High price."
+
+  px_low:
+    type: float64
+    quality: [non_negative]
+    desc: "Low price."
+
+  px_close:
+    type: float64
+    quality: [non_negative]
+    desc: "Official close."
+
+  px_last:
+    type: float64
+    nullable: true
+    quality: [non_negative]
+    desc: "Vendor last if distinct from close."
+
+  vwap:
+    type: float64
+    nullable: true
+    quality: [non_negative]
+    desc: "Volume-weighted average price."
+
+  volume:
+    type: float64
+    unit: shares
+    quality: [non_negative]
+    desc: "Traded volume (shares)."
+
+  turnover:
+    type: float64
+    unit: USD
+    nullable: true
+    quality: [non_negative]
+    desc: "Price * Volume in quote currency (if vendor provides)."
+
+  # --- Corporate actions context (raw/unadjusted) ---
+  split_ratio:
+    type: float64
+    nullable: true
+    quality: [non_negative]
+    desc: "Shares-after / shares-before (e.g., 2.0 for 2-for-1)."
+
+  dividend_amt:
+    type: float64
+    unit: USD
+    nullable: true
+    desc: "Cash dividend per share on ex-date."
+
+  # --- Convenience (optional) ---
+  shares_out:
+    type: float64
+    unit: shares
+    nullable: true
+    quality: [non_negative]
+    desc: "Shares outstanding (weighted/diluted if specified)."
+
+  marketcap:
+    type: float64
+    unit: USD
+    nullable: true
+    quality: [non_negative]
+    desc: "px_close * shares_out when both present."
+
+  # --- Raw/simple return (unadjusted) ---
+  ret_1d_raw:
+    type: float64
+    unit: pct
+    nullable: true
+    desc: "px_close / lag(px_close) - 1 (no CA adjustment)."
+
+  # --- Adjustment factors (cumulative to 'current') ---
+  adj_factor_split:
+    type: float64
+    quality: [non_negative]
+    desc: "Cumulative split factor."
+
+  adj_factor_div:
+    type: float64
+    quality: [non_negative]
+    desc: "Cumulative cash dividend factor."
+
+  adj_factor_total:
+    type: float64
+    quality: [non_negative]
+    desc: "adj_factor_split * adj_factor_div."
+
+  # --- Adjusted OHLCV (split & cash dividends back-adjusted) ---
+  px_open_adj:
+    type: float64
+    quality: [non_negative]
+    desc: "Adjusted open."
+
+  px_high_adj:
+    type: float64
+    quality: [non_negative]
+    desc: "Adjusted high."
+
+  px_low_adj:
+    type: float64
+    quality: [non_negative]
+    desc: "Adjusted low."
+
+  px_close_adj:
+    type: float64
+    quality: [non_negative]
+    desc: "Adjusted close."
+
+  vwap_adj:
+    type: float64
+    nullable: true
+    quality: [non_negative]
+    desc: "Adjusted VWAP (if computed)."
+
+  volume_adj:
+    type: float64
+    unit: shares
+    quality: [non_negative]
+    desc: "Volume adjusted for splits."
+
+  # --- Adjusted returns ---
+  ret_1d:
+    type: float64
+    unit: pct
+    desc: "Clean 1-day total return (adjusted)."
+
+  ret_1d_px:
+    type: float64
+    unit: pct
+    nullable: true
+    desc: "Price-only (ex-div) 1-day return."
+
+  # --- Diagnostics ---
+  source_px_close:
+    type: string
+    nullable: true
+    desc: "Chosen vendor for close: blp|koyfin|blend."
+
+  method:
+    type: string
+    nullable: true
+    desc: "Normalization/version id for internal tables."
+
+# ---------------------------------------------------------------------------
+# GROUPS
+# ---------------------------------------------------------------------------
+groups:
+  ohlcv_raw:
+    fields: [dt, ticker, currency, px_open, px_high, px_low, px_close, px_last, vwap, volume, turnover]
+    quality: [non_negative]
+
+  ca_context:
+    fields: [dt, ticker, split_ratio, dividend_amt]
+
+  convenience:
+    fields: [dt, ticker, shares_out, marketcap]
+
+  returns_raw:
+    fields: [dt, ticker, ret_1d_raw]
+
+  adjusted_series:
+    fields: [dt, ticker, currency, adj_factor_split, adj_factor_div, adj_factor_total,
+             px_open_adj, px_high_adj, px_low_adj, px_close_adj, vwap_adj, volume_adj]
+
+  returns_adjusted:
+    fields: [dt, ticker, ret_1d, ret_1d_px]
+
+  diagnostics:
+    fields: [dt, ticker, source_px_close, method]
+
+# ---------------------------------------------------------------------------
+# ALIASES (vendor mnemonics → canonical)
+# ---------------------------------------------------------------------------
+aliases:
+  # Bloomberg core
+  PX_OPEN: px_open
+  PX_HIGH: px_high
+  PX_LOW: px_low
+  PX_LAST: px_last
+  PX_CLOSE: px_close
+  VWAP: vwap
+  VOLUME: volume
+  CRNCY: currency
+  EQY_FUND_CRNCY: currency
+  EQY_SH_OUT: shares_out
+  DVD_AMT: dividend_amt
+  DVD_AMOUNT: dividend_amt
+  EQY_DVD_AMOUNT: dividend_amt
+  SPLIT_RATIO: split_ratio
+  EQY_SPLIT_RATIO: split_ratio
+  MARKET_CAP: marketcap
+  CUR_MKT_CAP: marketcap
+
+  # Koyfin / generic
+  CLOSE: px_close
+  OPEN: px_open
+  HIGH: px_high
+  LOW: px_low
+  VOL: volume
+  VWAP_PRICE: vwap
+  CURRENCY: currency
+  SHARES_OUT: shares_out
+  DIVIDEND: dividend_amt
+
+  # Internal/derived convenience
+  ADJ_FACTOR_SPLIT: adj_factor_split
+  ADJ_FACTOR_DIV: adj_factor_div
+  ADJ_FACTOR_TOTAL: adj_factor_total
+  PX_OPEN_ADJ: px_open_adj
+  PX_HIGH_ADJ: px_high_adj
+  PX_LOW_ADJ: px_low_adj
+  PX_CLOSE_ADJ: px_close_adj
+  VWAP_ADJ: vwap_adj
+  VOLUME_ADJ: volume_adj
+  RET_1D: ret_1d
+  RET_1D_PX: ret_1d_px
+  RET_1D_RAW: ret_1d_raw
+  SOURCE_PX_CLOSE: source_px_close
+  METHOD: method
+
+# ---------------------------------------------------------------------------
+# EXAMPLES
+# ---------------------------------------------------------------------------
+examples:
+
+  raw_row:
+    dt: "2025-01-03"
+    ticker: "AAPL"
+    currency: "USD"
+    px_open: 189.20
+    px_high: 191.05
+    px_low: 188.90
+    px_close: 190.42
+    px_last: 190.45
+    vwap: 190.02
+    volume: 61234567
+    split_ratio: null
+    dividend_amt: 0.24
+    shares_out: 15500000000
+    marketcap: 2950000000000
+    ret_1d_raw: 0.0048
+
+  normalized_row:
+    dt: "2025-01-03"
+    ticker: "AAPL"
+    currency: "USD"
+    adj_factor_split: 1.0
+    adj_factor_div: 1.002
+    adj_factor_total: 1.002
+    px_open_adj: 188.82
+    px_high_adj: 190.66
+    px_low_adj: 188.51
+    px_close_adj: 190.03
+    vwap_adj: 189.64
+    volume_adj: 61234567
+    ret_1d: 0.0051
+    ret_1d_px: 0.0039
+    source_px_close: "blend"
+    method: "ca_adjust_v1"

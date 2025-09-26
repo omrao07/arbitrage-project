@@ -1,0 +1,18 @@
+id: GLB-0092
+firm: Global
+name: EU Banking vs Industrials Rotation (CN)
+description: Worldwide diversified strategy in Commodities & Curves — region: CN.
+discipline: Macro
+family: Commodities & Curves
+region: CN
+horizon: Macro
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

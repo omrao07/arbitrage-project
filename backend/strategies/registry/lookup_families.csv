@@ -1,0 +1,48 @@
+discipline_id,family_id,family_name,description,default_engine
+EQ,FACTOR,Factors & RV,Cross-sectional value, momentum, quality, low-volatility, and dispersion,equity_ls
+EQ,EVENT,Event-Driven,IPO lockups, spin-offs, earnings drift, corporate actions,equity_ls
+EQ,SECTOR,Sector L/S,Specialist sector pods (Tech, Healthcare, Energy, Financials),equity_ls
+EQ,FUNDAMENTAL,Fundamental L/S,Discretionary equity long/short, single-name stock picking,equity_ls
+
+FI,RATES,Rates & Basis,Sovereign bonds, swaps, futures, basis trades,futures_macro
+FI,CURVE,Curves & Spreads,2s10s, butterflies, yield curve arbitrage,futures_macro
+FI,BREAKEVEN,Breakevens & Inflation,TIPS vs nominals, global inflation trades,futures_macro
+
+FX,CARRY,FX Carry,G10 and EM carry premia harvesting,futures_macro
+FX,PPP,FX Valuation (PPP),Mean-reversion based on purchasing power parity,futures_macro
+FX,SAFE,Safe Haven FX,USD/JPY/CHF haven overlays,futures_macro
+FX,VOL,FX Volatility,Options, risk reversals, vol surfaces,futures_macro
+
+CMD,ENERGY,Energy,Crude oil, natgas, products (spreads, cracks, seasonal storage),futures_macro
+CMD,METALS,Metals,Gold, silver, copper, platinum/palladium,futures_macro
+CMD,AGRI,Agriculture,Corn, soy, sugar, wheat, coffee, cotton,futures_macro
+CMD,CURVES,Commodity Curves & Roll,Backwardation/contango, roll yield capture,futures_macro
+
+CR,IG_HY,IG/HY RV,Investment grade vs high yield spreads, compression/dispersion,credit_cds
+CR,CAPSTRUCT,Capital Structure Arb,Equity vs bonds vs converts within issuer,credit_cds
+CR,CLO,CLO / Structured Products,CLO tranches, ABS, MBS, structured credit,credit_cds
+CR,CDS,CDS Basis,CDS vs cash bond basis trades,credit_cds
+CR,DISTRESSED,Distressed & Special Situations,Defaulted/restructuring debt catalysts,credit_cds
+
+VOL,EQVOL,Equity Volatility,SPX/VIX variance, skew, dispersion trades,options_vol
+VOL,FXVOL,FX Volatility,FX options and implied vs realized vol,options_vol
+VOL,IRVOL,Interest Rate Volatility,Swaptions, caps/floors, options on futures,options_vol
+VOL,CROSS,Cross-Asset Volatility,Cross-asset correlation/vol premia,options_vol
+
+QA,STAT,Statistical Arbitrage,Pairs trading, mean reversion, overnight effects,stat_arb
+QA,RESIDUAL,Residual Factors,Residualized value/momentum/quality signals,stat_arb
+QA,ML,Machine Learning / Ensemble,ML/AI-driven alphas, ensemble models,stat_arb
+
+XA,RISKPARITY,Risk Parity,Bridgewater-style balanced beta portfolios,futures_macro
+XA,MACROQUADS,Growth vs Inflation Quadrants,Systematic rotation across regimes,futures_macro
+XA,CROSSASSET,Cross-Asset Premia,Carry, momentum, vol premia across asset classes,futures_macro
+
+EV,MERGER,Merger Arb,Announced M&A spreads, equitized risk arbitrage,equity_ls
+EV,SPIN,Spin-offs & Splits,Parent vs child valuation gaps,equity_ls
+EV,IPO,IPO / SEO,IPO lockups, seasoned offerings, post-event drifts,equity_ls
+EV,EARNINGS,Earnings Drift,Pre/post earnings announcement drift,equity_ls
+
+ALT,ESG,ESG & Climate,ESG scores, green vs brown energy, climate transition baskets,futures_macro
+ALT,SENTIMENT,Sentiment & Alt-Data,Social media, news, transcript sentiment,altdata,futures_macro
+ALT,SAT,Satellite / Geo,Shipping traffic, crop monitoring, climate satellite feeds,futures_macro
+ALT,THEMATIC,Thematic Macro,Policy events, elections, mega-trends (AI, demographics),futures_macro

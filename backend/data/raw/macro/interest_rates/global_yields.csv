@@ -1,0 +1,74 @@
+import pandas as pd
+from datetime import date
+import os
+
+OUT_PATH = "data/macro/interest_rates/global_yields.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def init_global_yields(seed: bool = True) -> pd.DataFrame:
+    """
+    Create global_yields.csv with schema:
+    date, region, tenor, yield, source, notes
+    - yields stored as decimals (0.042 = 4.2%)
+    """
+    ensure_dirs(OUT_PATH)
+    cols = ["date","region","tenor","yield","source","notes"]
+
+    if not seed:
+        df = pd.DataFrame(columns=cols)
+        df.to_csv(OUT_PATH, index=False)
+        return df
+
+    today = str(date.today())
+    rows = [
+        ("2025-01-02","United States","2y",0.043,"UST","UST constant maturity"),
+        ("2025-01-02","United States","10y",0.042,"UST","Benchmark treasury"),
+        ("2025-01-02","Developed ex-US","2y",0.021,"OECD","Avg of Eurozone, Japan, Aus, etc."),
+        ("2025-01-02","Developed ex-US","10y",0.027,"OECD","Weighted by GDP"),
+        ("2025-01-02","Emerging Mkts","2y",0.067,"IMF","Aggregate EM gov bonds"),
+        ("2025-01-02","Emerging Mkts","10y",0.073,"IMF","Aggregate EM gov bonds"),
+        ("2025-01-02","Frontier Mkts","2y",0.095,"IMF","Fragile, low liquidity"),
+        ("2025-01-02","Frontier Mkts","10y",0.105,"IMF","Fragile, low liquidity"),
+        ("2025-01-02","Global Avg","10y",0.041,"IMF/OECD","Weighted composite yield"),
+        (today,"United States","2y",None,"Manual","Placeholder for update"),
+    ]
+    df = pd.DataFrame(rows, columns=cols)
+    df.to_csv(OUT_PATH, index=False)
+    return df
+
+# ---------------- Analytics helpers ----------------
+
+def load_global_yields(path: str = OUT_PATH) -> pd.DataFrame:
+    df = pd.read_csv(path)
+    df["date"] = pd.to_datetime(df["date"])
+    return df
+
+def yield_curve(df: pd.DataFrame, region: str, on_date: str) -> pd.DataFrame:
+    """
+    Snapshot of yield curve for a given region on a date.
+    """
+    d = df[(df["region"] == region) & (df["date"] == pd.to_datetime(on_date))].copy()
+    return d.pivot(index="date", columns="tenor", values="yield")
+
+def term_premium(df: pd.DataFrame, region: str, on_date: str, short="2y", long="10y") -> float | None:
+    """
+    Compute simple term premium: long - short.
+    """
+    d = df[(df["region"] == region) & (df["date"] == pd.to_datetime(on_date))]
+    try:
+        y_short = float(d[d["tenor"] == short]["yield"])
+        y_long = float(d[d["tenor"] == long]["yield"])
+        return y_long - y_short
+    except Exception:
+        return None
+
+if __name__ == "__main__":
+    df = init_global_yields(seed=True)
+    print(f"✅ global_yields.csv written to {OUT_PATH} with {len(df)} rows")
+    # Example usage:
+    # yc = yield_curve(load_global_yields(), "United States", "2025-01-02")
+    # print(yc)
+    # tp = term_premium(load_global_yields(), "United States", "2025-01-02")
+    # print(tp)

@@ -1,0 +1,30 @@
+import pandas as pd
+from datetime import date
+import os
+
+def build_em_income_statements(as_of: str | None = None):
+    if as_of is None:
+        as_of = str(date.today())
+
+    rows = [
+        ("Brazil",as_of,1.2e12,7.5e11,2.5e11,1.5e11,3.0e11,5.0e10,3.0e10,0.13,0.25,"Commodity-driven earnings"),
+        ("India",as_of,1.5e12,1.0e12,3.0e11,2.0e11,3.5e11,4.5e10,5.0e10,0.13,0.23,"Growth companies reinvesting"),
+        ("China",as_of,6.0e12,4.2e12,1.2e12,8.0e11,1.5e12,2.0e11,1.8e11,0.13,0.25,"Large corporates, lower margin"),
+        ("South Africa",as_of,3.0e11,2.0e11,6.0e10,4.0e10,7.0e10,1.5e10,0.5e10,0.13,0.23,"FX volatility impact"),
+        ("Mexico",as_of,4.0e11,2.7e11,8.0e10,7.0e10,9.0e10,1.2e10,1.0e10,0.18,0.23,"Steady mid-cap corporates"),
+        ("Turkey",as_of,2.5e11,1.7e11,5.0e10,4.0e10,6.0e10,1.0e10,0.8e10,0.16,0.24,"Inflation pressure"),
+        ("EM Total",as_of,9.6e12,6.6e12,1.9e12,1.3e12,2.4e12,4.5e11,4.4e11,0.14,0.25,"Weighted EM income statement"),
+    ]
+
+    df = pd.DataFrame(rows, columns=[
+        "country","as_of","revenue","cogs","operating_income","net_income",
+        "ebitda","interest_expense","tax_expense","net_margin","ebitda_margin","notes"
+    ])
+    return df
+
+if __name__ == "__main__":
+    df = build_em_income_statements()
+    out_path = "data/adamodar/curated/income_statements/emerging_markets.csv"
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    df.to_csv(out_path, index=False)
+    print(f"✅ EM income statements dataset written to {out_path}")

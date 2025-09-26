@@ -1,0 +1,105 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scenario
+  namespace: trading
+  labels:
+    app.kubernetes.io/name: scenario
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: hedgefund
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: scenario
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: scenario
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/part-of: hedgefund
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: default
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: scenario
+          image: ghcr.io/${GITHUB_REPOSITORY}-worker:latest
+          imagePullPolicy: IfNotPresent
+          workingDir: /home/appuser/app
+          command: ["python"]
+          args:
+            - "backend/engine/worker.py"
+            - "--role=scenario"
+          env:
+            - name: ENV
+              value: "production"
+            - name: WORKER_NAME
+              value: "scenario"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: core-secrets
+                  key: redis_url
+            - name: LOG_LEVEL
+              value: "INFO"
+          ports:
+            - name: metrics
+              containerPort: 9100
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 9100
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: 9100
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 4
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "2Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scenario
+  namespace: trading
+  labels:
+    app.kubernetes.io/name: scenario
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: hedgefund
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: scenario
+    app.kubernetes.io/component: worker
+  ports:
+    - name: http
+      port: 9100
+      targetPort: metrics
+      protocol: TCP

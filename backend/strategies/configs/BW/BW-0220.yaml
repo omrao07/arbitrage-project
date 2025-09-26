@@ -1,0 +1,18 @@
+id: BW-0220
+firm: Bridgewater
+name: Dispersion Trades
+description: Single-name vs index vol.
+discipline: Equities
+family: Factors & RV
+region: Global
+horizon: Swing
+status: research
+engine: equity_ls
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: equity
+created_at: 2025-09-10
+updated_at: 2025-09-10

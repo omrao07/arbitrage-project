@@ -1,0 +1,13 @@
+dataset_id,dt,ts,pair,base_ccy,quote_ccy,currency,bid,ask,mid,px_last,volume,ret_1d,tenor,tenor_yrs,fwd_pts,fwd_rate,delta,vol,rr,bf,method
+blp_fx_spot_eod,2025-01-03,,EURUSD,EUR,USD,USD,,,,1.1042,,,-0.0012,,,,,,,
+blp_fx_spot_eod,2025-01-03,,USDJPY,USD,JPY,JPY,,,,144.2200,,0.0005,,,,,,,
+blp_fx_spot_1m,2025-01-03,2025-01-03T14:21:00Z,EURUSD,EUR,USD,USD,1.1041,1.1043,1.1042,1.10425,1200,,,,
+blp_fx_spot_1m,2025-01-03,2025-01-03T14:22:00Z,USDJPY,USD,JPY,JPY,144.215,144.228,144.2215,144.220,850,,,,
+blp_fx_forwards,2025-01-03,,EURUSD,EUR,USD,USD,,,,,,,"3M",, -15.2,1.1028,,,,
+blp_fx_forwards,2025-01-03,,EURUSD,EUR,USD,USD,,,,,,,"1Y",, 48.7,1.1091,,,,
+blp_fx_forwards,2025-01-03,,GBPUSD,GBP,USD,USD,,,,,,,"3M",, -24.3,1.2715,,,,
+blp_fx_vol_surface,2025-01-03,,EURUSD,EUR,USD,USD,,,,,,,1M,,, , ,0.25,0.0881,-0.0023,0.0011,
+blp_fx_vol_surface,2025-01-03,,EURUSD,EUR,USD,USD,,,,,,,1Y,,, , ,0.10,0.0950,-0.0030,0.0008,
+koyfin_fx_spot_daily,2025-01-03,,GBPUSD,GBP,USD,USD,,,,1.2721,,, ,,,,,,,
+internal_fx_vol_surface_interp,2025-01-03,,EURUSD,EUR,USD,USD,,,,,,,1M,,, , ,0.30,0.0875,,,svi_interp_v2
+internal_fx_forward_curve,2025-01-03,,EURUSD,EUR,USD,USD,,,,,,,,0.25,,1.1060,,,,,act365_calendarized_v1

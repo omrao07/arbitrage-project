@@ -1,0 +1,98 @@
+{
+  "type": "record",
+  "namespace": "portfolio",
+  "name": "Order",
+  "doc": "Schema for portfolio/trading orders (instructions to execution layer).",
+  "fields": [
+    {
+      "name": "order_id",
+      "type": "string",
+      "doc": "Globally unique identifier for this order"
+    },
+    {
+      "name": "portfolio_id",
+      "type": "string",
+      "doc": "Portfolio or account issuing the order"
+    },
+    {
+      "name": "instrument_id",
+      "type": "string",
+      "doc": "Instrument identifier (ticker, ISIN, contract code, etc.)"
+    },
+    {
+      "name": "side",
+      "type": {
+        "type": "enum",
+        "name": "OrderSide",
+        "symbols": ["BUY", "SELL", "SELL_SHORT", "BUY_TO_COVER"]
+      },
+      "doc": "Order side/direction"
+    },
+    {
+      "name": "order_type",
+      "type": {
+        "type": "enum",
+        "name": "OrderType",
+        "symbols": ["MARKET", "LIMIT", "STOP", "STOP_LIMIT", "ICEBERG"]
+      },
+      "doc": "Order type"
+    },
+    {
+      "name": "quantity",
+      "type": "double",
+      "doc": "Quantity (shares, contracts, units)"
+    },
+    {
+      "name": "price",
+      "type": ["null", "double"],
+      "default": null,
+      "doc": "Limit or stop price if applicable"
+    },
+    {
+      "name": "time_in_force",
+      "type": {
+        "type": "enum",
+        "name": "TimeInForce",
+        "symbols": ["DAY", "GTC", "IOC", "FOK"]
+      },
+      "doc": "Time-in-force instruction"
+    },
+    {
+      "name": "status",
+      "type": {
+        "type": "enum",
+        "name": "OrderStatus",
+        "symbols": ["NEW", "PARTIALLY_FILLED", "FILLED", "CANCELLED", "REJECTED"]
+      },
+      "doc": "Current lifecycle status of the order"
+    },
+    {
+      "name": "creation_time",
+      "type": { "type": "long", "logicalType": "timestamp-millis" },
+      "doc": "When the order was created"
+    },
+    {
+      "name": "update_time",
+      "type": { "type": "long", "logicalType": "timestamp-millis" },
+      "doc": "Last update time for this order"
+    },
+    {
+      "name": "broker",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Optional broker/execution venue identifier"
+    },
+    {
+      "name": "strategy_tag",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Optional tag to link order to a strategy ID"
+    },
+    {
+      "name": "notes",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Free text notes or comments"
+    }
+  ]
+}

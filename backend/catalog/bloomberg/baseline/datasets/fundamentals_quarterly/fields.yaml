@@ -1,0 +1,390 @@
+# fundamentals_quarterly/fields.yaml
+# Canonical field definitions, groups, aliases, and examples for quarterly fundamentals.
+
+version: 1
+
+# ---------------------------------------------------------------------------
+# FIELD DEFINITIONS (vendor-agnostic, normalized names)
+# ---------------------------------------------------------------------------
+fields:
+
+  # --- Keys / time ---
+  dt:
+    type: date
+    quality: [not_null, no_future_date]
+    desc: "Fiscal period end date (UTC)."
+
+  ticker:
+    type: string
+    desc: "Internal canonical symbol."
+
+  fiscal_year:
+    type: int32
+    quality: [non_negative]
+    desc: "Fiscal year (YYYY)."
+
+  fiscal_quarter:
+    type: int32
+    quality: [non_negative]
+    desc: "Quarter number (1..4)."
+
+  report_date:
+    type: date
+    nullable: true
+    desc: "Vendor publish/report date (UTC)."
+
+  currency:
+    type: string
+    nullable: true
+    desc: "Issuer reporting currency (ISO 4217)."
+
+  # --- Income Statement (Quarter) ---
+  revenue:
+    type: float64
+    unit: USD
+    desc: "Total revenue for the quarter."
+
+  cost_of_revenue:
+    type: float64
+    unit: USD
+    desc: "Cost of goods/services."
+
+  gross_profit:
+    type: float64
+    unit: USD
+    desc: "Revenue - Cost of revenue."
+
+  operating_expenses:
+    type: float64
+    unit: USD
+    desc: "Operating expenses (SG&A + R&D)."
+
+  ebit:
+    type: float64
+    unit: USD
+    desc: "Earnings before interest and taxes."
+
+  interest_expense:
+    type: float64
+    unit: USD
+    nullable: true
+    desc: "Interest expense (negative if net interest income)."
+
+  pretax_income:
+    type: float64
+    unit: USD
+    desc: "Income before tax."
+
+  tax_expense:
+    type: float64
+    unit: USD
+    desc: "Provision for income taxes (can be negative)."
+
+  net_income:
+    type: float64
+    unit: USD
+    desc: "Net income for the quarter."
+
+  eps_basic:
+    type: float64
+    unit: USD
+    nullable: true
+    desc: "EPS basic (quarter)."
+
+  eps_diluted:
+    type: float64
+    unit: USD
+    nullable: true
+    desc: "EPS diluted (quarter)."
+
+  # --- Balance Sheet (Period End) ---
+  assets_total:
+    type: float64
+    unit: USD
+    desc: "Total assets."
+
+  liabilities_total:
+    type: float64
+    unit: USD
+    desc: "Total liabilities."
+
+  equity_total:
+    type: float64
+    unit: USD
+    desc: "Shareholders’ equity (can be negative)."
+
+  cash_and_equiv:
+    type: float64
+    unit: USD
+    desc: "Cash and cash equivalents."
+
+  receivables:
+    type: float64
+    unit: USD
+    nullable: true
+    desc: "Accounts receivable."
+
+  inventory:
+    type: float64
+    unit: USD
+    nullable: true
+    desc: "Inventory."
+
+  debt_total:
+    type: float64
+    unit: USD
+    nullable: true
+    desc: "Short + long-term interest-bearing debt."
+
+  # --- Cash Flow (Quarter) ---
+  cfo:
+    type: float64
+    unit: USD
+    desc: "Cash from operating activities."
+
+  cfi:
+    type: float64
+    unit: USD
+    desc: "Cash from investing activities."
+
+  cff:
+    type: float64
+    unit: USD
+    desc: "Cash from financing activities."
+
+  capex:
+    type: float64
+    unit: USD
+    desc: "Capital expenditures (usually negative)."
+
+  dividends_paid:
+    type: float64
+    unit: USD
+    nullable: true
+    desc: "Dividends paid during the quarter."
+
+  # --- Shares / misc ---
+  shares_out:
+    type: float64
+    unit: shares
+    quality: [non_negative]
+    desc: "Weighted avg diluted shares outstanding."
+
+  # --- Derived (Internal) ---
+  revenue_t4q:
+    type: float64
+    unit: USD
+    nullable: true
+    desc: "Trailing 4-quarter revenue sum."
+
+  ebit_t4q:
+    type: float64
+    unit: USD
+    nullable: true
+    desc: "Trailing 4-quarter EBIT sum."
+
+  net_income_t4q:
+    type: float64
+    unit: USD
+    nullable: true
+    desc: "Trailing 4-quarter net income sum."
+
+  cfo_t4q:
+    type: float64
+    unit: USD
+    nullable: true
+    desc: "Trailing 4-quarter operating cash flow sum."
+
+  gross_margin_t4q:
+    type: float64
+    unit: pct
+    nullable: true
+    desc: "GrossProfit_T4Q / Revenue_T4Q (can be <0 or >1)."
+
+  ebit_margin_t4q:
+    type: float64
+    unit: pct
+    nullable: true
+    desc: "EBIT_T4Q / Revenue_T4Q."
+
+  net_margin_t4q:
+    type: float64
+    unit: pct
+    nullable: true
+    desc: "NetIncome_T4Q / Revenue_T4Q."
+
+  leverage:
+    type: float64
+    nullable: true
+    desc: "DebtTotal / EquityTotal (period-end)."
+
+  roa_t4q:
+    type: float64
+    unit: pct
+    nullable: true
+    desc: "NetIncome_T4Q / AssetsTotal."
+
+  roe_t4q:
+    type: float64
+    unit: pct
+    nullable: true
+    desc: "NetIncome_T4Q / EquityTotal."
+
+  fcf_t4q:
+    type: float64
+    unit: USD
+    nullable: true
+    desc: "CFO_T4Q - Capex_T4Q."
+
+  fcf_margin_t4q:
+    type: float64
+    unit: pct
+    nullable: true
+    desc: "FCF_T4Q / Revenue_T4Q."
+
+  revenue_yoy:
+    type: float64
+    unit: pct
+    nullable: true
+    desc: "Quarter vs same quarter prior year."
+
+  net_income_yoy:
+    type: float64
+    unit: pct
+    nullable: true
+    desc: "Quarter vs same quarter prior year."
+
+  eps_diluted_yoy:
+    type: float64
+    unit: pct
+    nullable: true
+    desc: "Quarter vs same quarter prior year."
+
+  method:
+    type: string
+    nullable: true
+    desc: "Computation method/version id for derived tables."
+
+# ---------------------------------------------------------------------------
+# FIELD GROUPS
+# ---------------------------------------------------------------------------
+groups:
+  fundamentals_quarterly_core:
+    fields: [dt, ticker, fiscal_year, fiscal_quarter, report_date, currency,
+             revenue, cost_of_revenue, gross_profit, operating_expenses, ebit,
+             interest_expense, pretax_income, tax_expense, net_income,
+             eps_basic, eps_diluted]
+  balance_sheet_pe:
+    fields: [dt, ticker, assets_total, liabilities_total, equity_total,
+             cash_and_equiv, receivables, inventory, debt_total]
+  cash_flow_quarterly:
+    fields: [dt, ticker, cfo, cfi, cff, capex, dividends_paid]
+  shares_meta:
+    fields: [dt, ticker, shares_out]
+  derived_quarterly:
+    fields: [dt, ticker, currency,
+             revenue_t4q, ebit_t4q, net_income_t4q, cfo_t4q,
+             gross_margin_t4q, ebit_margin_t4q, net_margin_t4q,
+             leverage, roa_t4q, roe_t4q, fcf_t4q, fcf_margin_t4q,
+             revenue_yoy, net_income_yoy, eps_diluted_yoy, method]
+
+# ---------------------------------------------------------------------------
+# ALIASES (synonyms → canonical). Keep conservative; extend in vendor maps.
+# ---------------------------------------------------------------------------
+aliases:
+  # keys/meta
+  FISCAL_YEAR: fiscal_year
+  FISCAL_QUARTER: fiscal_quarter
+  REPORT_DATE: report_date
+  CURRENCY: currency
+
+  # income statement
+  REVENUE: revenue
+  SALES: revenue
+  COST_OF_REVENUE: cost_of_revenue
+  GROSS_PROFIT: gross_profit
+  OPERATING_EXPENSES: operating_expenses
+  EBIT: ebit
+  INTEREST_EXPENSE: interest_expense
+  PRETAX_INCOME: pretax_income
+  TAX_EXPENSE: tax_expense
+  NET_INCOME: net_income
+  EPS_BASIC: eps_basic
+  EPS_DILUTED: eps_diluted
+
+  # balance sheet
+  ASSETS_TOTAL: assets_total
+  LIABILITIES_TOTAL: liabilities_total
+  EQUITY_TOTAL: equity_total
+  CASH_AND_EQUIV: cash_and_equiv
+  RECEIVABLES: receivables
+  INVENTORY: inventory
+  DEBT_TOTAL: debt_total
+
+  # cash flow
+  CFO: cfo
+  CFI: cfi
+  CFF: cff
+  CAPEX: capex
+  DIVIDENDS_PAID: dividends_paid
+
+  # shares
+  SHARES_OUT: shares_out
+
+# ---------------------------------------------------------------------------
+# EXAMPLES
+# ---------------------------------------------------------------------------
+examples:
+
+  normalized_row:
+    dt: "2025-03-31"
+    ticker: "AAPL"
+    fiscal_year: 2025
+    fiscal_quarter: 2
+    report_date: "2025-05-01"
+    currency: "USD"
+    revenue: 90750000000
+    cost_of_revenue: 54020000000
+    gross_profit: 36730000000
+    operating_expenses: 13750000000
+    ebit: 22980000000
+    interest_expense: -250000000
+    pretax_income: 23500000000
+    tax_expense: 3600000000
+    net_income: 19900000000
+    eps_basic: 1.30
+    eps_diluted: 1.28
+    assets_total: 352000000000
+    liabilities_total: 285000000000
+    equity_total: 67000000000
+    cash_and_equiv: 61000000000
+    receivables: 32000000000
+    inventory: 5500000000
+    debt_total: 120000000000
+    cfo: 24500000000
+    cfi: -3500000000
+    cff: -18000000000
+    capex: -2500000000
+    dividends_paid: 3700000000
+    shares_out: 15500000000
+
+  derived_row:
+    dt: "2025-03-31"
+    ticker: "AAPL"
+    currency: "USD"
+    revenue_t4q: 380000000000
+    ebit_t4q: 95000000000
+    net_income_t4q: 82000000000
+    cfo_t4q: 90000000000
+    gross_margin_t4q: 0.42
+    ebit_margin_t4q: 0.25
+    net_margin_t4q: 0.22
+    leverage: 1.79
+    roa_t4q: 0.23
+    roe_t4q: 1.22
+    fcf_t4q: 67000000000
+    fcf_margin_t4q: 0.18
+    revenue_yoy: 0.07
+    net_income_yoy: 0.09
+    eps_diluted_yoy: 0.11
+    method: "t4q_v1"

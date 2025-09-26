@@ -1,0 +1,53 @@
+# whisper.yaml
+# Config for OpenAI Whisper ASR (speech-to-text)
+# Place under kb/asr/configs/
+
+asr:
+  engine: whisper
+  model_size: base            # tiny, base, small, medium, large
+  model_path: models/whisper  # optional local path for cached weights
+  language: en                # ISO language code (auto if empty)
+  task: transcribe            # transcribe | translate
+  sample_rate: 16000          # audio input rate (Hz)
+
+inference:
+  fp16: true                  # use mixed precision (requires GPU)
+  beam_size: 5                # beam search size
+  best_of: 5                  # candidates to consider
+  patience: 1.0               # decoding patience
+  length_penalty: -0.05
+  suppress_tokens: -1          # suppress special tokens
+  condition_on_previous_text: true
+  hotwords:                    # optional bias for finance-domain
+    - word: "arbitrage"
+      boost: 15.0
+    - word: "liquidity"
+      boost: 12.0
+    - word: "quant"
+      boost: 10.0
+
+training:
+  enabled: false               # Whisper is usually used pretrained
+  dataset_name: ""             # e.g. "common_voice"
+  train_split: "train"
+  eval_split: "validation"
+  epochs: 20
+  batch_size: 16
+  learning_rate: 1e-5
+  output_dir: exports/whisper_finetuned
+  gradient_accumulation: 2
+  mixed_precision: true
+
+runtime:
+  device: auto                 # auto|cpu|cuda
+  num_threads: 4
+  use_gpu: true
+  gpu_device: 0
+  streaming: false             # Whisper processes full segments (no native streaming yet)
+  log_level: INFO
+
+output:
+  transcripts_dir: outputs/transcripts/whisper/
+  save_format: jsonl           # jsonl or txt
+  include_timestamps: true
+  save_confidence: true

@@ -1,0 +1,18 @@
+id: GLB-0325
+firm: Global
+name: Earnings Straddle Basket (MX)
+description: Worldwide diversified strategy in Vol/Options — region: MX.
+discipline: Quant
+family: Vol/Options
+region: MX
+horizon: Macro
+status: research
+engine: options_vol
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

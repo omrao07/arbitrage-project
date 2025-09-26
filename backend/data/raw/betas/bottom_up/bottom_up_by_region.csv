@@ -1,0 +1,29 @@
+import pandas as pd
+from datetime import date
+
+def build_bottom_up_by_region(as_of: str = None):
+    if as_of is None:
+        as_of = str(date.today())
+
+    rows = [
+        ("North America",as_of,0.88,0.40,0.23,1.09,3800,"Weighted avg of US + Canada"),
+        ("Europe",as_of,0.85,0.45,0.24,1.10,4100,"Eurozone + UK"),
+        ("Asia Pacific",as_of,0.92,0.50,0.25,1.15,5200,"Japan, China, India, ASEAN"),
+        ("Latin America",as_of,0.95,0.55,0.26,1.19,1600,"Brazil, Mexico, Chile, others"),
+        ("Middle East",as_of,1.00,0.60,0.25,1.25,950,"Oil-weighted"),
+        ("Africa",as_of,1.05,0.65,0.28,1.32,700,"High CRP regions"),
+        ("Global",as_of,0.90,0.47,0.24,1.12,16450,"Weighted global average"),
+    ]
+
+    df = pd.DataFrame(rows, columns=[
+        "region","as_of","unlevered_beta",
+        "avg_debt_to_equity","tax_rate",
+        "levered_beta","n_firms","notes"
+    ])
+    return df
+
+if __name__ == "__main__":
+    df = build_bottom_up_by_region()
+    out_path = "data/adamodar/raw/betas/bottom_up/by_region.csv"
+    df.to_csv(out_path, index=False)
+    print(f"✅ bottom_up by region snapshot written to {out_path}")

@@ -1,0 +1,18 @@
+id: BW-0268
+firm: Bridgewater
+name: Vol Premia Short Variance (EM)
+description: Sell index variance risk.
+discipline: Equities
+family: Factors & RV
+region: EM
+horizon: Swing
+status: research
+engine: equity_ls
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: equity
+created_at: 2025-09-10
+updated_at: 2025-09-10

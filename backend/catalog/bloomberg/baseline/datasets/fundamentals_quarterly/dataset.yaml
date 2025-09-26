@@ -1,0 +1,169 @@
+# fundamentals_quarterly/datasets.yaml
+# Quarterly fundamentals specs (valid against _meta/schema.dataset.yaml).
+
+# ----------------------------------------------------------------------------
+# 1) Bloomberg – Quarterly Fundamentals (normalized snapshot)
+# ----------------------------------------------------------------------------
+id: blp_fundamentals_quarterly
+title: Bloomberg Fundamentals (Quarterly, Normalized)
+vendor: bloomberg
+source: bpipe
+version: "1.0.0"
+frequency: quarterly
+description: >
+  Point-in-time quarterly financial statements normalized to a compact schema.
+  Includes key Income Statement, Balance Sheet, and Cash Flow fields plus shares outstanding.
+primary_key: [dt, ticker]              # dt = fiscal period end (UTC date)
+partitions: [dt]
+columns:
+  # keys / meta
+  - { name: dt,                type: date,      desc: "Fiscal period end (UTC).", quality: [not_null, no_future_date] }
+  - { name: ticker,            type: string,    desc: "Internal canonical symbol." }
+  - { name: fiscal_year,       type: int32,     desc: "Fiscal year (YYYY).", quality: [non_negative] }
+  - { name: fiscal_quarter,    type: int32,     desc: "1..4", quality: [non_negative] }
+  - { name: report_date,       type: date,      nullable: true, desc: "Vendor report publish date (UTC)." }
+  - { name: currency,          type: string,    nullable: true, desc: "Reporting currency (ISO 4217)." }
+
+  # income statement (Q)
+  - { name: revenue,           type: float64,   unit: USD, desc: "Total revenue for the quarter." }
+  - { name: cost_of_revenue,   type: float64,   unit: USD, desc: "Cost of goods/services." }
+  - { name: gross_profit,      type: float64,   unit: USD, desc: "Revenue - Cost of revenue." }
+  - { name: operating_expenses,type: float64,   unit: USD, desc: "SG&A + R&D (quarter)." }
+  - { name: ebit,              type: float64,   unit: USD, desc: "Earnings before interest and taxes." }
+  - { name: interest_expense,  type: float64,   unit: USD, desc: "Interest expense (can be negative if income)." }
+  - { name: pretax_income,     type: float64,   unit: USD, desc: "Income before tax." }
+  - { name: tax_expense,       type: float64,   unit: USD, desc: "Provision for income taxes." }
+  - { name: net_income,        type: float64,   unit: USD, desc: "Net income (quarter)." }
+  - { name: eps_basic,         type: float64,   unit: USD, nullable: true, desc: "EPS basic (quarter)." }
+  - { name: eps_diluted,       type: float64,   unit: USD, nullable: true, desc: "EPS diluted (quarter)." }
+
+  # balance sheet (period end)
+  - { name: assets_total,      type: float64,   unit: USD, desc: "Total assets." }
+  - { name: liabilities_total, type: float64,   unit: USD, desc: "Total liabilities." }
+  - { name: equity_total,      type: float64,   unit: USD, desc: "Shareholders’ equity (can be negative)." }
+  - { name: cash_and_equiv,    type: float64,   unit: USD, desc: "Cash and cash equivalents." }
+  - { name: receivables,       type: float64,   unit: USD, nullable: true }
+  - { name: inventory,         type: float64,   unit: USD, nullable: true }
+  - { name: debt_total,        type: float64,   unit: USD, nullable: true, desc: "Short + long-term interest-bearing debt." }
+
+  # cash flow (Q)
+  - { name: cfo,               type: float64,   unit: USD, desc: "Cash from operating activities (quarter)." }
+  - { name: cfi,               type: float64,   unit: USD, desc: "Cash from investing activities (quarter)." }
+  - { name: cff,               type: float64,   unit: USD, desc: "Cash from financing activities (quarter)." }
+  - { name: capex,             type: float64,   unit: USD, desc: "Capital expenditures (usually negative outflow)." }
+  - { name: dividends_paid,    type: float64,   unit: USD, nullable: true, desc: "Dividends paid (quarter)." }
+
+  # shares / misc
+  - { name: shares_out,        type: float64,   unit: shares, quality: [non_negative], desc: "Weighted avg diluted shares." }
+endpoints:
+  - kind: bpipe
+    path: "FUNDAMENTALS_Q"
+    params:
+      universe_ref: "bloomberg/baseline/symbology/mapping.yaml"
+      fields_ref:   "fundamentals_quarterly/fields.map.yaml"
+      tz: "UTC"
+lineage: [refdata_instruments]
+tags: [bloomberg, equities, fundamentals, quarterly]
+---
+# ----------------------------------------------------------------------------
+# 2) Koyfin – Quarterly Fundamentals (alt vendor / parity)
+# ----------------------------------------------------------------------------
+id: koyfin_fundamentals_quarterly
+title: Koyfin Fundamentals (Quarterly)
+vendor: koyfin
+source: rest
+version: "1.0.0"
+frequency: quarterly
+description: >
+  Quarterly fundamentals from Koyfin used for parity checks and as a fallback source.
+  Schema aligns to the normalized columns where possible.
+primary_key: [dt, ticker]
+partitions: [dt]
+columns:
+  - { name: dt,                type: date,      quality: [not_null, no_future_date], desc: "Fiscal period end (UTC)." }
+  - { name: ticker,            type: string }
+  - { name: fiscal_year,       type: int32,     quality: [non_negative] }
+  - { name: fiscal_quarter,    type: int32,     quality: [non_negative] }
+  - { name: report_date,       type: date,      nullable: true }
+  - { name: currency,          type: string,    nullable: true }
+
+  - { name: revenue,           type: float64,   unit: USD }
+  - { name: gross_profit,      type: float64,   unit: USD, nullable: true }
+  - { name: operating_expenses,type: float64,   unit: USD, nullable: true }
+  - { name: ebit,              type: float64,   unit: USD, nullable: true }
+  - { name: net_income,        type: float64,   unit: USD }
+  - { name: eps_diluted,       type: float64,   unit: USD, nullable: true }
+  - { name: assets_total,      type: float64,   unit: USD, nullable: true }
+  - { name: liabilities_total, type: float64,   unit: USD, nullable: true }
+  - { name: equity_total,      type: float64,   unit: USD, nullable: true }
+  - { name: cash_and_equiv,    type: float64,   unit: USD, nullable: true }
+  - { name: cfo,               type: float64,   unit: USD, nullable: true }
+  - { name: capex,             type: float64,   unit: USD, nullable: true }
+  - { name: shares_out,        type: float64,   unit: shares, quality: [non_negative], nullable: true }
+endpoints:
+  - kind: rest
+    path: "/v1/fundamentals/quarterly"
+    params:
+      universe_ref: "bloomberg/baseline/symbology/mapping.yaml"
+      fields: ["revenue","gross_profit","operating_expenses","ebit","net_income","eps_diluted",
+               "assets_total","liabilities_total","equity_total","cash_and_equiv","cfo","capex","shares_out",
+               "fiscal_year","fiscal_quarter","report_date","currency"]
+      auth: "env:KOYFIN_API_KEY"
+      tz: "UTC"
+lineage: []
+tags: [koyfin, equities, fundamentals, quarterly]
+---
+# ----------------------------------------------------------------------------
+# 3) Internal – Quarterly Ratios & Growth (derived)
+# ----------------------------------------------------------------------------
+id: internal_fundamentals_quarterly_derived
+title: Derived Fundamentals (Ratios & Growth, Quarterly)
+vendor: internal
+source: file
+version: "0.1.0"
+frequency: quarterly
+description: >
+  Ratios and growth metrics derived from normalized quarterly fundamentals.
+  Uses trailing 4-quarter sums where appropriate.
+primary_key: [dt, ticker]
+partitions: [dt]
+columns:
+  - { name: dt,                 type: date,      quality: [not_null, no_future_date], desc: "Fiscal period end (UTC)." }
+  - { name: ticker,             type: string }
+  - { name: currency,           type: string,    nullable: true }
+
+  # trailing sums (T4Q)
+  - { name: revenue_t4q,        type: float64,   unit: USD, desc: "Sum of last 4 quarters revenue." }
+  - { name: ebit_t4q,           type: float64,   unit: USD, desc: "Sum of last 4 quarters EBIT." }
+  - { name: net_income_t4q,     type: float64,   unit: USD, desc: "Sum of last 4 quarters net income." }
+  - { name: cfo_t4q,            type: float64,   unit: USD, desc: "Sum of last 4 quarters operating cash flow." }
+
+  # margins (T4Q)
+  - { name: gross_margin_t4q,   type: float64,   unit: pct,  nullable: true, desc: "GrossProfit_T4Q / Revenue_T4Q." }
+  - { name: ebit_margin_t4q,    type: float64,   unit: pct,  nullable: true, desc: "EBIT_T4Q / Revenue_T4Q." }
+  - { name: net_margin_t4q,     type: float64,   unit: pct,  nullable: true, desc: "NetIncome_T4Q / Revenue_T4Q." }
+
+  # leverage / returns (period-end balance sheet + T4Q flows)
+  - { name: leverage,           type: float64,   nullable: true, desc: "DebtTotal / EquityTotal (period-end)." }
+  - { name: roa_t4q,            type: float64,   unit: pct,  nullable: true, desc: "NetIncome_T4Q / AssetsTotal (period-end)." }
+  - { name: roe_t4q,            type: float64,   unit: pct,  nullable: true, desc: "NetIncome_T4Q / EquityTotal (period-end)." }
+  - { name: fcf_t4q,            type: float64,   unit: USD,  nullable: true, desc: "CFO_T4Q - Capex_T4Q." }
+  - { name: fcf_margin_t4q,     type: float64,   unit: pct,  nullable: true, desc: "FCF_T4Q / Revenue_T4Q." }
+
+  # growth (YoY on quarterly values)
+  - { name: revenue_yoy,        type: float64,   unit: pct,  nullable: true, desc: "Quarter vs same quarter prior year." }
+  - { name: net_income_yoy,     type: float64,   unit: pct,  nullable: true }
+  - { name: eps_diluted_yoy,    type: float64,   unit: pct,  nullable: true }
+
+  # housekeeping
+  - { name: method,             type: string,    nullable: true, desc: "Computation method/version id." }
+endpoints:
+  - kind: file
+    path: "derived/fundamentals/quarterly/{dt}.parquet"
+    params:
+      format: parquet
+      compression: snappy
+lineage:
+  - blp_fundamentals_quarterly
+  - koyfin_fundamentals_quarterly
+tags: [internal, equities, fundamentals, quarterly, derived]

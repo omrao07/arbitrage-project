@@ -1,0 +1,51 @@
+# wav2vec.yaml
+# Config for Wav2Vec 2.0 ASR (speech-to-text)
+# Place under kb/asr/configs/
+
+asr:
+  engine: wav2vec2
+  model_name: facebook/wav2vec2-large-960h       # pretrained HF model (English)
+  tokenizer_name: facebook/wav2vec2-large-960h   # corresponding tokenizer
+  language: en-US                                # main language
+  sample_rate: 16000                             # required input rate (Hz)
+
+inference:
+  chunk_size_s: 20.0          # max audio chunk (sec) to avoid OOM
+  stride_s: 5.0               # overlap between chunks for smoother stitching
+  padding: true
+  normalize: true             # waveform normalization
+  hotwords:                   # optional finance-domain biases
+    - word: "arbitrage"
+      boost: 12.0
+    - word: "liquidity"
+      boost: 10.0
+    - word: "carry trade"
+      boost: 15.0
+
+training:
+  enabled: false
+  dataset_name: ""            # e.g. "common_voice"
+  train_split: "train"
+  eval_split: "validation"
+  epochs: 30
+  batch_size: 16
+  gradient_accumulation: 2
+  learning_rate: 3e-5
+  warmup_steps: 500
+  output_dir: exports/wav2vec_finetuned
+  save_every: 5               # save checkpoint every N epochs
+  mixed_precision: true       # AMP training for GPUs
+
+runtime:
+  device: auto                # auto|cpu|cuda
+  num_threads: 4
+  use_gpu: true
+  gpu_device: 0
+  streaming: false            # Wav2Vec is non-streaming by default
+  log_level: INFO
+
+output:
+  transcripts_dir: outputs/transcripts/wav2vec/
+  save_format: jsonl          # jsonl or txt
+  include_timestamps: true
+  save_confidence: true

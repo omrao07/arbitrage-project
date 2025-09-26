@@ -1,0 +1,64 @@
+# configs/exchanges.yaml
+exchanges:
+  SIMX:
+    venue: SIMX
+    description: "Simulated Exchange for local testing"
+    sessions:
+      - start: "09:30"
+        end: "16:00"
+        tz_offset_minutes: 0       # UTC offset in minutes
+    symbols:
+      AAPL:
+        tick: 0.01
+        lot: 1
+        currency: USD
+      MSFT:
+        tick: 0.01
+        lot: 1
+        currency: USD
+      TSLA:
+        tick: 0.01
+        lot: 1
+        currency: USD
+
+  NSE:
+    venue: NSE
+    description: "National Stock Exchange of India (Equities)"
+    sessions:
+      - start: "09:15"
+        end: "15:30"
+        tz_offset_minutes: 330     # UTC+5:30
+    symbols:
+      SBIN:
+        tick: 0.05
+        lot: 1
+        currency: INR
+      RELIANCE:
+        tick: 0.05
+        lot: 1
+        currency: INR
+      INFY:
+        tick: 0.05
+        lot: 1
+        currency: INR
+
+  CME:
+    venue: CME
+    description: "CME Globex (Futures)"
+    sessions:
+      - start: "00:00"
+        end: "23:59"
+        tz_offset_minutes: -300    # UTC-5 (Chicago)
+    symbols:
+      ES:
+        tick: 0.25
+        lot: 50
+        currency: USD
+      NQ:
+        tick: 0.25
+        lot: 20
+        currency: USD
+      CL:
+        tick: 0.01
+        lot: 1000
+        currency: USD

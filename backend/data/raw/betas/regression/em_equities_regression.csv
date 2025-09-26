@@ -1,0 +1,30 @@
+import pandas as pd
+from datetime import date
+
+def build_em_equities_regression(as_of: str = None):
+    if as_of is None:
+        as_of = str(date.today())
+
+    rows = [
+        ("Brazil","Bovespa",as_of,0.070,0.052,0.030,0.004,1.10,0.30,0.72,0.09,"High CRP, commodity linked"),
+        ("India","Nifty 50",as_of,0.065,0.052,0.020,0.003,1.05,0.25,0.75,0.08,"Growth premium, EM anchor"),
+        ("China","CSI 300",as_of,0.030,0.052,0.015,0.002,0.95,0.20,0.70,0.10,"Political/regulation adj."),
+        ("South Africa","JSE AllShr",as_of,0.085,0.052,0.050,0.005,1.20,0.40,0.68,0.11,"High volatility, FX risk"),
+        ("Mexico","IPC",as_of,0.075,0.052,0.035,0.004,1.08,0.28,0.71,0.09,"US trade linkage"),
+        ("Turkey","BIST 100",as_of,0.090,0.052,0.045,0.006,1.25,0.50,0.65,0.12,"Inflation + political risk"),
+        ("Nigeria","NGSE AllShr",as_of,0.100,0.052,0.050,0.007,1.30,0.55,0.60,0.13,"Frontier, oil-dependent"),
+    ]
+
+    df = pd.DataFrame(rows, columns=[
+        "region","index","as_of",
+        "rf_rate","erp_factor","crp_factor",
+        "intercept","beta_mkt","beta_crp",
+        "r2","std_err","notes"
+    ])
+    return df
+
+if __name__ == "__main__":
+    df = build_em_equities_regression()
+    out_path = "data/adamodar/curated/em_equities_regression.csv"
+    df.to_csv(out_path, index=False)
+    print(f"✅ em_equities_regression.csv written to {out_path}")

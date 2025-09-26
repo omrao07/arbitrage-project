@@ -1,0 +1,75 @@
+# config/params.yaml
+# -------------------------------------------------------------------
+# Strategy Lab parameter configuration
+# -------------------------------------------------------------------
+# These parameters drive factor research, backtests, simulations,
+# and strategy execution. Keep model-specific values here so
+# code remains clean and tunable.
+# -------------------------------------------------------------------
+
+research:
+  lookback_days: 252          # default number of trading days for factor history
+  decay_lags: [1, 5, 10, 20]  # lags for IC decay tests
+  min_universe_size: 30       # minimum symbols required for valid cross-sectional test
+  annualization: 252
+  gridsearch:
+    score_key: sharpe         # sharpe | mean_ic | ir
+
+backtest:
+  start_date: 2020-01-01
+  end_date: 2025-01-01
+  initial_equity: 1_000_000
+  rebalance_freq: daily       # daily | weekly | monthly
+  transaction_cost_bps: 5.0   # round-trip cost assumption in basis points
+  slippage_bps: 2.0           # simulated slippage impact per trade
+  cash_buffer: 0.02           # 2% cash reserved
+
+strategies:
+  default:
+    quantile: 0.2             # long/short quantile cutoff
+    long_only: false
+    gross_target: 0.5
+    max_positions: 50
+    rebalance_cadence_sec: 60
+  momentum:
+    lookback: 20
+    holding_period: 5
+    weight: 1.0
+  mean_reversion:
+    lookback: 5
+    holding_period: 3
+    weight: 0.5
+  pairs_trading:
+    lookback: 60
+    entry_z: 2.0
+    exit_z: 0.5
+    capital_allocation: 0.2
+
+risk:
+  max_per_order_notional: 1_000_000
+  max_symbol_exposure_usd: 2_000_000
+  max_gross_exposure_usd: 5_000_000
+  max_leverage: 5.0
+
+monitoring:
+  heartbeat_sec: 5
+  leverage_warn: 5.0
+  drawdown_warn: -0.05       # -5% peak-to-trough
+  slippage_warn_bps: 5.0
+  fillrate_warn: 0.2
+
+simulators:
+  monte_carlo:
+    n_paths: 1000
+    horizon_days: 252
+    seed: 42
+  eq_ls_sim:
+    rebalance_freq: daily
+    n_universe: 100
+    seed: 123
+
+# -------------------------------------------------------------------
+# Notes:
+# - Override these via CLI args, .env, or higher-priority configs.
+# - Keep secret keys separate (env.yaml / .env).
+# -------------------------------------------------------------------

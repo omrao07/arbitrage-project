@@ -1,0 +1,18 @@
+id: CIT-0314
+firm: Citadel
+name: Loans vs Bonds Arb #314
+description: ETF NAV dislocation model.
+discipline: Credit
+family: Structured
+region: Global
+horizon: Swing
+status: research
+engine: credit_cds
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

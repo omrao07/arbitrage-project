@@ -1,0 +1,40 @@
+import pandas as pd
+from datetime import date
+import os
+
+def build_global_income_statements(as_of: str | None = None) -> pd.DataFrame:
+    if as_of is None:
+        as_of = str(date.today())
+
+    rows = [
+        # region,          as_of,   revenue,  cogs,    operating_income, net_income, ebitda,  interest_expense, tax_expense, net_margin, ebitda_margin, notes
+        ("United States",   as_of,  9.0e12,  5.8e12,  2.0e12,           1.4e12,     2.4e12,  2.2e11,           3.0e11,      0.16,       0.27,          "S&P-style aggregate"),
+        ("Developed ex-US", as_of,  7.2e12,  4.8e12,  1.6e12,           1.1e12,     1.9e12,  1.6e11,           2.4e11,      0.15,       0.26,          "Europe, Japan, Canada, Aus"),
+        ("Emerging Mkts",   as_of,  4.8e12,  3.3e12,  9.0e11,           6.0e11,     1.2e12,  1.1e11,           1.0e11,      0.13,       0.25,          "EM aggregate"),
+        ("Frontier Mkts",   as_of,  6.0e11,  4.2e11,  1.0e11,           7.0e10,     1.3e11,  2.0e10,           1.0e10,      0.12,       0.22,          "Thin liquidity, higher spreads"),
+    ]
+
+    df = pd.DataFrame(rows, columns=[
+        "region","as_of","revenue","cogs","operating_income","net_income",
+        "ebitda","interest_expense","tax_expense","net_margin","ebitda_margin","notes"
+    ])
+
+    # Append a Global Total (weighted sums; margins recomputed)
+    totals = df[["revenue","cogs","operating_income","net_income","ebitda","interest_expense","tax_expense"]].sum()
+    global_row = {
+        "region": "Global Total",
+        "as_of": as_of,
+        **totals.to_dict(),
+        "net_margin": totals["net_income"] / totals["revenue"] if totals["revenue"] else None,
+        "ebitda_margin": totals["ebitda"] / totals["revenue"] if totals["revenue"] else None,
+        "notes": "Weighted sum across regions"
+    }
+    df = pd.concat([df, pd.DataFrame([global_row])], ignore_index=True)
+    return df
+
+if __name__ == "__main__":
+    df = build_global_income_statements()
+    out_path = "data/adamodar/curated/income_statements/global_equities.csv"
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    df.to_csv(out_path, index=False)
+    print(f"✅ Global equities income statements written to {out_path}")

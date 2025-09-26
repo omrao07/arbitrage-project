@@ -1,0 +1,409 @@
+// meta/instruments.sample.cs
+// Dependency-free sample instrument models + helpers + sample data.
+// No external packages or fancy attributes; pure C#.
+
+// ReSharper disable InconsistentNaming
+namespace Catalog.Meta
+{
+    public enum AssetClass
+    {
+        Unknown = 0,
+        Equity,
+        ETF,
+        FX,
+        Future,
+        Option,
+        Bond,
+        Index,
+        Crypto,
+        Commodity
+    }
+
+    public enum PutCall { Put = 0, Call = 1 }
+    public enum OptionStyle { American = 0, European = 1 }
+
+    /// <summary>
+    /// Canonical symbology set (all strings are uppercase, trimmed where relevant).
+    /// Only include what you actually map; leave others null.
+    /// </summary>
+    public sealed class Symbology
+    {
+        public string? Ticker;      // internal canonical
+        public string? BBG;         // Bloomberg yellow key
+        public string? RIC;         // Refinitiv
+        public string? ISIN;
+        public string? CUSIP;
+        public string? SEDOL;
+        public string? MIC;         // ISO 10383
+        public string? ExchangeCode;// vendor-specific (e.g., UQ for NASDAQ)
+        public string? Currency;    // ISO 4217
+
+        public Symbology Normalize()
+        {
+            if (Ticker != null) Ticker = SymbologyUtil.UpperTrim(Ticker);
+            if (BBG != null) BBG = SymbologyUtil.UpperTrim(BBG);
+            if (RIC != null) RIC = SymbologyUtil.UpperTrim(RIC);
+            if (ISIN != null) ISIN = SymbologyUtil.UpperTrim(ISIN);
+            if (CUSIP != null) CUSIP = SymbologyUtil.UpperTrim(CUSIP);
+            if (SEDOL != null) SEDOL = SymbologyUtil.UpperTrim(SEDOL);
+            if (MIC != null) MIC = SymbologyUtil.UpperTrim(MIC);
+            if (ExchangeCode != null) ExchangeCode = SymbologyUtil.UpperTrim(ExchangeCode);
+            if (Currency != null) Currency = SymbologyUtil.UpperTrim(Currency);
+            return this;
+        }
+    }
+
+    /// <summary>
+    /// Base instrument row. Extend for specific asset classes.
+    /// </summary>
+    public class Instrument
+    {
+        public string Id = SymbologyUtil.Ulid();   // internal unique id
+        public AssetClass Class = AssetClass.Unknown;
+        public string Name = "";
+        public Symbology Sym = new Symbology();
+
+        // Optional metadata bag (small + flat to keep it simple).
+        public System.Collections.Generic.Dictionary<string, string> Meta =
+            new System.Collections.Generic.Dictionary<string, string>();
+
+        public virtual bool Validate(out string? error)
+        {
+            error = null;
+            if (Sym == null) { error = "symbology missing"; return false; }
+            if (!string.IsNullOrEmpty(Sym.MIC) && !SymbologyUtil.IsMIC(Sym.MIC)) { error = "invalid MIC"; return false; }
+            if (!string.IsNullOrEmpty(Sym.Currency) && !SymbologyUtil.IsCurrency(Sym.Currency)) { error = "invalid currency"; return false; }
+            if (!string.IsNullOrEmpty(Sym.ISIN) && !SymbologyUtil.IsISIN(Sym.ISIN)) { error = "invalid ISIN"; return false; }
+            return true;
+        }
+    }
+
+    public sealed class EquityInstrument : Instrument
+    {
+        public string Sector = "";     // GICS
+        public string Industry = "";   // GICS
+        public double? SharesOutstanding; // units = shares
+
+        public EquityInstrument()
+        {
+            Class = AssetClass.Equity;
+        }
+    }
+
+    public sealed class FxInstrument : Instrument
+    {
+        public string Pair = "";     // e.g., EURUSD
+        public string BaseCCY = "";  // EUR
+        public string QuoteCCY = ""; // USD
+
+        public FxInstrument() { Class = AssetClass.FX; }
+
+        public override bool Validate(out string? error)
+        {
+            if (!base.Validate(out error)) return false;
+            if (!SymbologyUtil.TryParseFxPair(Pair, out var b, out var q))
+            { error = "invalid fx pair"; return false; }
+            BaseCCY = b; QuoteCCY = q;
+            return true;
+        }
+    }
+
+    public sealed class FutureInstrument : Instrument
+    {
+        public string Root = "";                // symbol root (e.g., ES)
+        public System.DateTime Expiry;          // expiry date (UTC date, 00:00)
+        public double? Multiplier;              // contract multiplier
+        public string ContractCurrency = "USD"; // P&L/price currency
+
+        public FutureInstrument() { Class = AssetClass.Future; }
+
+        public override bool Validate(out string? error)
+        {
+            if (!base.Validate(out error)) return false;
+            if (Expiry == default) { error = "expiry missing"; return false; }
+            return true;
+        }
+    }
+
+    public sealed class OptionInstrument : Instrument
+    {
+        public string Underlying = "";          // canonical ticker or pair
+        public System.DateTime Expiry;
+        public double Strike;
+        public PutCall Right;
+        public OptionStyle Style = OptionStyle.European; // default
+        public string ContractCurrency = "USD";
+
+        public OptionInstrument() { Class = AssetClass.Option; }
+
+        public override bool Validate(out string? error)
+        {
+            if (!base.Validate(out error)) return false;
+            if (Expiry == default) { error = "expiry missing"; return false; }
+            if (Strike <= 0) { error = "strike must be > 0"; return false; }
+            return true;
+        }
+    }
+
+    public sealed class BondInstrument : Instrument
+    {
+        public string Country = "";
+        public double CouponPct;         // e.g., 0.035 for 3.5%
+        public System.DateTime Maturity;
+        public string DayCount = "30/360";
+
+        public BondInstrument() { Class = AssetClass.Bond; }
+
+        public override bool Validate(out string? error)
+        {
+            if (!base.Validate(out error)) return false;
+            if (Maturity == default) { error = "maturity missing"; return false; }
+            if (CouponPct < 0) { error = "coupon negative"; return false; }
+            return true;
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Utilities: ULID gen, basic validators, FX helpers, tenor parsing.
+    // ---------------------------------------------------------------------
+    public static class SymbologyUtil
+    {
+        private const string B32 = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+        public static string UpperTrim(string s)
+        {
+            if (s == null) return "";
+            var t = s.Trim();
+            return t.ToUpperInvariant();
+        }
+
+        public static bool IsMIC(string mic)
+        {
+            mic = UpperTrim(mic);
+            if (mic.Length < 3 || mic.Length > 4) return false;
+            for (int i = 0; i < mic.Length; i++)
+            {
+                var c = mic[i];
+                if (c < 'A' || c > 'Z') return false;
+            }
+            return true;
+        }
+
+        public static bool IsCurrency(string ccy)
+        {
+            ccy = UpperTrim(ccy);
+            if (ccy.Length != 3) return false;
+            for (int i = 0; i < 3; i++)
+            {
+                var c = ccy[i];
+                if (c < 'A' || c > 'Z') return false;
+            }
+            return true;
+        }
+
+        public static bool IsISIN(string isin)
+        {
+            isin = UpperTrim(isin);
+            if (isin.Length != 12) return false;
+            // Basic shape only; full Luhn is omitted for brevity.
+            // Require first two letters country code and alnum remainder.
+            if (!System.Char.IsLetter(isin[0]) || !System.Char.IsLetter(isin[1])) return false;
+            for (int i = 2; i < 12; i++)
+            {
+                var c = isin[i];
+                if (!System.Char.IsLetterOrDigit(c)) return false;
+            }
+            return true;
+        }
+
+        public static bool TryParseFxPair(string s, out string baseCcy, out string quoteCcy)
+        {
+            s = UpperTrim(s);
+            baseCcy = ""; quoteCcy = "";
+            if (s.Length != 6) return false;
+            var b = s.Substring(0, 3);
+            var q = s.Substring(3, 3);
+            if (!IsCurrency(b) || !IsCurrency(q)) return false;
+            baseCcy = b; quoteCcy = q; return true;
+        }
+
+        public static string MakeFxPair(string baseCcy, string quoteCcy)
+        {
+            return UpperTrim(baseCcy) + UpperTrim(quoteCcy);
+        }
+
+        public static bool TryParseTenor(string t, out System.TimeSpan approx)
+        {
+            // Accept 1W, 2W, 1M, 3M, 6M, 1Y...
+            t = UpperTrim(t);
+            approx = System.TimeSpan.Zero;
+            if (t.Length < 2) return false;
+            // split number + unit
+            int i = 0; while (i < t.Length && System.Char.IsDigit(t[i])) i++;
+            if (i == 0) return false;
+            var numStr = t.Substring(0, i);
+            var unit = t.Substring(i);
+            if (!int.TryParse(numStr, out var n) || n <= 0) return false;
+            switch (unit)
+            {
+                case "W": approx = System.TimeSpan.FromDays(n * 7); return true;
+                case "M": approx = System.TimeSpan.FromDays(n * 30); return true; // rough
+                case "Y": approx = System.TimeSpan.FromDays(n * 365); return true; // rough
+                default: return false;
+            }
+        }
+
+        // Minimal ULID (time + random), monotonic within process.
+        private static long __ulidT;
+        private static byte[] __ulidR = Rand(10);
+
+        public static string Ulid()
+        {
+            var t = NowMs();
+            byte[] r;
+            if (t == __ulidT)
+            {
+                r = (byte[])__ulidR.Clone();
+                for (int i = r.Length - 1; i >= 0; i--)
+                {
+                    r[i] = (byte)((r[i] + 1) & 0xFF);
+                    if (r[i] != 0) break;
+                }
+                __ulidR = r;
+            }
+            else
+            {
+                r = Rand(10);
+                __ulidT = t;
+                __ulidR = r;
+            }
+            return EncodeTime(t) + EncodeRand(r);
+        }
+
+        private static long NowMs() => (long)(System.DateTime.UtcNow - new System.DateTime(1970, 1, 1)).TotalMilliseconds;
+
+        private static byte[] Rand(int n)
+        {
+            var a = new byte[n];
+            // Try RNGCryptoServiceProvider equivalent (RandomNumberGenerator) without imports:
+#if NET6_0_OR_GREATER
+            System.Security.Cryptography.RandomNumberGenerator.Fill(a);
+#else
+            var rnd = new System.Random();
+            rnd.NextBytes(a);
+#endif
+            return a;
+        }
+
+        private static string EncodeTime(long ms)
+        {
+            var outChars = new char[10];
+            long t = ms;
+            for (int i = 9; i >= 0; i--)
+            {
+                outChars[i] = B32[(int)(t % 32)];
+                t /= 32;
+            }
+            return new string(outChars);
+        }
+
+        private static string EncodeRand(byte[] bytes)
+        {
+            // 10 bytes -> 16 Crockford chars (5-bit groups)
+            var sb = new System.Text.StringBuilder(16);
+            int acc = 0, bits = 0;
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                acc = (acc << 8) | bytes[i];
+                bits += 8;
+                while (bits >= 5)
+                {
+                    bits -= 5;
+                    sb.Append(B32[(acc >> bits) & 31]);
+                }
+            }
+            if (bits > 0) sb.Append(B32[(acc << (5 - bits)) & 31]);
+            var s = sb.ToString();
+            return s.Length > 16 ? s.Substring(0, 16) : (s.Length < 16 ? s.PadRight(16, '0') : s);
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Sample data matching earlier YAML examples (AAPL, MSFT, RELI, EURUSD).
+    // ---------------------------------------------------------------------
+    public static class InstrumentSamples
+    {
+        public static EquityInstrument AAPL()
+        {
+            return new EquityInstrument
+            {
+                Name = "Apple Inc.",
+                Sym = new Symbology
+                {
+                    Ticker = "AAPL",
+                    BBG = "AAPL US EQUITY",
+                    MIC = "XNAS",
+                    ExchangeCode = "UQ",
+                    Currency = "USD"
+                }.Normalize(),
+                Sector = "Information Technology",
+                Industry = "Technology Hardware, Storage & Peripherals",
+                SharesOutstanding = 1_000_000_000d
+            };
+        }
+
+        public static EquityInstrument MSFT()
+        {
+            return new EquityInstrument
+            {
+                Name = "Microsoft Corp.",
+                Sym = new Symbology
+                {
+                    Ticker = "MSFT",
+                    BBG = "MSFT US EQUITY",
+                    MIC = "XNAS",
+                    ExchangeCode = "UQ",
+                    Currency = "USD"
+                }.Normalize(),
+                Sector = "Information Technology",
+                Industry = "Software",
+                SharesOutstanding = 7.4e9
+            };
+        }
+
+        public static EquityInstrument RELI()
+        {
+            return new EquityInstrument
+            {
+                Name = "Reliance Industries Ltd.",
+                Sym = new Symbology
+                {
+                    Ticker = "RELI",
+                    BBG = "RELI IN EQUITY",
+                    MIC = "XBOM",
+                    ExchangeCode = "IN",
+                    Currency = "INR"
+                }.Normalize(),
+                Sector = "Energy",
+                Industry = "Integrated Oil & Gas",
+                SharesOutstanding = 6.8e9
+            };
+        }
+
+        public static FxInstrument EURUSD()
+        {
+            var fx = new FxInstrument
+            {
+                Name = "Euro / US Dollar",
+                Pair = "EURUSD",
+                Sym = new Symbology
+                {
+                    Ticker = "EURUSD",
+                    Currency = "USD" // pricing currency context only
+                }.Normalize()
+            };
+            fx.Validate(out _);
+            return fx;
+        }
+    }
+}

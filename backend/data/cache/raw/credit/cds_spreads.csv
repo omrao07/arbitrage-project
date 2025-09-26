@@ -1,0 +1,16 @@
+date,issuer,rating,tenor,spread_bps
+2025-09-10,Apple Inc,AA,1Y,45
+2025-09-10,Apple Inc,AA,5Y,62
+2025-09-10,Apple Inc,AA,10Y,80
+
+2025-09-10,Tesla Inc,BBB,1Y,120
+2025-09-10,Tesla Inc,BBB,5Y,185
+2025-09-10,Tesla Inc,BBB,10Y,240
+
+2025-09-10,US HY Index,B,1Y,380
+2025-09-10,US HY Index,B,5Y,460
+2025-09-10,US HY Index,B,10Y,525
+
+2025-09-10,US IG Index,A,1Y,65
+2025-09-10,US IG Index,A,5Y,85
+2025-09-10,US IG Index,A,10Y,110

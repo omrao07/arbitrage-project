@@ -1,0 +1,18 @@
+id: BW-0060
+firm: Bridgewater
+name: Auction Cycle: UST 10Y (UK)
+description: Pre/post auction drift alpha.
+discipline: Macro
+family: Rates & Basis
+region: UK
+horizon: Macro
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: macro
+created_at: 2025-09-10
+updated_at: 2025-09-10

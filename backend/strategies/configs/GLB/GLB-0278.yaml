@@ -1,0 +1,18 @@
+id: GLB-0278
+firm: Global
+name: ESG Leaders vs Laggards Long/Short (AU)
+description: Worldwide diversified strategy in Credit & Structured — region: AU.
+discipline: Credit
+family: Credit & Structured
+region: AU
+horizon: Swing
+status: research
+engine: credit_cds
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: credit
+created_at: 2025-09-10
+updated_at: 2025-09-10

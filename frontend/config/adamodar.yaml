@@ -1,0 +1,63 @@
+id: DAMODAR-001
+name: Damodaran Valuation Bot
+family: fundamental
+discipline: equity_valuation
+engine: engines.equity_ls.allocator:EquityAllocator
+
+# Tags help you filter/search in strategy_manager
+tags:
+  - damodaran
+  - valuation
+  - dcf
+  - regression
+  - montecarlo
+  - fundamentals
+
+description: |
+  Strategy that ingests fundamentals, applies Damodaran-style DCF valuation,
+  regression factors, and Monte Carlo simulations to assess intrinsic value.
+  Trades when mispricing > threshold versus market price.
+
+data_sources:
+  fundamentals: yahoo_finance
+  macro: fred
+  alt_data: sentiment_news
+
+parameters:
+  # DCF assumptions
+  risk_free_rate: 0.04
+  equity_risk_premium: 0.05
+  terminal_growth: 0.02
+
+  # Monte Carlo
+  monte_carlo_runs: 5000
+  discount_rate_distribution: normal
+  discount_rate_mean: 0.09
+  discount_rate_std: 0.02
+
+  # Regression factors
+  regression_factors:
+    - pe_ratio
+    - pb_ratio
+    - roe
+    - ev_ebitda
+    - gdp_growth
+
+  # Signal logic
+  mispricing_threshold: 0.15   # buy/sell if mispricing > 15%
+
+risk:
+  maxGrossUSD: 5_000_000
+  maxNetUSD: 2_000_000
+  maxPerNameUSD: 500_000
+  maxDailyTurnoverUSD: 1_000_000
+  maxTicketUSD: 200_000
+  minTicketUSD: 5_000
+  allowShort: true
+  maxWeightPerName: 0.1
+  maxDailyLossUSD: 100_000
+  varLimitUSD: 250_000
+
+modes:
+  allowed: [BACKTEST, PAPER, LIVE]
+  default: PAPER

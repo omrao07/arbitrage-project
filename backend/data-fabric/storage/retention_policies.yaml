@@ -1,0 +1,103 @@
+# storage/retention_policies.yaml
+# Centralized data retention rules for the Hyper-OS Lakehouse
+
+version: 1
+last_updated: 2025-09-15
+default_action: keep
+default_retention_days: 365
+
+# Retention policies are applied by dataset family
+# Units: days (can also accept "infinite" for never-delete)
+
+datasets:
+
+  # ================= EQUITIES =================
+  equities_prices:
+    description: "Raw OHLCV equity prices (high-frequency and daily)"
+    bronze: { retention_days: 30, action: purge }      # drop raw after 1 month
+    silver: { retention_days: 365, action: archive }   # archive curated daily bars after 1 year
+    gold:   { retention_days: infinite, action: keep } # golden series forever
+
+  equities_factors:
+    description: "Equity factor exposures (momentum, value, quality)"
+    bronze: { retention_days: 90, action: purge }
+    silver: { retention_days: 730, action: archive }
+    gold:   { retention_days: infinite, action: keep }
+
+  equities_fundamentals:
+    description: "Quarterly company fundamentals"
+    bronze: { retention_days: 180, action: purge }
+    silver: { retention_days: 1825, action: archive }   # 5 years
+    gold:   { retention_days: infinite, action: keep }
+
+  # ================= FX =================
+  fx_rates:
+    description: "FX spot and cross rates"
+    bronze: { retention_days: 14, action: purge }     # raw ticks expire fast
+    silver: { retention_days: 730, action: archive }
+    gold:   { retention_days: infinite, action: keep }
+
+  fx_vol_surface:
+    description: "FX option implied vols"
+    bronze: { retention_days: 90, action: purge }
+    silver: { retention_days: 1825, action: archive }
+    gold:   { retention_days: infinite, action: keep }
+
+  # ================= MACRO =================
+  macro_series:
+    description: "Macro-economic indicators (FRED, IMF, WorldBank)"
+    bronze: { retention_days: 365, action: purge }
+    silver: { retention_days: 1825, action: archive }
+    gold:   { retention_days: infinite, action: keep }
+
+  # ================= NEWS =================
+  news_feed:
+    description: "Raw headlines + sentiment tags"
+    bronze: { retention_days: 7, action: purge }      # keep raw headlines 1 week
+    silver: { retention_days: 90, action: archive }   # keep enriched sentiment for 3 months
+    gold:   { retention_days: 365, action: archive }  # 1 year retention for compliance
+    pii_handling: mask                                # PII sanitized before persistence
+
+  # ================= PORTFOLIO =================
+  portfolio_orders:
+    description: "Execution orders"
+    bronze: { retention_days: 30, action: purge }
+    silver: { retention_days: 365, action: archive }
+    gold:   { retention_days: 2555, action: keep }    # 7 years (compliance)
+
+  portfolio_positions:
+    description: "Daily EOD positions"
+    bronze: { retention_days: 30, action: purge }
+    silver: { retention_days: 730, action: archive }
+    gold:   { retention_days: infinite, action: keep }
+
+  portfolio_pnl:
+    description: "Realized/unrealized PnL"
+    bronze: { retention_days: 30, action: purge }
+    silver: { retention_days: 730, action: archive }
+    gold:   { retention_days: infinite, action: keep }
+
+  # ================= RISK =================
+  risk_var:
+    description: "VaR metrics (95/99)"
+    bronze: { retention_days: 90, action: purge }
+    silver: { retention_days: 1825, action: archive }
+    gold:   { retention_days: infinite, action: keep }
+
+  risk_scenarios:
+    description: "Scenario shocks & stress tests"
+    bronze: { retention_days: 90, action: purge }
+    silver: { retention_days: 1825, action: archive }
+    gold:   { retention_days: infinite, action: keep }
+
+  # ================= POLICY =================
+  policy_audit:
+    description: "Audit logs (trades, compliance, auth)"
+    bronze: { retention_days: 365, action: archive }
+    silver: { retention_days: 2555, action: archive }   # ~7 years
+    gold:   { retention_days: infinite, action: keep }
+
+actions:
+  purge:     "Delete expired data permanently"
+  archive:   "Move to cold storage (glacier / nearline)"
+  keep:      "Retain indefinitely"

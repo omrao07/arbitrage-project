@@ -1,0 +1,18 @@
+id: BW-0333
+firm: Bridgewater
+name: NatGas Seasonal Storage (JP)
+description: Storage economics and weather.
+discipline: Macro
+family: Curves & Spreads
+region: JP
+horizon: Macro
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: macro
+created_at: 2025-09-10
+updated_at: 2025-09-10

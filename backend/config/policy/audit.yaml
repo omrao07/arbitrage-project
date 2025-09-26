@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: audit-policy
+  namespace: compliance
+  labels:
+    app: risk-os
+    component: audit
+data:
+  audit-policy.yaml: |
+    ---
+    apiVersion: audit.k8s.io/v1
+    kind: Policy
+    rules:
+      # Log all requests at metadata level (lightweight)
+      - level: Metadata
+
+      # Log all create/update/delete with request & response bodies
+      - level: RequestResponse
+        verbs: ["create", "update", "patch", "delete"]
+
+      # Log access to sensitive resources in detail
+      - level: RequestResponse
+        resources:
+          - group: ""
+            resources: ["secrets", "configmaps"]
+          - group: "rbac.authorization.k8s.io"
+            resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+
+      # Exclude noisy resources (optional)
+      - level: None
+        resources:
+          - group: ""
+            resources: ["events"]
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audit-logger
+  namespace: compliance
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: audit-logger
+  template:
+    metadata:
+      labels:
+        app: audit-logger
+    spec:
+      containers:
+        - name: audit-collector
+          image: fluent/fluent-bit:2.0
+          args:
+            - -i
+            - tail
+            - -p
+            - path=/var/log/kubernetes/audit.log
+            - -o
+            - es
+            - -p
+            - host=elasticsearch.audit.svc
+          volumeMounts:
+            - name: audit-logs
+              mountPath: /var/log/kubernetes
+      volumes:
+        - name: audit-logs
+          hostPath:
+            path: /var/log/kubernetes
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: audit-pvc
+  namespace: compliance
+spec:
+  accessModes: [ "ReadWriteOnce" ]
+  resources:
+    requests:
+      storage: 500Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: audit-retention
+  namespace: compliance
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: retention-cleaner
+              image: alpine:3.19
+              command: ["sh", "-c", "find /var/log/audit -type f -mtime +365 -delete"]
+          restartPolicy: OnFailure

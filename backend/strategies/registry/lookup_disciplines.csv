@@ -1,0 +1,11 @@
+id,name,description,default_engine
+EQ,Equities,Stock-based long/short, factor, event-driven and sector rotation strategies,equity_ls
+FI,Rates & Fixed Income,Global sovereign bonds, swaps, futures and curve/basis arbitrage,futures_macro
+FX,Foreign Exchange,G10 and EM FX spot, forwards, carry, valuation and options overlays,futures_macro
+CMD,Commodities,Energy, metals, agriculture and curve/roll yield strategies,futures_macro
+CR, Credit,IG/HY bonds, CDS, CLO tranches and capital-structure relative value,credit_cds
+VOL,Volatility & Options,Systematic vol premia, skew, dispersion and cross-asset options strategies,options_vol
+QA,Quantitative / Stat-Arb,Cross-sectional stat-arb, residual factors, ML/ensemble alphas,stat_arb
+XA,Cross-Asset / Macro,Systematic risk premia, risk parity, growth vs inflation quadrants,futures_macro
+EV,Event-Driven,M&A, IPO lockups, spin-offs, restructuring, catalysts,earnings surprises,equity_ls
+ALT,Alternative Data / Thematic,Satellite, climate, sentiment, ESG and policy-driven thematic overlays,futures_macro

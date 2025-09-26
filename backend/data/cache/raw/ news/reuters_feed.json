@@ -1,0 +1,36 @@
+{
+  "source": "Reuters",
+  "timestamp": "2025-09-14T12:05:00Z",
+  "articles": [
+    {
+      "id": "reut-001",
+      "headline": "Global Oil Prices Surge as OPEC+ Extends Supply Cuts",
+      "body": "Crude oil rose above $95/bbl after OPEC+ announced extended supply cuts into Q4, stoking inflationary concerns.",
+      "link": "https://www.reuters.com/markets/commodities/opec-supply-cuts-2025-09-14/",
+      "symbols": ["CL=F", "XOM", "CVX"],
+      "time_published": "2025-09-14T11:50:00Z",
+      "tags": ["commodities", "macro", "inflation"],
+      "sentiment": 0.40
+    },
+    {
+      "id": "reut-002",
+      "headline": "Tesla Faces EU Probe Over Subsidies for EV Exports",
+      "body": "European regulators have launched an investigation into whether Tesla benefited unfairly from US subsidies on exported EVs.",
+      "link": "https://www.reuters.com/business/autos-transportation/tesla-eu-probe-2025-09-14/",
+      "symbols": ["TSLA", "SXAP"],
+      "time_published": "2025-09-14T11:00:00Z",
+      "tags": ["equity", "autos", "regulation"],
+      "sentiment": -0.25
+    },
+    {
+      "id": "reut-003",
+      "headline": "US Jobless Claims Fall, Signaling Labor Market Strength",
+      "body": "Weekly jobless claims dropped to 200k, the lowest in 6 months, reinforcing views that the US economy remains resilient.",
+      "link": "https://www.reuters.com/markets/us-jobless-claims-2025-09-14/",
+      "symbols": ["SPX", "DXY", "UST10Y"],
+      "time_published": "2025-09-14T10:30:00Z",
+      "tags": ["macro", "labor", "rates"],
+      "sentiment": 0.20
+    }
+  ]
+}

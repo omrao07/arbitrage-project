@@ -1,0 +1,18 @@
+id: GLB-0404
+firm: Global
+name: NatGas Seasonal Storage (AU)
+description: Worldwide diversified strategy in Commodities & Curves — region: AU.
+discipline: Macro
+family: Commodities & Curves
+region: AU
+horizon: Macro
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

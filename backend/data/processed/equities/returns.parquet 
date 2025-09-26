@@ -1,0 +1,63 @@
+import pandas as pd
+import numpy as np
+from pathlib import Path
+
+PRICES_PARQUET = Path("data/cache/processed/equities/adj_prices.parquet")
+CORPACTIONS_CSV = Path("data/cache/raw/equities/corporate_actions.csv")  # for dividends (optional)
+OUT_PARQUET     = Path("data/cache/processed/equities/returns.parquet")
+
+OUT_PARQUET.parent.mkdir(parents=True, exist_ok=True)
+
+# ---- Load adjusted prices ----
+px = pd.read_parquet(PRICES_PARQUET)  # cols: date, ticker, open, high, low, close, volume, currency
+px["date"] = pd.to_datetime(px["date"])
+px = px.sort_values(["ticker", "date"])
+
+# ---- Optional: dividends for total-return calc ----
+div = None
+if CORPACTIONS_CSV.exists():
+    ca = pd.read_csv(CORPACTIONS_CSV, parse_dates=["date"])
+    div = (
+        ca.loc[ca["action_type"].str.lower().eq("dividend"), ["date", "ticker", "amount"]]
+          .rename(columns={"amount": "dividend"})
+    )
+
+# ---- Compute returns per ticker ----
+def compute_returns(g: pd.DataFrame) -> pd.DataFrame:
+    g = g.sort_values("date").copy()
+    # Price returns (close-to-close)
+    g["close_prev"] = g["close"].shift(1)
+
+    # Simple & log price returns (price-only)
+    g["r"]      = g["close"].div(g["close_prev"]) - 1.0
+    g["r_log"]  = np.log(g["close"].div(g["close_prev"]))
+
+    # Total-return (add dividends on ex-date)
+    if div is not None:
+        g = g.merge(div[div["ticker"].eq(g["ticker"].iat[0])][["date", "dividend"]],
+                    on="date", how="left")
+        g["dividend"] = g["dividend"].fillna(0.0)
+    else:
+        g["dividend"] = 0.0
+
+    # If dividend is per-share, total-return uses (P_t + D_t)/P_{t-1} - 1
+    g["r_tr"]     = (g["close"] + g["dividend"]).div(g["close_prev"]) - 1.0
+    g["r_tr_log"] = np.log((g["close"] + g["dividend"]).div(g["close_prev"]))
+
+    # Cleanup
+    return g[["date","ticker","close","volume","currency","r","r_log","r_tr","r_tr_log","dividend"]]
+
+ret = (px.groupby("ticker", group_keys=False)
+         .apply(compute_returns)
+         .dropna(subset=["r","r_log","r_tr","r_tr_log"], how="all"))
+
+# Optional: add rolling stats frequently needed by models
+ret = ret.sort_values(["ticker","date"])
+ret["vol_20"]  = ret.groupby("ticker")["r_tr"].rolling(20).std().reset_index(level=0, drop=True)
+ret["vol_60"]  = ret.groupby("ticker")["r_tr"].rolling(60).std().reset_index(level=0, drop=True)
+ret["mom_20"]  = ret.groupby("ticker")["r_tr_log"].rolling(20).sum().reset_index(level=0, drop=True)
+ret["mom_120"] = ret.groupby("ticker")["r_tr_log"].rolling(120).sum().reset_index(level=0, drop=True)
+
+# Write parquet (columnar, compressed)
+ret.to_parquet(OUT_PARQUET, engine="pyarrow", index=False)
+print(f"✅ wrote {OUT_PARQUET} with shape {ret.shape}")

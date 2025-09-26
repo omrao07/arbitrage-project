@@ -1,0 +1,68 @@
+# config/logging.yaml
+# -------------------------------------------------------------------
+# Logging configuration for Strategy Lab
+# -------------------------------------------------------------------
+# Usage:
+#   import logging.config, yaml
+#   with open("config/logging.yaml") as f:
+#       cfg = yaml.safe_load(f)
+#   logging.config.dictConfig(cfg)
+# -------------------------------------------------------------------
+
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  standard:
+    format: "[%(asctime)s] %(levelname)s %(name)s: %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+  json:
+    format: '{"t":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","msg":"%(message)s"}'
+    datefmt: "%Y-%m-%dT%H:%M:%S"
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: DEBUG
+    formatter: standard
+    stream: ext://sys.stdout
+  json_file:
+    class: logging.FileHandler
+    level: INFO
+    formatter: json
+    filename: logs/strategy_lab.jsonl
+    encoding: utf8
+  rotating_file:
+    class: logging.handlers.RotatingFileHandler
+    level: DEBUG
+    formatter: standard
+    filename: logs/strategy_lab.log
+    maxBytes: 5_000_000     # ~5MB per file
+    backupCount: 5
+    encoding: utf8
+
+loggers:
+  strategy_lab:
+    level: DEBUG
+    handlers: [console, rotating_file]
+    propagate: false
+  execution_agent:
+    level: INFO
+    handlers: [console, rotating_file]
+    propagate: false
+  monitoring_agent:
+    level: INFO
+    handlers: [console, rotating_file]
+    propagate: false
+  research_agent:
+    level: INFO
+    handlers: [console, rotating_file]
+    propagate: false
+  strategy_agent:
+    level: INFO
+    handlers: [console, rotating_file]
+    propagate: false
+
+root:
+  level: WARN
+  handlers: [console]

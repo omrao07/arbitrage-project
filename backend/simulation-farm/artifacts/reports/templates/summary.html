@@ -1,0 +1,214 @@
+<!-- simulation-farm/artifacts/reports/templates/summary.html -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>{{ title or "Simulation Summary" }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+
+  <style>
+    :root {
+      --bg:#0b0e14; --panel:#121723; --text:#e5e9f0; --muted:#9aa4b2; --accent:#7aa2f7; --grid:#1c2233;
+      --green:#9ece6a; --red:#f7768e; --amber:#e0af68;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;padding:24px;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto}
+    .container{max-width:1200px;margin:0 auto}
+    .header{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:14px}
+    h1{font-size:22px;margin:0;font-weight:600}
+    .meta{color:var(--muted);font-size:13px;display:flex;gap:12px;flex-wrap:wrap}
+    .grid{display:grid;grid-template-columns:2fr 1fr;gap:16px}
+    @media(max-width:900px){.grid{grid-template-columns:1fr}}
+    .card{background:var(--panel);border:1px solid #1b2333;border-radius:12px;padding:14px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+    .kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}
+    @media(max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)}}
+    .kpi{background:#0f1524;border:1px solid #1b2233;border-radius:10px;padding:10px 12px}
+    .kpi .k{color:var(--muted);font-size:12px}
+    .kpi .v{font-size:18px;margin-top:2px}
+    .links{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px}
+    .btn{appearance:none;border:1px solid #22304a;background:#0f1524;color:var(--text);padding:8px 10px;border-radius:10px;font-size:12px;text-decoration:none}
+    .btn:hover{border-color:#2b3a58}
+    canvas{width:100% !important;height:320px !important}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th,td{padding:8px;border-bottom:1px solid #1b2333;text-align:right}
+    th{text-align:left;color:#cbd5e1}
+    .good{color:var(--green)} .bad{color:var(--red)}
+    .foot{color:var(--muted);font-size:11px;margin-top:8px;text-align:right}
+    .list{margin:0;padding-left:18px;color:var(--muted);font-size:13px}
+    .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace}
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>{{ title or "Simulation Summary" }}</h1>
+    <div class="meta">
+      {% if run_id %}<span>Run: <strong>{{ run_id }}</strong></span>{% endif %}
+      {% if strategy %}<span>Strategy: <strong>{{ strategy }}</strong></span>{% endif %}
+      {% if start_date and end_date %}<span>Period: <strong>{{ start_date }} → {{ end_date }}</strong></span>{% endif %}
+      {% if tz %}<span>TZ: <strong>{{ tz }}</strong></span>{% endif %}
+    </div>
+  </div>
+
+  <!-- KPI row -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="kpis">
+      <div class="kpi"><div class="k">CAGR</div><div class="v">{{ '%0.2f%%' % (kpis.cagr*100) if kpis and kpis.cagr is not none else '—' }}</div></div>
+      <div class="kpi"><div class="k">Sharpe</div><div class="v">{{ '%0.2f' % kpis.sharpe if kpis and kpis.sharpe is not none else '—' }}</div></div>
+      <div class="kpi"><div class="k">Sortino</div><div class="v">{{ '%0.2f' % kpis.sortino if kpis and kpis.sortino is not none else '—' }}</div></div>
+      <div class="kpi"><div class="k">Max DD</div><div class="v">{{ '%0.2f%%' % (kpis.max_dd*100) if kpis and kpis.max_dd is not none else '—' }}</div></div>
+      <div class="kpi"><div class="k">Vol (ann.)</div><div class="v">{{ '%0.2f%%' % (kpis.vol_annual*100) if kpis and kpis.vol_annual is not none else '—' }}</div></div>
+      <div class="kpi"><div class="k">Trades</div><div class="v">{{ kpis.trades if kpis and kpis.trades is not none else '—' }}</div></div>
+    </div>
+
+    <!-- Quick links -->
+    <div class="links">
+      {% if links and links.equity %}<a class="btn" href="{{ links.equity }}">Equity Curve</a>{% endif %}
+      {% if links and links.risk %}<a class="btn" href="{{ links.risk }}">Risk Report</a>{% endif %}
+      {% if links and links.raw %}<a class="btn" href="{{ links.raw }}">Raw Results</a>{% endif %}
+      {% if links and links.logs %}<a class="btn" href="{{ links.logs }}">Logs</a>{% endif %}
+    </div>
+  </div>
+
+  <div class="grid">
+    <!-- Charts -->
+    <div class="card">
+      <h3 style="margin:0 0 8px">Equity & Daily PnL</h3>
+      <canvas id="eqChart"></canvas>
+    </div>
+
+    <!-- Run configuration -->
+    <div class="card">
+      <h3 style="margin:0 0 8px">Run Configuration</h3>
+      <table>
+        <tbody>
+          <tr><th>Engine</th><td>{{ config.engine or '—' }}</td></tr>
+          <tr><th>Data</th><td>{{ config.data or '—' }}</td></tr>
+          <tr><th>Universe</th><td>{{ config.universe or '—' }}</td></tr>
+          <tr><th>Cash</th><td>{{ '%0.2f' % config.cash if config and config.cash is not none else '—' }}</td></tr>
+          <tr><th>Params</th><td class="mono">{{ params|tojson if params is defined else '{}' }}</td></tr>
+        </tbody>
+      </table>
+      {% if notes %}
+        <h3 style="margin:12px 0 6px">Notes</h3>
+        <ul class="list">
+          {% for n in notes %}<li>{{ n }}</li>{% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+
+    <!-- Top contributors -->
+    <div class="card">
+      <h3 style="margin:0 0 8px">Top Contributors</h3>
+      <table>
+        <thead><tr><th>Symbol</th><th style="text-align:right">PnL</th><th style="text-align:right">PnL (%)</th></tr></thead>
+        <tbody>
+          {% for c in (contributors or [])[:10] %}
+          <tr>
+            <td style="text-align:left">{{ c.symbol }}</td>
+            <td>{{ '%0.2f' % c.pnl }}</td>
+            <td class="{{ 'good' if c.pnl_pct >= 0 else 'bad' }}">{{ '%0.2f%%' % (c.pnl_pct*100) }}</td>
+          </tr>
+          {% endfor %}
+          {% if not contributors %}<tr><td colspan="3" style="text-align:center;color:var(--muted)">No contributor data.</td></tr>{% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Positions snapshot -->
+    <div class="card">
+      <h3 style="margin:0 0 8px">Positions Snapshot</h3>
+      <table>
+        <thead><tr><th>Symbol</th><th style="text-align:right">Qty</th><th style="text-align:right">Px</th><th style="text-align:right">Value</th><th style="text-align:right">Wt (%)</th></tr></thead>
+        <tbody>
+          {% for p in (positions or [])[:15] %}
+          <tr>
+            <td style="text-align:left">{{ p.symbol }}</td>
+            <td>{{ '%0.4f' % p.qty }}</td>
+            <td>{{ '%0.4f' % p.px }}</td>
+            <td>{{ '%0.2f' % p.value }}</td>
+            <td>{{ '%0.2f' % (p.weight*100) }}</td>
+          </tr>
+          {% endfor %}
+          {% if not positions %}<tr><td colspan="5" style="text-align:center;color:var(--muted)">No positions.</td></tr>{% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Recent trades -->
+    <div class="card">
+      <h3 style="margin:0 0 8px">Recent Trades</h3>
+      <table>
+        <thead><tr><th>Time</th><th>Symbol</th><th>Side</th><th style="text-align:right">Qty</th><th style="text-align:right">Price</th><th style="text-align:right">Fee</th></tr></thead>
+        <tbody>
+          {% for t in (trades or [])[:20] %}
+          <tr>
+            <td style="text-align:left">{{ t.ts }}</td>
+            <td style="text-align:left">{{ t.symbol }}</td>
+            <td style="text-align:left">{{ t.side }}</td>
+            <td>{{ '%0.4f' % t.qty }}</td>
+            <td>{{ '%0.4f' % t.px }}</td>
+            <td>{{ '%0.4f' % (t.fee or 0) }}</td>
+          </tr>
+          {% endfor %}
+          {% if not trades %}<tr><td colspan="6" style="text-align:center;color:var(--muted)">No trades recorded.</td></tr>{% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Diagnostics -->
+    <div class="card">
+      <h3 style="margin:0 0 8px">Diagnostics</h3>
+      <table>
+        <tbody>
+          <tr><th>Runtime (s)</th><td>{{ '%0.2f' % (diag.runtime_s or 0) if diag else '—' }}</td></tr>
+          <tr><th>CPU Time (s)</th><td>{{ '%0.2f' % (diag.cpu_s or 0) if diag else '—' }}</td></tr>
+          <tr><th>Peak RSS (MB)</th><td>{{ '%0.1f' % (diag.peak_rss_mb or 0) if diag else '—' }}</td></tr>
+          <tr><th>Sim Speed (x real-time)</th><td>{{ '%0.2f' % (diag.speed_x or 0) if diag else '—' }}</td></tr>
+          <tr><th>Warnings</th><td>{{ diag.warnings|length if diag and diag.warnings is iterable else 0 }}</td></tr>
+        </tbody>
+      </table>
+      {% if diag and diag.warnings %}
+      <ul class="list">
+        {% for w in diag.warnings %}<li>{{ w }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+      <div class="foot">{{ footer or "Generated by Simulation Farm" }}</div>
+    </div>
+  </div>
+
+</div>
+<script>                </script>;
+
+  const ds = [
+    {label:'Equity', data: dates.map((d,i)=>({x:d,y:equity[i]})), borderWidth:2, pointRadius:0, tension:.15, yAxisID:'y'}
+  ];
+  if (bench) ds.push({label:'Benchmark', data: dates.map((d,i)=>({x:d,y:bench[i]})), borderDash:[4,3], borderWidth:1.5, pointRadius:0, tension:.1, yAxisID:'y'});
+  if (pnl) {
+    ds.push({label:'PnL (%)', data: dates.map((d,i)=>({x:d,y:pnl[i]*100})), type:'bar', yAxisID:'y1', borderWidth:0});
+  }
+
+  const ctx = document.getElementById('eqChart').getContext('2d');
+  new Chart(ctx, {
+    type:'line',
+    data:{datasets:ds},
+    options:{
+      responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      scales:{
+        x:{type:'time', time:{unit:'day'}, grid:{color:gridColor}, ticks:{color:tickColor}},
+        y:{position:'left', grid:{color:gridColor}, ticks:{color:tickColor}, title:{display:true,text:'Equity',color:tickColor}},
+        y1:{position:'right', grid:{display:false}, ticks:{color:tickColor, callback:v=>v+'%'}, title:{display:true,text:'PnL (%)',color:tickColor}}
+      },
+      elements:{ line:{ borderColor:ctx=>({'Equity':'#7aa2f7','Benchmark':'#9ece6a'}[ctx.dataset.label]||'#7aa2f7'),
+                        backgroundColor:'transparent' }, point:{radius:0} }
+    }
+  });
+</script>
+</body>
+</html>

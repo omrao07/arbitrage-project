@@ -1,0 +1,18 @@
+id: BW-0080
+firm: Bridgewater
+name: Bund 2s10s Flattener (EM)
+description: ECB tightening cycle.
+discipline: Macro
+family: Rates & Basis
+region: EM
+horizon: Macro
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: macro
+created_at: 2025-09-10
+updated_at: 2025-09-10

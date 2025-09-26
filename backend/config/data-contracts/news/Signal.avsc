@@ -1,0 +1,101 @@
+{
+  "type": "record",
+  "namespace": "news",
+  "name": "Signal",
+  "doc": "Model-derived signal from news (headline or article) with scores & provenance.",
+  "fields": [
+    { "name": "signal_id", "type": "string", "doc": "Unique ID for this signal" },
+
+    { "name": "source_type",
+      "type": { "type": "enum", "name": "SourceType", "symbols": ["HEADLINE", "ARTICLE", "TICKER_WIRE", "SOCIAL"] },
+      "doc": "Origin of the text used to generate the signal" },
+
+    { "name": "source_ids",
+      "type": { "type": "array", "items": "string" },
+      "doc": "One or more upstream IDs (e.g., news.headline_id, article_id)" },
+
+    { "name": "tickers",
+      "type": { "type": "array", "items": "string" },
+      "doc": "Impacted symbols (AAPL, MSFT, ES, CL, etc.)" },
+
+    { "name": "entities",
+      "type": { "type": "array", "items":
+        { "type": "record", "name": "Entity",
+          "fields": [
+            { "name": "name", "type": "string", "doc": "Canonical entity name" },
+            { "name": "type",
+              "type": { "type": "enum", "name": "EntityType", "symbols": ["COMPANY","SECTOR","INDEX","FX","COMMODITY","RATE","REGULATOR","PERSON","ORG","OTHER"] },
+              "doc": "Entity category" },
+            { "name": "score", "type": ["null","float"], "default": null, "doc": "Relevance of this entity in the text (0–1)" }
+          ]
+        }
+      },
+      "doc": "Resolved entities referenced in the text"
+    },
+
+    { "name": "sentiment",
+      "type": { "type": "record", "name": "Sentiment",
+        "fields": [
+          { "name": "polarity", "type": { "type": "enum", "name": "Polarity", "symbols": ["NEGATIVE","NEUTRAL","POSITIVE"] }, "doc": "Signed label" },
+          { "name": "score", "type": "float", "doc": "Signed sentiment score in [-1, 1]" },
+          { "name": "confidence", "type": "float", "doc": "Model confidence in [0, 1]" }
+        ]
+      },
+      "doc": "Headline/article sentiment"
+    },
+
+    { "name": "direction",
+      "type": { "type": "enum", "name": "Direction", "symbols": ["DOWN","FLAT","UP","UNKNOWN"] },
+      "doc": "Expected price impact direction at decision horizon" },
+
+    { "name": "relevance", "type": "float", "doc": "Overall relevance to trading (0–1)" },
+    { "name": "novelty",   "type": "float", "doc": "How new vs. prior coverage (0–1)" },
+    { "name": "credibility","type": "float", "doc": "Source/model credibility (0–1)" },
+    { "name": "vol_impact","type": ["null","float"], "default": null, "doc": "Expected volatility impact (stdev uplift, 0–1)" },
+
+    { "name": "horizon_sec", "type": "int", "doc": "Signal decision horizon in seconds (e.g., 3600 for 1h)" },
+    { "name": "ttl_sec",     "type": "int", "doc": "Time-to-live; downstream should decay/expire after this" },
+    { "name": "decay",
+      "type": ["null", { "type":"record", "name":"Decay",
+        "fields": [
+          { "name": "type", "type": { "type":"enum", "name":"DecayType", "symbols": ["NONE","LINEAR","EXPONENTIAL"] } },
+          { "name": "half_life_sec", "type": ["null","int"], "default": null, "doc": "For EXPONENTIAL, half-life seconds" }
+        ]
+      }],
+      "default": null,
+      "doc": "Optional decay profile"
+    },
+
+    { "name": "model",
+      "type": { "type":"record", "name":"ModelInfo",
+        "fields": [
+          { "name": "name", "type": "string", "doc": "Model name (e.g., news-bert-v3)" },
+          { "name": "version", "type": "string", "doc": "Semantic version or git sha" },
+          { "name": "features", "type": ["null", {"type":"array","items":"string"}], "default": null, "doc": "Key features used" }
+        ]
+      },
+      "doc": "Signal provenance"
+    },
+
+    { "name": "score",
+      "type": "float",
+      "doc": "Primary trading score in [-1,1] (signed alpha used by selector/allocator)" },
+
+    { "name": "explanations",
+      "type": ["null", {"type":"array","items":
+        { "type":"record","name":"Explanation",
+          "fields":[
+            { "name":"feature", "type":"string" },
+            { "name":"weight",  "type":"float" }
+          ]
+        }
+      }],
+      "default": null,
+      "doc": "Top contributing features/weights for transparency"
+    },
+
+    { "name": "event_time",  "type": { "type":"long", "logicalType":"timestamp-millis" }, "doc": "When the underlying event occurred" },
+    { "name": "publish_time","type": { "type":"long", "logicalType":"timestamp-millis" }, "doc": "When the source was published" },
+    { "name": "ingest_time", "type": { "type":"long", "logicalType":"timestamp-millis" }, "doc": "When signal was computed/ingested" }
+  ]
+}

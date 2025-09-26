@@ -1,0 +1,72 @@
+import os
+import pandas as pd
+import numpy as np
+
+OUT_PATH = "data/adamodar/curated/us_largecap_comps.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def seed_us_largecap() -> pd.DataFrame:
+    rows = [
+        ("2025-01-01","AAPL","Apple Inc.","Information Technology",3.20e12,3.25e12,4.00e11,1.30e11,1.00e11,9.80e10,3.80e11,7.50e10,-5.0e10,"","","","","",0.44,0.31,0.25,1.33,0.26,-0.38,"Illustrative seed"),
+        ("2025-01-01","MSFT","Microsoft Corp.","Information Technology",3.10e12,3.15e12,2.50e11,1.20e11,9.20e10,9.00e10,4.70e11,2.30e11,-3.0e10,"","","","","",0.69,0.44,0.37,0.40,0.20,-0.25,"Illustrative seed"),
+        ("2025-01-01","GOOGL","Alphabet Inc.","Communication Services",2.00e12,1.96e12,3.30e11,1.10e11,8.00e10,7.60e10,4.20e11,2.80e11,-4.0e10,"","","","","",0.56,0.33,0.24,0.29,0.19,-0.36,"Illustrative seed"),
+        ("2025-01-01","AMZN","Amazon.com Inc.","Consumer Discretionary",1.80e12,1.90e12,5.90e11,9.50e10,4.50e10,6.20e10,5.00e11,2.00e11,1.00e11,"","","","","",0.45,0.10,0.08,0.23,0.09,1.05,"Retail + Cloud mix"),
+        ("2025-01-01","NVDA","NVIDIA Corp.","Information Technology",2.40e12,2.38e12,1.20e11,7.20e10,6.00e10,5.80e10,1.50e11,1.20e11,-2.0e10,"","","","","",0.76,0.55,0.50,0.50,0.40,-0.28,"AI cycle"),
+    ]
+    return pd.DataFrame(rows, columns=[
+        "as_of","ticker","name","sector","market_cap_usd","enterprise_value_usd","revenue_usd","ebitda_usd",
+        "net_income_usd","free_cash_flow_usd","total_assets_usd","total_equity_usd","net_debt_usd",
+        "pe","psales","ev_ebitda","ev_sales","fcf_yield","gross_margin","ebit_margin","ni_margin","roe","roa","net_debt_to_ebitda","notes"
+    ])
+
+def compute_ratios(df: pd.DataFrame) -> pd.DataFrame:
+    d = df.copy()
+    # Safety: avoid divide-by-zero
+    eps = 1e-12
+
+    # Valuation ratios
+    d["pe"] = d["market_cap_usd"] / (d["net_income_usd"] + eps)
+    d["psales"] = d["market_cap_usd"] / (d["revenue_usd"] + eps)
+    d["ev_ebitda"] = d["enterprise_value_usd"] / (d["ebitda_usd"] + eps)
+    d["ev_sales"] = d["enterprise_value_usd"] / (d["revenue_usd"] + eps)
+    d["fcf_yield"] = (d["free_cash_flow_usd"] / (d["market_cap_usd"] + eps)).replace([np.inf,-np.inf], np.nan)
+
+    # Profitability & returns (if gross/EBIT not provided, keep as-is or join later)
+    # Here we keep gross_margin as-seeded (you can join from your margin tables).
+    d["ebit_margin"] = d["ebit_margin"]  # placeholder for join
+    d["ni_margin"] = d["net_income_usd"] / (d["revenue_usd"] + eps)
+
+    # Returns
+    d["roe"] = d["net_income_usd"] / (d["total_equity_usd"] + eps)
+    d["roa"] = d["net_income_usd"] / (d["total_assets_usd"] + eps)
+
+    # Leverage
+    d["net_debt_to_ebitda"] = d["net_debt_usd"] / (d["ebitda_usd"] + eps)
+
+    # Clean any absurd values
+    for c in ["pe","psales","ev_ebitda","ev_sales","fcf_yield","ni_margin","roe","roa","net_debt_to_ebitda"]:
+        d[c] = d[c].replace([np.inf,-np.inf], np.nan)
+
+    return d
+
+def simple_screens(d: pd.DataFrame) -> pd.DataFrame:
+    """Example screener flags for your UI."""
+    out = d.copy()
+    out["screen_quality"] = (out["roe"] > 0.20) & (out["ni_margin"] > 0.20)
+    out["screen_value"]   = (out["pe"] < 20) | (out["ev_ebitda"] < 12)
+    out["screen_moat"]    = (out["gross_margin"] > 0.50) & (out["ebit_margin"] > 0.25)
+    out["screen_safelev"] = (out["net_debt_to_ebitda"].fillna(0) < 1.0)
+    return out
+
+def write_csv(df: pd.DataFrame, path: str = OUT_PATH):
+    ensure_dirs(path)
+    df.to_csv(path, index=False)
+
+if __name__ == "__main__":
+    df = seed_us_largecap()
+    df = compute_ratios(df)
+    df = simple_screens(df)
+    write_csv(df)
+    print(f"✅ us_largecap_comps.csv written to {OUT_PATH} with {len(df)} rows")

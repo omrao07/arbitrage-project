@@ -1,0 +1,164 @@
+apiVersion: v1
+kind: CompliancePolicy
+metadata:
+  name: trading-os-compliance
+  version: 1.0.0
+  owners:
+    - role: CCO
+      contact: cco@yourfund.com
+    - role: CISO
+      contact: ciso@yourfund.com
+    - role: CRO
+      contact: cro@yourfund.com
+labels:
+  environment: prod
+  domain: hedge-fund-os
+mappings:
+  soc2: [CC1.1, CC2.1, CC6.1, CC7.2, CC8.1]
+  iso27001: [A.5, A.6, A.8, A.9, A.10, A.12, A.14, A.16, A.17, A.18]
+  nist80053: [AC-2, AC-6, AU-2, AU-6, CM-2, CP-9, IA-2, IR-4, SC-12, SC-13]
+  sec: [206(4)-7, Reg-SCI, Reg-SIDERA]
+  basel: [SR 11-7, FRTB]
+governance:
+  statement: >
+    All systems, data, and models are governed under policy-as-code. Controls are
+    enforced in infrastructure, trading systems, and SDLC pipelines. Exceptions
+    require dual approvals and are time-bound.
+  review_cycle: quarterly
+  attestations_required: [CCO, CTO, CRO]
+  exception_approval: [CCO, CISO]
+roles:
+  - id: ADMIN
+    description: Full admin, break-glass only
+    mfa_required: true
+    approvals: [CCO, CTO]
+  - id: TRADER
+    description: Can run strategies, submit orders (EMS/OMS)
+    mfa_required: true
+  - id: QUANT
+    description: Research & backtest only, no live trade perms
+  - id: OPS
+    description: Infra runbooks and deployments
+  - id: VIEWER
+    description: Read-only dashboards
+data_classification:
+  classes:
+    - id: PUBLIC
+      examples: [marketing, docs]
+    - id: INTERNAL
+      examples: [configs, runbooks]
+    - id: CONFIDENTIAL
+      examples: [positions, pnl, strategies]
+    - id: RESTRICTED
+      examples: [PII, API keys, private keys]
+  default_class: INTERNAL
+  enforcement:
+    opa_package: policy.data.classification
+    require_labels: true
+encryption:
+  at_rest:
+    required: true
+    algorithms: ["AES-256", "SSE-KMS"]
+  in_transit:
+    required: true
+    tls_min_version: "1.2"
+    mTLS_internal: true
+  key_management:
+    provider: AWS KMS
+    rotation_days: 365
+    separation_of_duties: true
+access_control:
+  model: RBAC + ABAC
+  sso_provider: OIDC
+  just_in_time:
+    enabled: true
+    max_hours: 4
+    approvals: [CCO, Security]
+  break_glass:
+    vault_secret: kv/break-glass
+    timebox_minutes: 30
+    mandatory_postmortem: true
+logging_and_audit:
+  central_siem: elastic
+  retention_days:
+    audit: 365
+    trades: 2555   # ~7y SEC books & records
+    risk: 1825
+  integrity:
+    append_only: true
+    object_lock_days: 30
+change_management:
+  code_reviews_required: true
+  min_reviewers: 2
+  prod_deploy_requires: [green_ci, signed_artifacts, ticket_linked]
+  infra_as_code_only: true
+  emergency_window_minutes: 120
+incident_response:
+  on_call_rotation: 24x7
+  rto_hours: 4
+  rpo_minutes: 15
+  tabletop_exercises_per_year: 2
+  notify_regulators_within_hours: 72
+vendor_management:
+  required_docs: [SOC2, ISO27001, PenTest, DPA]
+  monitoring: continuous
+  allowed_regions: ["US","EU","APAC"]
+trading_controls:
+  pre_trade_checks:
+    max_order_notional_pct_nav: 0.05
+    restricted_list: compliance/restricted.json
+    loc_required_for_shorts: true
+    position_limit_pct_nav: 0.20
+  post_trade_surveillance:
+    spoofing_layering: true
+    wash_trades: true
+    tca_required: true
+  recordkeeping:
+    archive_channels: [email, chat, orders, fills, voice]
+    retention_years: 7
+risk_management:
+  model_risk:
+    governed_models: [alpha, risk, execution, nlp]
+    validation_before_prod: true
+    challenger_models: true
+    drift_monitoring: true
+  limits:
+    gross_exposure_pct_nav: 250
+    net_exposure_pct_nav: 100
+    single_name_pct_nav: 10
+    var_95_pct_nav: 4
+    daily_drawdown_pct: 3
+    hard_kill_switch: true
+business_continuity:
+  backups: hourly-db, daily-objects
+  multi_region_failover: true
+  dr_test_per_quarter: 1
+supply_chain_security:
+  sast: true
+  dast: true
+  dependency_scanning: true
+  sbom_required: true
+  signed_commits: true
+  artifact_signing: cosign
+  provenance: SLSA-3
+attestations:
+  quarterly:
+    - access-review
+    - key-rotation
+    - trading-limits
+enforcement_hooks:
+  opa:
+    bundles:
+      - name: compliance-core
+        url: oci://registry.example.com/opa/compliance-core:1.0.0
+      - name: trading-guards
+        url: oci://registry.example.com/opa/trading-guards:1.2.3
+  terraform:
+    required_modules:
+      - guardrails/no_public_sg
+      - guardrails/s3_block_public
+      - guardrails/kms_mandatory
+  ci_cd:
+    required_checks: [sast, dast, sbom, policy-as-code]
+  siem:
+    dashboards: [access, orders, alerts]

@@ -1,0 +1,123 @@
+apiVersion: v1
+kind: RetentionPolicy
+metadata:
+  name: trading-os-data-retention
+  version: 1.0.0
+  owners:
+    - role: CCO
+      contact: cco@yourfund.com
+    - role: CISO
+      contact: ciso@yourfund.com
+labels:
+  environment: prod
+  scope: data-lifecycle
+standards_mapping:
+  sec: [17a-4, 204-2, Reg-SCI]
+  mifid2: [Article 16, RTS 25]
+  gdpr: [Art.5, Art.17, Art.30]
+  iso27001: [A.8, A.18]
+principles:
+  statement: >
+    Data is retained only as long as required by regulation, contract, or business use.
+    Expired data is purged irreversibly using cryptographic erase. Exceptions require
+    CCO + CISO approval and are time-bound.
+  review_cycle: annual
+  purge_process:
+    automated: true
+    evidence_required: true
+    approval_roles: [CCO, CISO]
+    method: "cryptographic-erase"
+datasets:
+  trading:
+    orders:
+      class: RESTRICTED
+      retention_days: 2555     # 7 years (SEC books & records)
+    fills:
+      class: RESTRICTED
+      retention_days: 2555
+    blotters:
+      class: CONFIDENTIAL
+      retention_days: 2555
+  risk:
+    positions:
+      class: CONFIDENTIAL
+      retention_days: 1825     # 5 years
+    pnl:
+      class: CONFIDENTIAL
+      retention_days: 1825
+    var:
+      class: CONFIDENTIAL
+      retention_days: 1825
+    stress_tests:
+      class: CONFIDENTIAL
+      retention_days: 1825
+  compliance:
+    audit_logs:
+      class: CONFIDENTIAL
+      retention_days: 365
+    access_logs:
+      class: CONFIDENTIAL
+      retention_days: 730
+    surveillance_alerts:
+      class: CONFIDENTIAL
+      retention_days: 1825
+  client_data:
+    kyc:
+      class: RESTRICTED
+      retention_days: 2555
+    pii_records:
+      class: RESTRICTED
+      retention_days: 1825
+    dsar_requests:
+      class: RESTRICTED
+      retention_days: 365
+  operational:
+    configs:
+      class: INTERNAL
+      retention_days: 730
+    build_artifacts:
+      class: INTERNAL
+      retention_days: 365
+    ci_cd_logs:
+      class: INTERNAL
+      retention_days: 365
+    chat_records:
+      class: CONFIDENTIAL
+      retention_days: 2555     # 7 years under MiFID II
+exceptions:
+  legal_hold:
+    enabled: true
+    approvers: [GeneralCounsel, CCO]
+    override_retention: until_release
+  investigation_freeze:
+    enabled: true
+    approvers: [CCO, CRO]
+    override_retention: until_case_closed
+monitoring:
+  evidence_bucket: grc-evidence
+  automated_jobs:
+    - name: daily-retention-check
+      tool: "cron+lambda"
+      action: "flag expired objects"
+    - name: monthly-purge
+      tool: "glacier-cleaner"
+      action: "delete expired data"
+  reporting:
+    cadence: quarterly
+    format: csv
+    recipients: [CCO, CISO, CRO]
+enforcement_hooks:
+  opa:
+    bundles:
+      - name: retention-core
+        url: "oci://registry.example.com/opa/retention-core:1.0.0"
+  terraform:
+    required_modules:
+      - "guardrails/object_lock"
+      - "guardrails/s3_block_public"
+      - "guardrails/kms_mandatory"
+  siem:
+    alerts:
+      - id: expired-data-access
+        query: "data_age > retention_days"
+        severity: HIGH

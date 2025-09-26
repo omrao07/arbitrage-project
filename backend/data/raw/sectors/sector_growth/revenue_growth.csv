@@ -1,0 +1,89 @@
+import os
+from datetime import date
+import pandas as pd
+import numpy as np
+
+OUT_PATH = "data/adamodar/curated/revenue_growth.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def seed_revenue_growth() -> pd.DataFrame:
+    rows = [
+        ("United States","region","United States","2023-01-01",22.0e12,"","","","Baseline"),
+        ("United States","region","United States","2024-01-01",23.2e12,"","","","Nominal growth + pricing"),
+        ("United States","region","United States","2025-01-01",24.2e12,"","","","3y CAGR filled from 2023"),
+        ("Emerging Mkts","region","EM Aggregate","2023-01-01",10.5e12,"","","","Baseline"),
+        ("Emerging Mkts","region","EM Aggregate","2024-01-01",11.3e12,"","","","FX + volume"),
+        ("Emerging Mkts","region","EM Aggregate","2025-01-01",12.0e12,"","","","Reinvestment heavy"),
+        ("Tech Sector","sector","United States","2023-01-01",5.6e12,"","","","Large-cap tech"),
+        ("Tech Sector","sector","United States","2024-01-01",6.1e12,"","","","AI cycle"),
+        ("Tech Sector","sector","United States","2025-01-01",6.55e12,"","","","Platform expansion"),
+    ]
+    return pd.DataFrame(rows, columns=[
+        "entity","entity_type","region","as_of","revenue_usd",
+        "rev_growth_yoy","rev_3y_cagr","rev_5y_cagr","notes"
+    ])
+
+def compute_growths(df: pd.DataFrame, freq: str = "A") -> pd.DataFrame:
+    """
+    Computes YoY and multi-year CAGR per entity.
+    freq: 'A' for annual data (default). If you feed quarterly snapshots, set 'Q'.
+    """
+    d = df.copy()
+    d["as_of"] = pd.to_datetime(d["as_of"])
+    d.sort_values(["entity","as_of"], inplace=True)
+
+    # YoY growth by entity
+    d["rev_growth_yoy"] = d.groupby("entity")["revenue_usd"].pct_change()
+
+    # n-year CAGR helper using lookback periods based on freq
+    def n_year_cagr(series_dates: pd.Series, series_vals: pd.Series, years: int) -> pd.Series:
+        # shift by n periods (assumes one row per year for 'A', per quarter for 'Q')
+        step = years if freq == "A" else years * 4
+        start = series_vals.shift(step)
+        end = series_vals
+        # exact year diff from dates to handle irregular cadence
+        yr = (series_dates - series_dates.shift(step)).dt.days / 365.25
+        return np.where(start.notna() & end.notna() & (yr > 0), (end / start) ** (1/yr) - 1, np.nan)
+
+    d["rev_3y_cagr"] = d.groupby("entity", group_keys=False).apply(
+        lambda g: n_year_cagr(g["as_of"], g["revenue_usd"], 3)
+    ).reset_index(level=0, drop=True)
+
+    d["rev_5y_cagr"] = d.groupby("entity", group_keys=False).apply(
+        lambda g: n_year_cagr(g["as_of"], g["revenue_usd"], 5)
+    ).reset_index(level=0, drop=True)
+
+    return d
+
+def upsert_row(df: pd.DataFrame, row: dict) -> pd.DataFrame:
+    """
+    Idempotent upsert by (entity, as_of). Provide at least:
+    entity, entity_type, region, as_of, revenue_usd
+    """
+    key_cols = ["entity","as_of"]
+    for k in key_cols:
+        if k not in row:
+            raise ValueError(f"Missing key '{k}' in upsert row")
+
+    row = row.copy()
+    row["as_of"] = pd.to_datetime(row["as_of"]).strftime("%Y-%m-%d")
+
+    mask = (df["entity"] == row["entity"]) & (pd.to_datetime(df["as_of"]) == pd.to_datetime(row["as_of"]))
+    if mask.any():
+        for k, v in row.items():
+            df.loc[mask, k] = v
+    else:
+        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+    return df
+
+def write_csv(df: pd.DataFrame, path: str = OUT_PATH):
+    ensure_dirs(path)
+    df.to_csv(path, index=False)
+
+if __name__ == "__main__":
+    df = seed_revenue_growth()
+    df = compute_growths(df, freq="A")
+    write_csv(df)
+    print(f"✅ revenue_growth.csv written to {OUT_PATH} with {len(df)} rows")

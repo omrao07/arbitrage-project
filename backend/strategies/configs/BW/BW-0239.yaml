@@ -1,0 +1,18 @@
+id: BW-0239
+firm: Bridgewater
+name: Skew Premia (EU)
+description: Monetize downside skew.
+discipline: Equities
+family: Factors & RV
+region: EU
+horizon: Swing
+status: research
+engine: equity_ls
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: equity
+created_at: 2025-09-10
+updated_at: 2025-09-10

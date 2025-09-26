@@ -1,0 +1,71 @@
+METHODOLOGY NOTES — DATASETS FOR DAMODARAN BOT + HEDGE FUND PLATFORM
+=====================================================================
+
+1. BETAS
+--------
+- Raw betas are collected by sector from Damodaran's annual NYU update.
+- Unlevered betas are calculated by removing the effect of leverage:
+    Unlevered Beta = Levered Beta / [1 + (1 - Tax Rate) * (Debt/Equity)]
+- Relevered betas are constructed using sector or regional average D/E ratios.
+- Standard errors and R^2 values come from regressions vs. market indices.
+- Curated files:
+    - betas_by_sector.csv (latest snapshot, curated)
+    - versions/{year}/betas.csv (historical snapshots)
+    - bottom_up/by_sector.csv and bottom_up/by_region.csv for rolled-up estimates.
+
+2. FUNDAMENTALS
+---------------
+- Built by aggregating income statement, balance sheet, and cash flow data.
+- Normalized into USD millions for comparability.
+- Ratios included (ROE, ROA, EBIT Margin, Net Margin, D/E) are pre-computed.
+- Curated files:
+    - fundamentals.csv (latest snapshot)
+    - versions/{year}/fundamentals.csv (historical freeze for backtests)
+
+3. EQUITY RISK PREMIUM (ERP)
+-----------------------------
+- Implied ERP is calculated from earnings yield – risk-free rate.
+- Historical ERP is based on realized long-term returns vs. bonds.
+- Risk-free rate proxy = 10-year Treasury yield (or local sovereign).
+- Files:
+    - erp.csv (snapshot by country/region)
+    - erp_timeseries.csv (historical implied vs realized ERP)
+    - versions/{year}/erp.csv (frozen ERP levels by year)
+
+4. RISK PREMIA (rp.csv)
+------------------------
+- Adds Country Risk Premium (CRP) on top of base ERP.
+- CRP sourced from sovereign bond spreads (EMBI, CDS) or sovereign ratings.
+- Used in valuation models for EM/Frontier markets.
+
+5. SECTOR MULTIPLES
+-------------------
+- Median multiples computed for P/E, EV/EBITDA, P/B, P/S.
+- Dividend yield included for income/growth balance.
+- Source = Damodaran sector multiples file.
+- File:
+    - sectors_multiples.csv
+
+6. VALUATIONS
+-------------
+- Intrinsic values are computed from DCF or comparables.
+- Mispricing = (Intrinsic – Market) / Market.
+- Files:
+    - valuations_curated.csv (latest)
+    - Can be extended with valuation_signals.csv for direct buy/sell flags.
+
+7. VERSIONS FOLDER
+------------------
+- Each year’s snapshot (2022, 2023, 2024, etc.) locks data for historical backtests.
+- Ensures no forward-looking bias in model training or validation.
+
+8. PIPELINES
+------------
+- Raw data goes in data/adamodar/raw/.
+- Cleaning scripts transform raw -> curated.
+- Snapshots written to data/adamodar/versions/{year}/ for reproducibility.
+
+-------------------------------------------------------
+Author: <your name>
+Date: <auto-update with snapshot runs>
+-------------------------------------------------------

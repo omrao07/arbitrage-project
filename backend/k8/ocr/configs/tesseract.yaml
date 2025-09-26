@@ -1,0 +1,43 @@
+# tesseract.yaml
+# Config for Tesseract OCR (via pytesseract)
+# Place under kb/ocr/configs/
+
+ocr:
+  engine: tesseract
+  languages: [eng]              # ISO 639-2 codes, e.g. [eng], [deu], [eng,hin]
+  psm: 3                        # page segmentation mode (3=auto, 6=single block, 11=sparse text)
+  oem: 3                        # OCR engine mode (3=default LSTM)
+  tessdata_dir: /usr/share/tesseract-ocr/4.00/tessdata  # path to tessdata
+
+preprocess:
+  grayscale: true               # convert to grayscale
+  denoise: true                 # median blur / noise removal
+  binarize: true                 # adaptive thresholding
+  deskew: true                   # deskew images
+  resize_factor: 2.0             # upscale before OCR
+  pad: 5                         # pad pixels around edges
+
+inference:
+  dpi: 300                       # assume DPI for layout
+  config_extra: ""               # custom config string to pass to tesseract
+  timeout: 30                    # max seconds per image
+  preserve_interword_spaces: 1   # preserve spacing in output
+
+postprocess:
+  spellcheck: false
+  correct_confusable: true       # normalize 0↔O, 1↔l etc
+  strip_punctuation: false
+  lowercase: true
+  uppercase: false
+
+runtime:
+  device: cpu                    # Tesseract runs only on CPU
+  num_threads: 4
+  log_level: INFO
+
+output:
+  results_dir: outputs/ocr/tesseract/
+  save_format: jsonl             # jsonl|txt
+  include_boxes: true            # include bounding boxes (needs hOCR/TSV)
+  include_confidence: true       # include confidence scores
+  export_format: tsv             # plain|tsv|hocr|pdf

@@ -1,0 +1,46 @@
+# configs/gateway.yaml
+gateway:
+  env: dev                     # dev | sim | prod
+  log_level: info              # debug | info | warn | error
+  log_path: ./logs/gateway.log
+
+market_data:
+  feeds:
+    - name: sim_feed
+      type: csv_udp             # csv_udp | itch | ouch | proprietary
+      bind: 239.0.0.10:5001     # multicast group:port
+      symbols: [AAPL, MSFT, TSLA]
+
+order_tx:
+  mode: stdout                  # stdout | fpga | fix
+  fpga:
+    device: /dev/xdma0
+    order_pipe: /dev/fpga_orders
+  fix:
+    host: fix.simx.com
+    port: 9898
+    sender_comp_id: GW01
+    target_comp_id: SIMX
+    heartbeat_sec: 30
+
+risk:
+  shm: /risk_wall               # maps to shm/risk_wall.shm in repo
+  limits_config: ./configs/risk_limits.yaml
+
+shared_memory:
+  md_ringbuf: /md_ringbuf
+  orders_in: /orders_in
+  fills_out: /fills_out
+  heartbeat: /heartbeat
+
+monitoring:
+  heartbeat_interval_ms: 1000
+  watchdog_timeout_ms: 5000
+  metrics_path: ./logs/metrics.jsonl
+
+performance:
+  cpu_affinity:
+    md_thread: 2                # pin MD thread to core 2
+    order_thread: 3             # pin order thread to core 3
+  nic_bypass: true              # enable kernel-bypass if available
+  batch_size: 64                # batch size for packet processing

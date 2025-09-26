@@ -1,0 +1,38 @@
+[
+  {
+    "timestamp": "2025-09-10T11:55:00Z",
+    "source": "Bloomberg",
+    "headline": "ECB Signals Possible Pause in Rate Hikes",
+    "body": "The European Central Bank signaled that it may pause further rate hikes after recent inflation data...",
+    "ticker": "EURUSD",
+    "actor": "ECB",
+    "topic": "MonetaryPolicy",
+    "sentiment": 0.42,
+    "relevance": 0.90,
+    "novelty": 0.80
+  },
+  {
+    "timestamp": "2025-09-10T11:15:00Z",
+    "source": "Reuters",
+    "headline": "Yuan Hits 6-Month Low Amid Capital Outflows",
+    "body": "China’s yuan weakened past 7.28 per dollar as capital outflows increased...",
+    "ticker": "CNYUSD",
+    "actor": "PBoC",
+    "topic": "FXMarkets",
+    "sentiment": -0.35,
+    "relevance": 0.85,
+    "novelty": 0.75
+  },
+  {
+    "timestamp": "2025-09-10T10:30:00Z",
+    "source": "Bloomberg",
+    "headline": "Apple Announces $5B Share Buyback Program",
+    "body": "Apple’s board authorized an additional $5 billion in share repurchases, citing strong cash flows...",
+    "ticker": "AAPL",
+    "actor": "Apple",
+    "topic": "CorporateAction",
+    "sentiment": 0.55,
+    "relevance": 0.95,
+    "novelty": 0.60
+  }
+]

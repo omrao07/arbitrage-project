@@ -1,0 +1,262 @@
+# calendars/trading-calendars.yaml
+# Clean, schema-friendly YAML (no inline maps, consistent keys).
+
+version: 1
+
+# ---------------------------------------------------------------------------
+# Holiday rule sets (reusable across calendars)
+# ---------------------------------------------------------------------------
+holiday_sets:
+
+  us_market:
+    rules:
+      - name: new_years_day
+        type: fixed
+        month: 1
+        day: 1
+        observance: nearest_weekday
+      - name: martin_luther_king_jr_day
+        type: nth_weekday
+        month: 1
+        weekday: Mon
+        nth: 3
+      - name: presidents_day
+        type: nth_weekday
+        month: 2
+        weekday: Mon
+        nth: 3
+      - name: good_friday
+        type: easter_offset
+        days: -2
+      - name: memorial_day
+        type: last_weekday
+        month: 5
+        weekday: Mon
+      - name: juneteenth
+        type: fixed
+        month: 6
+        day: 19
+        observance: nearest_weekday
+      - name: independence_day
+        type: fixed
+        month: 7
+        day: 4
+        observance: nearest_weekday
+      - name: labor_day
+        type: nth_weekday
+        month: 9
+        weekday: Mon
+        nth: 1
+      - name: thanksgiving
+        type: nth_weekday
+        month: 11
+        weekday: Thu
+        nth: 4
+      - name: christmas_day
+        type: fixed
+        month: 12
+        day: 25
+        observance: nearest_weekday
+    early_closes:
+      - name: day_after_thanksgiving
+        type: related
+        base: thanksgiving
+        offset_days: 1
+        close: "13:00"
+      - name: christmas_eve
+        type: fixed_if_weekday
+        month: 12
+        day: 24
+        close: "13:00"
+
+  uk_market:
+    rules:
+      - name: new_years_day
+        type: fixed
+        month: 1
+        day: 1
+        observance: nearest_weekday
+      - name: good_friday
+        type: easter_offset
+        days: -2
+      - name: easter_monday
+        type: easter_offset
+        days: 1
+      - name: early_may_bank
+        type: nth_weekday
+        month: 5
+        weekday: Mon
+        nth: 1
+      - name: spring_bank
+        type: last_weekday
+        month: 5
+        weekday: Mon
+      - name: summer_bank
+        type: last_weekday
+        month: 8
+        weekday: Mon
+      - name: christmas_day
+        type: fixed
+        month: 12
+        day: 25
+        observance: nearest_weekday
+      - name: boxing_day
+        type: fixed
+        month: 12
+        day: 26
+        observance: nearest_weekday
+
+  in_market:
+    rules:
+      - name: republic_day
+        type: fixed
+        month: 1
+        day: 26
+        observance: none
+      - name: good_friday
+        type: easter_offset
+        days: -2
+      - name: independence_day
+        type: fixed
+        month: 8
+        day: 15
+        observance: none
+      - name: gandhi_jayanti
+        type: fixed
+        month: 10
+        day: 2
+        observance: none
+      - name: christmas_day
+        type: fixed
+        month: 12
+        day: 25
+        observance: none
+    # Moveable festivals supplied via external file (dates list)
+    sources:
+      - kind: file
+        path: "meta/holidays/in/nse_moveable.yaml"
+
+# ---------------------------------------------------------------------------
+# Trading calendars
+# ---------------------------------------------------------------------------
+calendars:
+
+  us_nyse:
+    title: "NYSE / NASDAQ (Equities)"
+    tz: "America/New_York"
+    weekmask: ["Mon","Tue","Wed","Thu","Fri"]
+    sessions:
+      regular:
+        open: "09:30"
+        close: "16:00"
+      pre:
+        open: "04:00"
+        close: "09:30"
+      post:
+        open: "16:00"
+        close: "20:00"
+    holidays:
+      use: us_market
+    early_closes:
+      use: us_market
+
+  us_cme_globex_eq:
+    title: "CME Globex – Equity Index Futures (ES/NQ/RTY)"
+    tz: "America/Chicago"
+    weekmask: ["Sun","Mon","Tue","Wed","Thu","Fri"]
+    sessions:
+      weekly_continuous:
+        open:
+          day: "Sun"
+          time: "17:00"
+        close:
+          day: "Fri"
+          time: "16:00"
+      maintenance_halt:
+        start: "16:00"
+        end: "17:00"
+        days: ["Mon","Tue","Wed","Thu"]
+    holidays:
+      use: us_market
+    overrides:
+      - name: christmas_day
+        action: closed_all_day
+      - name: new_years_day
+        action: closed_all_day
+
+  fx_24x5:
+    title: "FX Spot (24x5)"
+    tz: "America/New_York"
+    weekmask: ["Sun","Mon","Tue","Wed","Thu","Fri"]
+    sessions:
+      weekly_continuous:
+        open:
+          day: "Sun"
+          time: "17:00"
+        close:
+          day: "Fri"
+          time: "17:00"
+      daily_roll_pause:
+        start: "17:00"
+        duration: "00:02"
+    holidays:
+      none: true
+
+  uk_lse:
+    title: "London Stock Exchange (Main Market)"
+    tz: "Europe/London"
+    weekmask: ["Mon","Tue","Wed","Thu","Fri"]
+    sessions:
+      regular:
+        open: "08:00"
+        close: "16:30"
+      auctions:
+        open_auction:
+          start: "07:50"
+          uncross: "08:00"
+        closing_auction:
+          start: "16:30"
+          uncross: "16:35"
+    holidays:
+      use: uk_market
+    early_closes:
+      - name: christmas_eve
+        type: fixed_if_weekday
+        month: 12
+        day: 24
+        close: "12:30"
+      - name: new_years_eve
+        type: fixed_if_weekday
+        month: 12
+        day: 31
+        close: "12:30"
+
+  in_nse:
+    title: "NSE (Equities & Equity Derivatives)"
+    tz: "Asia/Kolkata"
+    weekmask: ["Mon","Tue","Wed","Thu","Fri"]
+    sessions:
+      regular:
+        open: "09:15"
+        close: "15:30"
+      pre_open:
+        start: "09:00"
+        end: "09:08"
+      post_close:
+        start: "15:40"
+        end: "16:00"
+    holidays:
+      use: in_market
+    notes:
+      - "Moveable festival holidays provided via external source file."
+
+# ---------------------------------------------------------------------------
+# Aliases for convenience
+# ---------------------------------------------------------------------------
+aliases:
+  NYSE: us_nyse
+  NASDAQ: us_nyse
+  CME_GLOBEX_EQ: us_cme_globex_eq
+  LSE: uk_lse
+  NSE: in_nse
+  FX: fx_24x5

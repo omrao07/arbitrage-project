@@ -1,0 +1,415 @@
+# options_greeks_eod/validations.yaml
+# Runbook-friendly validations for EOD options chains with greeks.
+
+version: 1
+
+# -----------------------------------------------------------------------------
+# Global defaults (override per-dataset as needed)
+# -----------------------------------------------------------------------------
+defaults:
+  timezone: "UTC"
+  severity:
+    freshness_breach: warn          # warn|error
+    schema_mismatch: error
+    null_violation: error
+    range_violation: error
+    join_unmatched: warn
+    duplicate_pk: error
+    variance_spike: warn
+    monotonic_break: warn
+  freshness_sla_min: 1440           # 24h for daily chains
+  baseline_window_days: 10
+  row_count_variance_pct: 60        # chains fluctuate a lot
+  numeric_eps: 1e-12
+  price_eps: 1e-6
+  rel_tol_mid: 0.02                 # 2% tolerance for mid/mark identities
+  rel_tol_px: 0.02                  # 2% tolerance for underlying parity
+  iv_min: 0.0
+  iv_max: 5.0                       # 0%..500%
+  delta_min: -1.2
+  delta_max: 1.2
+
+# -----------------------------------------------------------------------------
+# Reusable macros (engine implements semantics)
+# -----------------------------------------------------------------------------
+macros:
+  - not_null
+  - non_negative
+  - no_future_date
+
+# -----------------------------------------------------------------------------
+# Dataset-specific validations
+# -----------------------------------------------------------------------------
+datasets:
+
+  # ================= 1) Bloomberg – Options (EOD + greeks) ===================
+  blp_options_eod_greeks:
+    freshness_sla_min: 1440
+    primary_key: ["dt","option_id"]
+
+    schema:
+      require_columns:
+        - dt
+        - option_id
+        - underlying_ticker
+        - expiration_dt
+        - strike
+        - right
+      types:
+        dt: date
+        option_id: string
+        underlying_ticker: string
+        expiration_dt: date
+        dte: int32
+        strike: float64
+        right: string
+        exercise_style: string
+        settlement: string
+        multiplier: float64
+        currency: string
+        bid: float64
+        ask: float64
+        mid: float64
+        last: float64
+        mark: float64
+        volume: float64
+        open_interest: float64
+        underlying_close: float64
+        iv: float64
+        delta: float64
+        gamma: float64
+        vega: float64
+        theta: float64
+        rho: float64
+        surface_tenor: string
+        method: string
+
+    row_rules:
+      - { name: dt_present,           columns: ["dt"],                   check: not_null }
+      - { name: dt_not_future,        columns: ["dt"],                   check: no_future_date }
+      - { name: option_id_present,    columns: ["option_id"],            check: not_null }
+      - name: exp_not_before_dt
+        sql: "expiration_dt IS NULL OR expiration_dt >= dt"
+      - name: dte_matches_exp
+        sql: "dte IS NULL OR expiration_dt IS NULL OR ABS(DATEDIFF('day', dt, expiration_dt) - dte) <= 1"
+      - { name: strike_nonneg,        columns: ["strike"],               check: non_negative }
+      - name: right_allowed
+        sql: "right IN ('C','P','CALL','PUT')"    # loader can map to C|P
+      - name: ask_ge_bid
+        sql: "bid IS NULL OR ask IS NULL OR ask + 1e-12 >= bid"
+      - name: mid_between_ba
+        sql: "mid IS NULL OR bid IS NULL OR ask IS NULL OR (mid BETWEEN LEAST(bid,ask) - 1e-9 AND GREATEST(bid,ask) + 1e-9)"
+      - name: mark_near_mid
+        sql: >
+          mark IS NULL OR mid IS NULL OR
+          ABS(mark - mid) <= (${rel_tol_mid} * GREATEST(1.0, ABS(mid)))
+      - { name: vol_nonneg,           columns: ["volume","open_interest","multiplier"], check: non_negative }
+      - name: iv_bounds
+        sql: "iv IS NULL OR (iv >= ${iv_min} AND iv <= ${iv_max})"
+      - name: delta_bounds
+        sql: "delta IS NULL OR (delta >= ${delta_min} AND delta <= ${delta_max})"
+      - name: gamma_nonneg
+        sql: "gamma IS NULL OR gamma >= 0"
+      - name: vega_nonneg
+        sql: "vega IS NULL OR vega >= 0"
+      - name: theta_reasonable
+        sql: "theta IS NULL OR theta >= -1e6"   # allow wide negatives; no hard upper bound
+      - name: rho_reasonable
+        sql: "rho IS NULL OR ABS(rho) <= 1e6"
+
+    ranges:
+      - { field: strike,           min: 0,     max: 1e7 }
+      - { field: bid,              min: 0,     max: 1e7 }
+      - { field: ask,              min: 0,     max: 1e7 }
+      - { field: mid,              min: 0,     max: 1e7 }
+      - { field: last,             min: 0,     max: 1e7 }
+      - { field: mark,             min: 0,     max: 1e7 }
+      - { field: volume,           min: 0,     max: 1e9 }
+      - { field: open_interest,    min: 0,     max: 1e10 }
+      - { field: underlying_close, min: 0,     max: 1e7 }
+      - { field: iv,               min: 0,     max: 5 }
+      - { field: delta,            min: -2,    max: 2 }
+      - { field: gamma,            min: 0,     max: 1e3 }
+      - { field: vega,             min: 0,     max: 1e6 }
+      - { field: theta,            min: -1e6,  max: 1e6 }
+      - { field: rho,              min: -1e6,  max: 1e6 }
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 10
+      max_delta_pct: 60
+
+  # ================== 2) Koyfin – Options (EOD + greeks) =====================
+  koyfin_options_eod_greeks:
+    freshness_sla_min: 1440
+    primary_key: ["dt","option_id"]
+
+    schema:
+      require_columns: ["dt","option_id","underlying_ticker","expiration_dt","strike","right"]
+      types:
+        dt: date
+        option_id: string
+        underlying_ticker: string
+        expiration_dt: date
+        dte: int32
+        strike: float64
+        right: string
+        exercise_style: string
+        multiplier: float64
+        currency: string
+        bid: float64
+        ask: float64
+        mid: float64
+        last: float64
+        volume: float64
+        open_interest: float64
+        iv: float64
+        delta: float64
+        gamma: float64
+        vega: float64
+        theta: float64
+        rho: float64
+
+    row_rules:
+      - { name: dt_present,           columns: ["dt"],          check: not_null }
+      - { name: dt_not_future,        columns: ["dt"],          check: no_future_date }
+      - { name: option_id_present,    columns: ["option_id"],   check: not_null }
+      - name: exp_not_before_dt
+        sql: "expiration_dt IS NULL OR expiration_dt >= dt"
+      - name: dte_matches_exp
+        sql: "dte IS NULL OR expiration_dt IS NULL OR ABS(DATEDIFF('day', dt, expiration_dt) - dte) <= 1"
+      - { name: strike_nonneg,        columns: ["strike"],      check: non_negative }
+      - name: right_allowed
+        sql: "right IN ('C','P','CALL','PUT')"
+      - name: ask_ge_bid
+        sql: "bid IS NULL OR ask IS NULL OR ask + 1e-12 >= bid"
+      - name: mid_between_ba
+        sql: "mid IS NULL OR bid IS NULL OR ask IS NULL OR (mid BETWEEN LEAST(bid,ask) - 1e-9 AND GREATEST(bid,ask) + 1e-9)"
+      - name: iv_bounds
+        sql: "iv IS NULL OR (iv >= ${iv_min} AND iv <= ${iv_max})"
+      - name: delta_bounds
+        sql: "delta IS NULL OR (delta >= ${delta_min} AND delta <= ${delta_max})"
+      - name: gamma_nonneg
+        sql: "gamma IS NULL OR gamma >= 0"
+      - name: vega_nonneg
+        sql: "vega IS NULL OR vega >= 0"
+
+    ranges:
+      - { field: bid,              min: 0,     max: 1e7 }
+      - { field: ask,              min: 0,     max: 1e7 }
+      - { field: mid,              min: 0,     max: 1e7 }
+      - { field: last,             min: 0,     max: 1e7 }
+      - { field: volume,           min: 0,     max: 1e9 }
+      - { field: open_interest,    min: 0,     max: 1e10 }
+      - { field: iv,               min: 0,     max: 5 }
+      - { field: delta,            min: -2,    max: 2 }
+      - { field: gamma,            min: 0,     max: 1e3 }
+      - { field: vega,             min: 0,     max: 1e6 }
+      - { field: theta,            min: -1e6,  max: 1e6 }
+      - { field: rho,              min: -1e6,  max: 1e6 }
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 10
+      max_delta_pct: 70
+
+  # ======== 3) Internal – Normalized (blended prices + standardized greeks) ===
+  internal_options_eod_normalized:
+    freshness_sla_min: 1440
+    primary_key: ["dt","option_id"]
+
+    schema:
+      require_columns:
+        - dt
+        - option_id
+        - underlying_ticker
+        - expiration_dt
+        - strike
+        - right
+        - px_check    # (virtual) covered by rules below; keep core fields present
+      types:
+        dt: date
+        option_id: string
+        underlying_ticker: string
+        expiration_dt: date
+        dte: int32
+        strike: float64
+        right: string
+        exercise_style: string
+        settlement: string
+        multiplier: float64
+        currency: string
+        bid: float64
+        ask: float64
+        mid: float64
+        last: float64
+        mark: float64
+        volume: float64
+        open_interest: float64
+        underlying_close: float64
+        iv: float64
+        delta: float64
+        gamma: float64
+        vega: float64
+        theta: float64
+        rho: float64
+        src_bid_ask: string
+        src_greeks: string
+        quality_flag: string
+        method: string
+
+    row_rules:
+      - { name: dt_present,           columns: ["dt"],               check: not_null }
+      - { name: dt_not_future,        columns: ["dt"],               check: no_future_date }
+      - { name: option_id_present,    columns: ["option_id"],        check: not_null }
+      - name: exp_not_before_dt
+        sql: "expiration_dt IS NULL OR expiration_dt >= dt"
+      - name: dte_matches_exp
+        sql: "dte IS NULL OR expiration_dt IS NULL OR ABS(DATEDIFF('day', dt, expiration_dt) - dte) <= 1"
+      - { name: strike_nonneg,        columns: ["strike"],           check: non_negative }
+      - name: right_allowed
+        sql: "right IN ('C','P')"
+      - name: ask_ge_bid
+        sql: "bid IS NULL OR ask IS NULL OR ask + 1e-12 >= bid"
+      - name: mark_near_mid
+        sql: >
+          mark IS NULL OR mid IS NULL OR
+          ABS(mark - mid) <= (${rel_tol_mid} * GREATEST(1.0, ABS(mid)))
+      - name: iv_bounds
+        sql: "iv IS NULL OR (iv >= ${iv_min} AND iv <= ${iv_max})"
+      - name: delta_bounds
+        sql: "delta IS NULL OR (delta >= ${delta_min} AND delta <= ${delta_max})"
+      - name: gamma_nonneg
+        sql: "gamma IS NULL OR gamma >= 0"
+      - name: vega_nonneg
+        sql: "vega IS NULL OR vega >= 0"
+      - name: src_tags_allowed
+        sql: "src_bid_ask IS NULL OR src_bid_ask IN ('blp','koyfin','blend')"
+      - name: src_greeks_allowed
+        sql: "src_greeks IS NULL OR src_greeks IN ('blp','koyfin','calc')"
+      - name: quality_flag_allowed
+        sql: "quality_flag IS NULL OR quality_flag IN ('OK','WIDE_BA','IV_CLIP','BAD_MARK','MISSING')"
+
+    ranges:
+      - { field: bid,              min: 0,     max: 1e7 }
+      - { field: ask,              min: 0,     max: 1e7 }
+      - { field: mid,              min: 0,     max: 1e7 }
+      - { field: last,             min: 0,     max: 1e7 }
+      - { field: mark,             min: 0,     max: 1e7 }
+      - { field: volume,           min: 0,     max: 1e9 }
+      - { field: open_interest,    min: 0,     max: 1e10 }
+      - { field: underlying_close, min: 0,     max: 1e7 }
+      - { field: iv,               min: 0,     max: 5 }
+      - { field: delta,            min: -2,    max: 2 }
+      - { field: gamma,            min: 0,     max: 1e3 }
+      - { field: vega,             min: 0,     max: 1e6 }
+      - { field: theta,            min: -1e6,  max: 1e6 }
+      - { field: rho,              min: -1e6,  max: 1e6 }
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 10
+      max_delta_pct: 60
+
+# -----------------------------------------------------------------------------
+# Cross-dataset integrity checks
+# -----------------------------------------------------------------------------
+cross_checks:
+
+  # ---------- Underlying close alignment (normalized vs prices table) --------
+  - name: underlying_close_matches_px_adj
+    description: "Normalized underlying_close ≈ internal_eq_px_eod_normalized.px_close_adj (2% tol)."
+    sql: >
+      WITH j AS (
+        SELECT o.dt, o.underlying_ticker, o.underlying_close, p.px_close_adj
+        FROM internal_options_eod_normalized o
+        JOIN internal_eq_px_eod_normalized p
+          ON o.dt = p.dt AND o.underlying_ticker = p.ticker
+        WHERE o.underlying_close IS NOT NULL AND p.px_close_adj IS NOT NULL
+      )
+      SELECT AVG(ABS(o.underlying_close - p.px_close_adj) / NULLIF(GREATEST(1.0, ABS(p.px_close_adj)),0)) AS avg_rel_err
+      FROM j
+    expect:
+      avg_rel_err_lte: 0.02
+
+  # ---------- Vendor parity on IV where both provide the same contract -------
+  - name: blp_vs_koyfin_iv_parity_p50_10d
+    description: "Median relative IV difference ≤ 10% over last 10 days for overlapping option_ids."
+    sql: >
+      WITH joined AS (
+        SELECT a.dt, a.option_id, a.iv AS iv_blp, b.iv AS iv_koy
+        FROM blp_options_eod_greeks a
+        JOIN koyfin_options_eod_greeks b
+          ON a.dt = b.dt AND a.option_id = b.option_id
+        WHERE a.dt >= dateadd('day', -10, current_date)
+          AND a.iv IS NOT NULL AND b.iv IS NOT NULL
+      )
+      SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (ABS(iv_blp - iv_koy) / NULLIF(ABS(iv_blp),0))) AS p50_rel_diff
+      FROM joined
+    expect:
+      p50_rel_diff_lte: 0.10
+
+  # ---------- Contract invariants match across vendors -----------------------
+  - name: contract_ref_invariants_match
+    description: "On overlaps, expiration/right/strike agree across vendors."
+    sql: >
+      WITH joined AS (
+        SELECT a.option_id,
+               SUM(CASE WHEN a.expiration_dt = b.expiration_dt THEN 1 ELSE 0 END) AS ok_exp,
+               SUM(CASE WHEN a.strike = b.strike THEN 1 ELSE 0 END)             AS ok_strike,
+               SUM(CASE WHEN a.right = b.right OR (a.right IN ('CALL','PUT') AND b.right IN ('C','P')) THEN 1 ELSE 0 END) AS ok_right,
+               COUNT(*) AS n
+        FROM blp_options_eod_greeks a
+        JOIN koyfin_options_eod_greeks b ON a.dt = b.dt AND a.option_id = b.option_id
+        GROUP BY a.option_id
+      )
+      SELECT
+        SUM(CASE WHEN ok_exp = n THEN 0 ELSE 1 END) AS exp_mismatch,
+        SUM(CASE WHEN ok_strike = n THEN 0 ELSE 1 END) AS strike_mismatch,
+        SUM(CASE WHEN ok_right = n THEN 0 ELSE 1 END) AS right_mismatch
+      FROM joined
+    expect:
+      exp_mismatch_eq: 0
+      strike_mismatch_eq: 0
+      right_mismatch_eq: 0
+
+  # ---------- Delta sign sanity by right (normalized table) ------------------
+  - name: delta_sign_by_right
+    description: "Calls have non-negative delta; puts non-positive (allow tiny noise)."
+    sql: >
+      SELECT
+        SUM(CASE WHEN right = 'C' AND delta < -0.05 THEN 1 ELSE 0 END) AS bad_calls,
+        SUM(CASE WHEN right = 'P' AND delta >  0.05 THEN 1 ELSE 0 END) AS bad_puts
+      FROM internal_options_eod_normalized
+      WHERE delta IS NOT NULL
+    expect:
+      bad_calls_eq: 0
+      bad_puts_eq: 0
+
+  # ---------- Mark ~ mid sanity (normalized table) ---------------------------
+  - name: mark_near_mid_normalized
+    description: "Average |mark-mid| / max(1,|mid|) ≤ 2%."
+    sql: >
+      SELECT AVG(ABS(mark - mid) / NULLIF(GREATEST(1.0, ABS(mid)),0)) AS avg_rel_err
+      FROM internal_options_eod_normalized
+      WHERE mark IS NOT NULL AND mid IS NOT NULL
+    expect:
+      avg_rel_err_lte: 0.02
+
+# -----------------------------------------------------------------------------
+# Alert routing hints
+# -----------------------------------------------------------------------------
+alerts:
+  routes:
+    - match: { dataset: "blp_options_eod_greeks", type: "schema_mismatch" }
+      to: ["slack:#options-pipeline"]
+    - match: { dataset: "internal_options_eod_normalized", type: "variance_spike" }
+      to: ["slack:#analytics-quality"]
+    - match: { dataset: "*", type: "duplicate_pk" }
+      to: ["slack:#data-quality"]

@@ -1,0 +1,360 @@
+# extra/validations.yaml
+# Runbook-friendly validations for "extra" datasets:
+# - Corporate actions (equities)
+# - Index membership
+# - FX spot EOD
+# - ETF holdings
+# - News headlines (metadata)
+
+version: 1
+
+# -----------------------------------------------------------------------------
+# Global defaults (override per-dataset as needed)
+# -----------------------------------------------------------------------------
+defaults:
+  timezone: "UTC"
+  severity:
+    freshness_breach: warn          # warn|error
+    schema_mismatch: error
+    null_violation: error
+    range_violation: error
+    join_unmatched: warn
+    duplicate_pk: error
+    variance_spike: warn
+  freshness_sla_min: 1440           # 24h for daily datasets
+  baseline_window_days: 30
+  row_count_variance_pct: 30
+  allowed_currencies: ["USD","EUR","GBP","JPY","INR","AUD","CHF","CAD","NZD","CNY","HKD","SEK","NOK","SGD"]
+  price_eps: 1e-9
+  pct_abs_tol: 0.01                 # 1pp absolute tolerance for percent checks
+
+# -----------------------------------------------------------------------------
+# Reusable macros (engine implements)
+# -----------------------------------------------------------------------------
+macros:
+  - not_null
+  - non_negative
+  - pct_0_1
+  - no_future_date
+
+# -----------------------------------------------------------------------------
+# Dataset-specific validations
+# -----------------------------------------------------------------------------
+datasets:
+
+  # =================== 1) Corporate Actions – Equities =======================
+  blp_corporate_actions_equities:
+    freshness_sla_min: 1440
+    primary_key: ["ex_dt","ticker","action_type"]
+
+    schema:
+      require_columns: ["ex_dt","ticker","action_type"]
+      types:
+        ex_dt: date
+        ticker: string
+        action_type: string
+        div_amt: float64
+        div_currency: string
+        record_dt: date
+        pay_dt: date
+        split_ratio: float64
+        old_ticker: string
+        new_ticker: string
+        old_cusip: string
+        new_cusip: string
+        announce_dt: date
+        effective_dt: date
+        notes: string
+
+    row_rules:
+      - { name: ex_dt_present,     columns: ["ex_dt"],     check: not_null }
+      - { name: ex_dt_not_future,  columns: ["ex_dt"],     check: no_future_date }
+      - { name: ticker_present,    columns: ["ticker"],    check: not_null }
+      - name: action_allowed
+        sql: "action_type IN ('DIV','SPLIT','ID_CHANGE','SPIN','MERGER','OTHER')"
+      # Conditionals by action
+      - name: div_requires_amt
+        sql: "action_type <> 'DIV' OR (div_amt IS NOT NULL)"
+      - name: split_requires_ratio
+        sql: "action_type <> 'SPLIT' OR (split_ratio IS NOT NULL AND split_ratio > 0)"
+      - name: id_change_requires_ids
+        sql: "action_type <> 'ID_CHANGE' OR (old_ticker IS NOT NULL AND new_ticker IS NOT NULL)"
+      - name: id_change_not_same
+        sql: "action_type <> 'ID_CHANGE' OR (old_ticker IS NULL OR new_ticker IS NULL OR old_ticker <> new_ticker)"
+
+    ranges:
+      - { field: div_amt,     min: -1e4,  max: 1e4 }     # allow negative/special adj
+      - { field: split_ratio, min: 0.0001, max: 1000 }
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 30
+      max_delta_pct: 60
+
+  # ======================= 2) Index Membership (daily) =======================
+  blp_index_membership:
+    freshness_sla_min: 1440
+    primary_key: ["dt","index_id","ticker"]
+
+    schema:
+      require_columns: ["dt","index_id","ticker"]
+      types:
+        dt: date
+        index_id: string
+        ticker: string
+        action: string
+        weight: float64
+        shares: float64
+        freefloat_adj: float64
+        notes: string
+
+    row_rules:
+      - { name: dt_present,        columns: ["dt"],        check: not_null }
+      - { name: dt_not_future,     columns: ["dt"],        check: no_future_date }
+      - name: action_allowed
+        sql: "action IS NULL OR action IN ('ADD','REMOVE','REBAL','HOLD')"
+      - { name: shares_nonneg,     columns: ["shares"],    check: non_negative }
+      - name: weight_fraction
+        sql: "weight IS NULL OR (weight >= 0 AND weight <= 1)"
+      - name: ff_fraction
+        sql: "freefloat_adj IS NULL OR (freefloat_adj >= 0 AND freefloat_adj <= 1)"
+
+    ranges:
+      - { field: weight,        min: 0, max: 1 }
+      - { field: shares,        min: 0, max: 1e13 }
+      - { field: freefloat_adj, min: 0, max: 1 }
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 30
+      max_delta_pct: 40
+
+  # ======================= 3) FX Spot – EOD (close) ==========================
+  blp_fx_spot_eod:
+    freshness_sla_min: 1440
+    primary_key: ["dt","pair"]
+
+    schema:
+      require_columns: ["dt","pair","px_close"]
+      types:
+        dt: date
+        pair: string
+        base_ccy: string
+        quote_ccy: string
+        px_close: float64
+        px_high: float64
+        px_low: float64
+        source: string
+
+    row_rules:
+      - { name: dt_present,        columns: ["dt"],         check: not_null }
+      - { name: dt_not_future,     columns: ["dt"],         check: no_future_date }
+      - name: pair_format
+        sql: "pair REGEXP '^[A-Z]{6}$'"
+      - name: ccy_consistency
+        sql: "base_ccy IS NULL OR quote_ccy IS NULL OR (SUBSTR(pair,1,3)=base_ccy AND SUBSTR(pair,4,3)=quote_ccy)"
+      - { name: px_close_nonneg,   columns: ["px_close"],   check: non_negative }
+      - name: high_low_bounds
+        sql: "(px_high IS NULL OR px_low IS NULL OR px_high >= px_low)"
+      - name: close_within_hilo
+        sql: "px_high IS NULL OR px_low IS NULL OR (px_close BETWEEN px_low AND px_high)"
+
+    ranges:
+      - { field: px_close, min: 0,    max: 1e6 }
+      - { field: px_high,  min: 0,    max: 1e6 }
+      - { field: px_low,   min: 0,    max: 1e6 }
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 30
+      max_delta_pct: 25
+
+  # ===================== 4) ETF Holdings – constituents ======================
+  blp_etf_holdings_daily:
+    freshness_sla_min: 1440
+    primary_key: ["as_of","fund_ticker","asset_ticker"]
+
+    schema:
+      require_columns: ["as_of","fund_ticker","asset_ticker"]
+      types:
+        as_of: date
+        fund_ticker: string
+        asset_ticker: string
+        weight: float64
+        shares: float64
+        market_value: float64
+        country: string
+        sector: string
+
+    row_rules:
+      - { name: as_of_present,      columns: ["as_of"],        check: not_null }
+      - { name: as_of_not_future,   columns: ["as_of"],        check: no_future_date }
+      - name: weight_fraction
+        sql: "weight IS NULL OR (weight >= 0 AND weight <= 1)"
+      - { name: shares_nonneg,      columns: ["shares"],       check: non_negative }
+      - { name: mv_nonneg,          columns: ["market_value"], check: non_negative }
+
+    ranges:
+      - { field: weight,       min: 0,    max: 1 }
+      - { field: shares,       min: 0,    max: 1e12 }
+      - { field: market_value, min: 0,    max: 1e16 }
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 30
+      max_delta_pct: 40
+
+  # =================== 5) News Headlines – normalized ========================
+  internal_news_headlines:
+    freshness_sla_min: 10         # near real-time
+    primary_key: ["ts","id"]
+
+    schema:
+      require_columns: ["ts","dt","id","title","url"]
+      types:
+        ts: timestamp
+        dt: date
+        id: string
+        source: string
+        source_name: string
+        tickers: string[]
+        title: string
+        summary: string
+        url: string
+        sentiment: float64
+        importance: float64
+        lang: string
+
+    row_rules:
+      - { name: ts_present,       columns: ["ts"],       check: not_null }
+      - { name: ts_not_future,    columns: ["ts"],       check: no_future_date }
+      - { name: dt_present,       columns: ["dt"],       check: not_null }
+      - { name: id_present,       columns: ["id"],       check: not_null }
+      - { name: title_present,    columns: ["title"],    check: not_null }
+      - { name: url_present,      columns: ["url"],      check: not_null }
+      - name: sentiment_range
+        sql: "sentiment IS NULL OR (sentiment >= -1 AND sentiment <= 1)"
+      - name: importance_range
+        sql: "importance IS NULL OR (importance >= 0 AND importance <= 1)"
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 7
+      max_delta_pct: 100
+
+# -----------------------------------------------------------------------------
+# Cross-dataset integrity checks
+# -----------------------------------------------------------------------------
+cross_checks:
+
+  # Index weights should sum close to 1 for each (dt,index_id) when weights exist
+  - name: index_weight_sum_near_one
+    description: "For each (dt,index_id) with weights on ≥80% members, sum(weight) in [0.98, 1.02]."
+    sql: >
+      WITH grp AS (
+        SELECT dt, index_id,
+               COUNT(*) AS n,
+               SUM(CASE WHEN weight IS NOT NULL THEN 1 ELSE 0 END) AS n_w,
+               SUM(COALESCE(weight,0)) AS w_sum
+        FROM blp_index_membership
+        GROUP BY dt, index_id
+      )
+      SELECT COUNT(*) AS bad
+      FROM grp
+      WHERE n_w >= 0.8*n AND (w_sum < 0.98 OR w_sum > 1.02)
+    expect:
+      bad_eq: 0
+
+  # ETF weight sums close to 1
+  - name: etf_weight_sum_near_one
+    description: "Sum of weights per (as_of,fund_ticker) ∈ [0.98, 1.02] when any weights present."
+    sql: >
+      WITH grp AS (
+        SELECT as_of, fund_ticker,
+               SUM(COALESCE(weight,0)) AS w_sum,
+               SUM(CASE WHEN weight IS NOT NULL THEN 1 ELSE 0 END) AS n_w
+        FROM blp_etf_holdings_daily
+        GROUP BY as_of, fund_ticker
+      )
+      SELECT COUNT(*) AS bad
+      FROM grp
+      WHERE n_w > 0 AND (w_sum < 0.98 OR w_sum > 1.02)
+    expect:
+      bad_eq: 0
+
+  # ETF weights consistent with market_value shares (when MV present)
+  - name: etf_weight_matches_mv
+    description: "For funds with MV present, correlation of weight vs MV shares ≥ 0.98."
+    sql: >
+      WITH base AS (
+        SELECT as_of, fund_ticker, asset_ticker, weight, market_value
+        FROM blp_etf_holdings_daily
+        WHERE market_value IS NOT NULL AND market_value > 0 AND weight IS NOT NULL
+      ),
+      grp AS (
+        SELECT as_of, fund_ticker,
+               CORR(weight, market_value) AS rho
+        FROM base
+        GROUP BY as_of, fund_ticker
+      )
+      SELECT COUNT(*) AS bad
+      FROM grp
+      WHERE rho < 0.98
+    expect:
+      bad_eq: 0
+
+  # FX pair/base/quote consistency (redundant to row rule; acts as coverage metric)
+  - name: fx_pair_ccy_consistency
+    description: "SUBSTR(pair,1,3)=base_ccy and SUBSTR(pair,4,3)=quote_ccy on 99.9% of rows."
+    sql: >
+      SELECT
+        SUM(CASE WHEN base_ccy IS NOT NULL AND quote_ccy IS NOT NULL
+                  AND SUBSTR(pair,1,3)=base_ccy AND SUBSTR(pair,4,3)=quote_ccy
+                 THEN 1 ELSE 0 END)::float
+        /
+        NULLIF(COUNT(*),0) AS ok_ratio
+      FROM blp_fx_spot_eod
+    expect:
+      ok_ratio_gte: 0.999
+
+  # News: avoid duplicate URLs within a rolling week
+  - name: news_duplicate_urls_7d
+    description: "No duplicate url within 7 days."
+    sql: >
+      WITH w AS (
+        SELECT url, DATE_TRUNC('day', ts) AS d, COUNT(*) AS c
+        FROM internal_news_headlines
+        WHERE ts >= dateadd('day', -7, current_timestamp)
+        GROUP BY url, DATE_TRUNC('day', ts)
+      )
+      SELECT COUNT(*) AS bad
+      FROM w
+      WHERE c > 1 AND url IS NOT NULL AND url <> ''
+    expect:
+      bad_eq: 0
+
+# -----------------------------------------------------------------------------
+# Alert routing hints
+# -----------------------------------------------------------------------------
+alerts:
+  routes:
+    - match: { dataset: "blp_corporate_actions_equities", type: "schema_mismatch" }
+      to: ["slack:#corp-actions"]
+    - match: { dataset: "blp_index_membership", type: "variance_spike" }
+      to: ["slack:#index-data"]
+    - match: { dataset: "blp_fx_spot_eod", type: "range_violation" }
+      to: ["slack:#fx-pipeline"]
+    - match: { dataset: "blp_etf_holdings_daily", type: "duplicate_pk" }
+      to: ["slack:#data-quality"]
+    - match: { dataset: "internal_news_headlines", type: "freshness_breach" }
+      to: ["slack:#news-ingest"]

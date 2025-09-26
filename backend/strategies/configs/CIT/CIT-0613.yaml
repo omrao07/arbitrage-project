@@ -1,0 +1,18 @@
+id: CIT-0613
+firm: Citadel
+name: HY vs IG Compression #613
+description: Concrete stat-arb microstructure model.
+discipline: Commodities
+family: Agriculture
+region: Global
+horizon: Swing
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

@@ -1,0 +1,90 @@
+# storage/s3_config.yaml
+# Configuration for AWS S3 buckets in Hyper-OS lakehouse
+
+version: 1
+last_updated: 2025-09-15
+
+defaults:
+  region: us-east-1
+  # Recommended: use IAM role instead of hardcoding keys
+  use_iam_role: true
+  # Optional: session token or assume-role duration (in seconds)
+  session_duration: 3600
+  # Encryption settings
+  sse: AES256
+  bucket_acl: private
+  storage_class: STANDARD
+  multipart_threshold_mb: 50
+  max_concurrency: 10
+  retries: 5
+
+buckets:
+  bronze:
+    name: hyper-lakehouse-bronze
+    prefix: raw/
+    description: "Raw ingestion layer (ticks, news, macro feeds)"
+    retention_policy: storage/retention_policies.yaml
+    lifecycle_rules:
+      - id: expire-30d
+        prefix: raw/
+        status: Enabled
+        expiration:
+          days: 30
+  silver:
+    name: hyper-lakehouse-silver
+    prefix: curated/
+    description: "Curated and quality-checked datasets"
+    retention_policy: storage/retention_policies.yaml
+    lifecycle_rules:
+      - id: expire-365d
+        prefix: curated/
+        status: Enabled
+        expiration:
+          days: 365
+  gold:
+    name: hyper-lakehouse-gold
+    prefix: analytics/
+    description: "Analytics-ready golden datasets"
+    retention_policy: storage/retention_policies.yaml
+    lifecycle_rules: []
+  logs:
+    name: hyper-lakehouse-logs
+    prefix: audit/
+    description: "Audit, compliance, access logs"
+    retention_policy: storage/retention_policies.yaml
+    lifecycle_rules:
+      - id: archive-7y
+        prefix: audit/
+        status: Enabled
+        transitions:
+          - days: 90
+            storage_class: GLACIER
+        expiration:
+          days: 2555
+  backups:
+    name: hyper-lakehouse-backups
+    prefix: snapshots/
+    description: "Periodic full backups"
+    retention_policy: storage/retention_policies.yaml
+    lifecycle_rules:
+      - id: archive-1y
+        prefix: snapshots/
+        status: Enabled
+        transitions:
+          - days: 30
+            storage_class: STANDARD_IA
+          - days: 365
+            storage_class: GLACIER
+
+auth:
+  # Either use IAM role (preferred) or provide static credentials
+  # Remove keys if using IAM
+  access_key_id: ${AWS_ACCESS_KEY_ID}
+  secret_access_key: ${AWS_SECRET_ACCESS_KEY}
+  session_token: ${AWS_SESSION_TOKEN}   # optional for temporary creds
+
+endpoints:
+  # Override for VPC endpoints or MinIO/S3-compatible systems
+  s3: https://s3.amazonaws.com
+  # e.g., MinIO:
+  # s3: http://minio.local:9000

@@ -1,0 +1,34 @@
+# queries/anomalies.gql
+#
+# Query anomalies from the risk/monitoring service.
+# Supports filtering by strategy, severity, and date range.
+
+query Anomalies(
+  $strategy: String
+  $severity: String
+  $start: DateTime
+  $end: DateTime
+  $limit: Int = 50
+) {
+  anomalies(
+    filter: {
+      strategy: $strategy
+      severity: $severity
+      start: $start
+      end: $end
+    }
+    limit: $limit
+    orderBy: { timestamp: desc }
+  ) {
+    id
+    timestamp
+    strategy
+    severity
+    message
+    values {
+      key
+      value
+    }
+    tags
+  }
+}

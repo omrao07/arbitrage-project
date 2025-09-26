@@ -1,0 +1,71 @@
+{
+  "type": "record",
+  "namespace": "news",
+  "name": "Headline",
+  "doc": "Schema for structured news headlines with metadata.",
+  "fields": [
+    {
+      "name": "headline_id",
+      "type": "string",
+      "doc": "Unique identifier for this headline"
+    },
+    {
+      "name": "source",
+      "type": "string",
+      "doc": "Publisher or feed source (e.g., Reuters, Bloomberg, PRNewswire)"
+    },
+    {
+      "name": "title",
+      "type": "string",
+      "doc": "Raw headline text"
+    },
+    {
+      "name": "language",
+      "type": "string",
+      "doc": "Language code (ISO 639-1, e.g., en, fr, zh)"
+    },
+    {
+      "name": "categories",
+      "type": {
+        "type": "array",
+        "items": "string"
+      },
+      "doc": "Categorization tags (e.g., 'Earnings', 'M&A', 'Macro')"
+    },
+    {
+      "name": "tickers",
+      "type": {
+        "type": "array",
+        "items": "string"
+      },
+      "doc": "List of impacted tickers or symbols (e.g., AAPL, MSFT)"
+    },
+    {
+      "name": "relevance_score",
+      "type": ["null", "float"],
+      "default": null,
+      "doc": "Optional relevance/confidence score (0.0–1.0) from NLP models"
+    },
+    {
+      "name": "urgency",
+      "type": ["null", "int"],
+      "default": null,
+      "doc": "Optional urgency flag (e.g., 1 = flash headline, 3 = background)"
+    },
+    {
+      "name": "event_time",
+      "type": { "type": "long", "logicalType": "timestamp-millis" },
+      "doc": "Time the event actually occurred (if provided)"
+    },
+    {
+      "name": "publish_time",
+      "type": { "type": "long", "logicalType": "timestamp-millis" },
+      "doc": "Time the headline was published"
+    },
+    {
+      "name": "ingest_time",
+      "type": { "type": "long", "logicalType": "timestamp-millis" },
+      "doc": "Time the headline was ingested into the system"
+    }
+  ]
+}

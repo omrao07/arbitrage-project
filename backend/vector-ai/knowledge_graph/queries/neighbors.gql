@@ -1,0 +1,33 @@
+# queries/neighbours.gql
+#
+# Query nearest neighbours for an entity or vector.
+# Supports filtering by type (asset, strategy, factor, doc chunk), 
+# time window, and distance metric.
+
+query Neighbours(
+  $entity: String!
+  $topK: Int = 10
+  $metric: String = "cosine"   # "cosine" | "dotproduct" | "euclidean"
+  $start: DateTime
+  $end: DateTime
+  $filters: JSON
+) {
+  neighbours(
+    entity: $entity
+    topK: $topK
+    metric: $metric
+    filter: {
+      start: $start
+      end: $end
+      meta: $filters
+    }
+  ) {
+    id
+    neighbour
+    score        # similarity or distance depending on metric
+    type         # e.g., "asset", "strategy", "factor", "document"
+    source
+    tags
+    updatedAt
+  }
+}

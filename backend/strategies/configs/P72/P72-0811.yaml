@@ -1,0 +1,18 @@
+id: P72-0811
+firm: Point72
+name: Post-SEO Drift Exploitation #811
+description: Seasoned equity offering underperformance.
+discipline: Equities
+family: Point72-Style
+region: Global
+horizon: Swing
+status: research
+engine: equity_ls
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: equity
+created_at: 2025-09-10
+updated_at: 2025-09-10

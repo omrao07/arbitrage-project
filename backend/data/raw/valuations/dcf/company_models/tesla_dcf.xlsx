@@ -1,0 +1,90 @@
+import pandas as pd
+from openpyxl import Workbook
+from openpyxl.utils.dataframe import dataframe_to_rows
+from openpyxl.chart import LineChart, Reference
+
+# Tesla-style assumptions
+assumptions = {
+    "Revenue Growth": [0.12, 0.10, 0.08, 0.07, 0.05],
+    "Operating Margin": [0.15],
+    "Tax Rate": [0.20],
+    "WACC": [0.10],
+    "Terminal Growth": [0.03],
+    "Capex % of Sales": [0.06],
+    "D&A % of Sales": [0.04],
+    "Change in WC % of Sales": [0.02],
+    "Net Debt": [-10e9],
+    "Shares Outstanding": [3.2e9]
+}
+
+years = [2025, 2026, 2027, 2028, 2029]
+
+# revenue forecast
+revenues = [100e9]
+for g in assumptions["Revenue Growth"]:
+    revenues.append(revenues[-1] * (1 + g))
+revenues = revenues[1:]
+
+# build projections
+df_proj = pd.DataFrame({
+    "Year": years,
+    "Revenue": revenues,
+})
+df_proj["EBIT"] = df_proj["Revenue"] * assumptions["Operating Margin"][0]
+df_proj["Tax"] = df_proj["EBIT"] * assumptions["Tax Rate"][0]
+df_proj["NOPAT"] = df_proj["EBIT"] - df_proj["Tax"]
+df_proj["Capex"] = df_proj["Revenue"] * assumptions["Capex % of Sales"][0]
+df_proj["D&A"] = df_proj["Revenue"] * assumptions["D&A % of Sales"][0]
+df_proj["Change in WC"] = df_proj["Revenue"] * assumptions["Change in WC % of Sales"][0]
+df_proj["Reinvestment"] = df_proj["Capex"] - df_proj["D&A"] + df_proj["Change in WC"]
+df_proj["FCFF"] = df_proj["NOPAT"] - df_proj["Reinvestment"]
+
+# discount FCFF
+wacc = assumptions["WACC"][0]
+discount_factors = [(1 / ((1 + wacc) ** i)) for i in range(1, len(years) + 1)]
+df_proj["Discount Factor"] = discount_factors
+df_proj["PV of FCFF"] = df_proj["FCFF"] * df_proj["Discount Factor"]
+
+# terminal value
+terminal_fcff = df_proj["FCFF"].iloc[-1] * (1 + assumptions["Terminal Growth"][0])
+terminal_value = terminal_fcff / (wacc - assumptions["Terminal Growth"][0])
+terminal_pv = terminal_value * df_proj["Discount Factor"].iloc[-1]
+
+enterprise_value = df_proj["PV of FCFF"].sum() + terminal_pv
+equity_value = enterprise_value - assumptions["Net Debt"][0]
+fair_value_per_share = equity_value / assumptions["Shares Outstanding"][0]
+
+# build workbook
+wb = Workbook()
+
+# Assumptions sheet
+ws1 = wb.active
+ws1.title = "Assumptions"
+for k,v in assumptions.items():
+    ws1.append([k] + v)
+
+# Projections sheet
+ws2 = wb.create_sheet("Projections")
+for r in dataframe_to_rows(df_proj, index=False, header=True):
+    ws2.append(r)
+
+# Valuation sheet
+ws3 = wb.create_sheet("Valuation")
+ws3.append(["Enterprise Value", enterprise_value])
+ws3.append(["Equity Value", equity_value])
+ws3.append(["Fair Value per Share", fair_value_per_share])
+
+# Chart
+chart = LineChart()
+chart.title = "Tesla FCFF Projections"
+chart.y_axis.title = "FCFF ($)"
+chart.x_axis.title = "Year"
+data = Reference(ws2, min_col=11, min_row=1, max_row=len(df_proj)+1) # FCFF col
+cats = Reference(ws2, min_col=1, min_row=2, max_row=len(df_proj)+1)
+chart.add_data(data, titles_from_data=True)
+chart.set_categories(cats)
+ws2.add_chart(chart, "L2")
+
+# Save file
+wb.save("tesla_dcf.xlsx")
+print("✅ DCF model saved as tesla_dcf.xlsx")

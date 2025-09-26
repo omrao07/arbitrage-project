@@ -1,0 +1,94 @@
+import os
+from datetime import date
+import pandas as pd
+
+OUT_PATH = "data/commodities/oil_prices.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def init_oil_prices(seed: bool = True) -> pd.DataFrame:
+    """
+    Create oil_prices.csv with a standard schema.
+    Set seed=False to create only headers (empty file).
+    """
+    ensure_dirs(OUT_PATH)
+    cols = ["date","benchmark","price_usd_per_bbl","contract","source","notes"]
+    if not seed:
+        df = pd.DataFrame(columns=cols)
+        df.to_csv(OUT_PATH, index=False)
+        return df
+
+    today = str(date.today())
+    rows = [
+        ("2025-01-02","WTI", 74.50,"spot","Manual","Year start snapshot"),
+        ("2025-01-02","Brent",79.10,"spot","Manual","Year start snapshot"),
+        ("2025-03-31","WTI", 77.30,"front","Manual","Quarter-end"),
+        ("2025-03-31","Brent",81.60,"front","Manual","Quarter-end"),
+        ("2025-06-30","WTI", 80.20,"spot","Manual","Quarter-end"),
+        ("2025-06-30","Brent",84.00,"spot","Manual","Quarter-end"),
+        (today,"WTI", None,"spot","Manual","Append real print via ETL"),
+        (today,"Brent",None,"spot","Manual","Append real print via ETL"),
+    ]
+    df = pd.DataFrame(rows, columns=cols)
+    df.to_csv(OUT_PATH, index=False)
+    return df
+
+# ---------- Analytics helpers ----------
+
+def load_oil_prices(path: str = OUT_PATH) -> pd.DataFrame:
+    df = pd.read_csv(path)
+    df["date"] = pd.to_datetime(df["date"])
+    # Drop rows without price for analytics (but keep them in file for ETL placeholders)
+    return df.dropna(subset=["price_usd_per_bbl"]).copy()
+
+def daily_returns(df: pd.DataFrame, benchmark: str = "WTI", contract: str = "spot") -> pd.DataFrame:
+    d = df[(df["benchmark"] == benchmark) & (df["contract"] == contract)].sort_values("date")
+    d["ret_1d"] = d["price_usd_per_bbl"].pct_change()
+    return d
+
+def rolling_vol(df: pd.DataFrame, window: int = 21, benchmark: str = "WTI", contract: str = "spot") -> pd.DataFrame:
+    d = daily_returns(df, benchmark, contract).copy()
+    d[f"vol_{window}d"] = d["ret_1d"].rolling(window).std() * (252 ** 0.5)
+    return d
+
+def term_structure(df: pd.DataFrame, on_date: str) -> pd.DataFrame:
+    """
+    Snapshot of curve on a given date (e.g., '2025-06-30') across contracts.
+    """
+    d = df[df["date"] == pd.to_datetime(on_date)].copy()
+    return d.pivot_table(index="benchmark", columns="contract", values="price_usd_per_bbl")
+
+def append_price(date_str: str, benchmark: str, price: float, contract: str = "spot",
+                 source: str = "Manual", notes: str = ""):
+    """
+    Idempotent appender: updates existing row for (date, benchmark, contract) or inserts a new one.
+    """
+    ensure_dirs(OUT_PATH)
+    cols = ["date","benchmark","price_usd_per_bbl","contract","source","notes"]
+    if os.path.exists(OUT_PATH):
+        df = pd.read_csv(OUT_PATH)
+    else:
+        df = pd.DataFrame(columns=cols)
+
+    key = (pd.to_datetime(date_str), benchmark, contract)
+    df["date"] = pd.to_datetime(df["date"])
+    mask = (df["date"] == key[0]) & (df["benchmark"] == key[1]) & (df["contract"] == key[2])
+    row = {
+        "date": date_str, "benchmark": benchmark, "price_usd_per_bbl": price,
+        "contract": contract, "source": source, "notes": notes
+    }
+    if mask.any():
+        df.loc[mask, :] = row
+    else:
+        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+
+    df.sort_values(["date","benchmark","contract"], inplace=True)
+    df.to_csv(OUT_PATH, index=False)
+
+if __name__ == "__main__":
+    df = init_oil_prices(seed=True)
+    print(f"✅ oil_prices.csv written to {OUT_PATH} with {len(df)} rows")
+    # Example usage:
+    # df_all = load_oil_prices()
+    # print(rolling_vol(df_all, window=21, benchmark="WTI").tail())

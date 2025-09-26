@@ -1,0 +1,286 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: analytics
+  labels:
+    project: hyper-os
+    tier: analytics
+    istio-injection: enabled
+---
+# ServiceAccounts with IRSA/WI annotations if needed
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: clickhouse-operator
+  namespace: analytics
+  annotations:
+    # EKS IRSA example:
+    # eks.amazonaws.com/role-arn: arn:aws:iam::<ACCOUNT_ID>:role/hyper-os-sa-clickhouse
+    # GKE Workload Identity example:
+    # iam.gke.io/gcp-service-account: clickhouse@<PROJECT_ID>.iam.gserviceaccount.com
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ch-backup
+  namespace: analytics
+  annotations:
+    # eks.amazonaws.com/role-arn: arn:aws:iam::<ACCOUNT_ID>:role/hyper-os-sa-clickhouse
+    # iam.gke.io/gcp-service-account: clickhouse@<PROJECT_ID>.iam.gserviceaccount.com
+---
+# RBAC: minimal cluster access for operator
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: clickhouse-operator
+rules:
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["get","list","watch"]
+  - apiGroups: [""]
+    resources: ["pods","services","configmaps","secrets","persistentvolumeclaims","events","serviceaccounts"]
+    verbs: ["*"]
+  - apiGroups: ["apps"]
+    resources: ["deployments","statefulsets","daemonsets","replicasets"]
+    verbs: ["*"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["*"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["*"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["*"]
+  - apiGroups: ["clickhouse.altinity.com"]
+    resources: ["clickhouseinstallations","clickhouseinstallations/finalizers","clickhouseinstallations/status","clickhouseoperatorconfigurations","chi","chopconfig"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: clickhouse-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: clickhouse-operator
+subjects:
+  - kind: ServiceAccount
+    name: clickhouse-operator
+    namespace: analytics
+---
+# Operator configuration (sane defaults)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clickhouse-operator-config
+  namespace: analytics
+data:
+  config.yaml: |
+    watch:
+      namespaces: ["analytics"]
+    reconcile:
+      runtime:
+        threadsNumber: 4
+        reconcileThreadsNumber: 2
+      statefulSetUpdateTimeout: 15m
+    templates:
+      dir: /etc/clickhouse-operator/templates
+    logger:
+      level: info
+    metrics:
+      enabled: true
+---
+# Operator Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clickhouse-operator
+  namespace: analytics
+  labels: { app: clickhouse-operator }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: clickhouse-operator } }
+  template:
+    metadata:
+      labels: { app: clickhouse-operator }
+    spec:
+      serviceAccountName: clickhouse-operator
+      containers:
+        - name: operator
+          image: altinity/clickhouse-operator:0.23.6
+          imagePullPolicy: IfNotPresent
+          args: ["-watch-namespace=analytics","-config=/etc/clickhouse-operator/config/config.yaml"]
+          volumeMounts:
+            - name: cfg
+              mountPath: /etc/clickhouse-operator/config
+          readinessProbe:
+            httpGet: { path: /metrics, port: 8888 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /metrics, port: 8888 }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests: { cpu: "250m", memory: "256Mi" }
+            limits:   { cpu: "1",    memory: "512Mi" }
+      volumes:
+        - name: cfg
+          configMap:
+            name: clickhouse-operator-config
+---
+# ================== SAMPLE CLICKHOUSE CLUSTER ==================
+# Adjust storageClassName to your cluster (gp3/gke-standard/…)
+apiVersion: "clickhouse.altinity.com/v1"
+kind: "ClickHouseInstallation"
+metadata:
+  name: chi-analytics
+  namespace: analytics
+  labels:
+    app: clickhouse
+spec:
+  stop: false
+  defaults:
+    templates:
+      dataVolumeClaimTemplate: data-pvc
+  templates:
+    volumeClaimTemplates:
+      - name: data-pvc
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          storageClassName: gp3 # <- change for GKE: "standard-rwo" or your CSI class
+          resources: { requests: { storage: 200Gi } }
+  configuration:
+    zookeeper:
+      nodes:
+        - host: zookeeper.analytics.svc.cluster.local  # or use embedded keeper below
+      session_timeout_ms: 30000
+    # Embedded Keeper (alternative to external ZK)
+    # keeper:
+    #   replicas: 3
+    #   storage:
+    #     size: 10Gi
+    #     storageClass: gp3
+    users:
+      admin/networks/ip: "::/0"
+      admin/password: "clickhouse"
+      admin/profile: "default"
+      admin/quota: "default"
+      readonly/password: "readonly"
+      readonly/networks/ip: "::/0"
+      readonly/profile: "readonly"
+    profiles:
+      default:
+        max_threads: 8
+        max_memory_usage: 8589934592   # 8Gi
+      readonly:
+        readonly: 1
+    clusters:
+      - name: cl
+        layout:
+          shardsCount: 1
+          replicasCount: 2
+        templates:
+          podTemplates:
+            - name: ch-template
+              podDistribution:
+                - type: ShardAntiAffinity
+                - type: ReplicaAntiAffinity
+              spec:
+                serviceAccountName: ch-backup
+                containers:
+                  - name: clickhouse
+                    image: clickhouse/clickhouse-server:24.3
+                    imagePullPolicy: IfNotPresent
+                    ports:
+                      - containerPort: 9000  # native
+                      - containerPort: 8123  # http
+                    resources:
+                      requests: { cpu: "1", memory: "4Gi" }
+                      limits:   { cpu: "4", memory: "12Gi" }
+                    volumeMounts:
+                      - name: data-pvc
+                        mountPath: /var/lib/clickhouse
+                    readinessProbe:
+                      tcpSocket: { port: 9000 }
+                      initialDelaySeconds: 10
+                      periodSeconds: 10
+                    livenessProbe:
+                      tcpSocket: { port: 9000 }
+                      initialDelaySeconds: 20
+                      periodSeconds: 20
+          serviceTemplates:
+            - name: ch-svc
+              generateName: "clickhouse"
+              spec:
+                type: ClusterIP
+                ports:
+                  - name: native
+                    port: 9000
+                    targetPort: 9000
+                  - name: http
+                    port: 8123
+                    targetPort: 8123
+        settings:
+          # Basic perf / safety
+          max_concurrent_queries: 64
+          max_table_size_to_drop: 0
+          use_uncompressed_cache: 0
+          async_insert: 1
+          async_insert_max_data_size: 10485760
+        files:
+          # ====== BACKUP/RESTORE CONFIG (choose AWS S3 or GCS and delete the other) ======
+          # --- AWS S3 ---
+          backup_s3.xml: |
+            <yandex>
+              <clickhouse>
+                <s3>
+                  <endpoint>s3.amazonaws.com</endpoint>
+                  <access_key_id replace="true">__USE_IRSA__</access_key_id>
+                  <secret_access_key replace="true">__USE_IRSA__</secret_access_key>
+                  <region>us-east-1</region>
+                </s3>
+                <backups>
+                  <s3>
+                    <endpoint>s3.amazonaws.com</endpoint>
+                    <bucket>REPLACE_S3_BUCKET_curated</bucket>
+                    <api_version>V4</api_version>
+                    <compression>zstd</compression>
+                    <concurrency>4</concurrency>
+                    <path>clickhouse/backups/</path>
+                  </s3>
+                </backups>
+              </clickhouse>
+            </yandex>
+          # --- GCS ---
+          # backup_gcs.xml: |
+          #   <clickhouse>
+          #     <gcs>
+          #       <bucket>REPLACE_GCS_BUCKET_curated</bucket>
+          #       <root>clickhouse/backups/</root>
+          #     </gcs>
+          #   </clickhouse>
+        # ===========================================
+  reconciling:
+    policy: Wait
+---
+# Headless Service for discovery (optional, the operator generates services too)
+apiVersion: v1
+kind: Service
+metadata:
+  name: clickhouse
+  namespace: analytics
+spec:
+  clusterIP: None
+  selector:
+    clickhouse.altinity.com/app: chi
+    clickhouse.altinity.com/chi: chi-analytics
+  ports:
+    - name: native
+      port: 9000
+      targetPort: 9000
+    - name: http
+      port: 8123
+      targetPort: 8123

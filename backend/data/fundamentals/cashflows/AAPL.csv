@@ -1,0 +1,4 @@
+date,net_income,depreciation,amortization,stock_based_comp,change_in_working_capital,operating_cash_flow,capex,acquisitions,other_investing,investing_cash_flow,debt_issued,debt_repaid,dividends_paid,share_buybacks,financing_cash_flow,net_cash_flow
+2022-09-30,99800,11200,2500,8000,-4500,117500,-10700,-1500,-200, -12400,10000,-8500,-14500,-85000,-89000,1600
+2023-09-30,97400,11500,2600,8200,-3200,116500,-10900,-1800,-300,-13000,8000,-9500,-14700,-90000,-96200,1300
+2024-09-30,101200,11800,2700,8500,-2800,120400,-11000,-2000,-400,-13400,6000,-10000,-15000,-95000,-104000,0

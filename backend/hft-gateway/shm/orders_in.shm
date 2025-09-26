@@ -1,0 +1,122 @@
+// src/shm_orders_in_demo.cpp
+// Demonstrates producing and consuming OrderMsg in /orders_in shm ring buffer.
+//
+// Build: add_executable(shm_orders_in_demo src/shm_orders_in_demo.cpp)
+// Run : ./shm_orders_in_demo prod   # strategy writes orders
+//       ./shm_orders_in_demo cons   # gateway reads orders
+
+#include <chrono>
+#include <cstring>
+#include <iostream>
+#include <string>
+#include <thread>
+
+#include "shared_memory.hpp"
+#include "shm_layouts.hpp"
+
+using clock_t = std::chrono::steady_clock;
+static inline uint64_t now_ns() {
+    return static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            clock_t::now().time_since_epoch()).count());
+}
+
+namespace ipc {
+template <typename T>
+class ShmRing {
+public:
+    static ShmRing open_or_create(const std::string& name, uint32_t capacity) {
+        const size_t bytes = sizeof(shm_layout::RingBufHdr) + capacity * sizeof(T);
+        auto reg = shm::MappedRegion::open_or_create(name, bytes, shm::Access::ReadWrite);
+        auto* hdr = reinterpret_cast<shm_layout::RingBufHdr*>(reg.addr());
+        if (hdr->capacity == 0 || hdr->elem_size != sizeof(T)) {
+            std::memset(reg.addr(), 0, reg.size());
+            hdr->head.store(0, std::memory_order_relaxed);
+            hdr->tail.store(0, std::memory_order_relaxed);
+            hdr->capacity = capacity;
+            hdr->elem_size = sizeof(T);
+        }
+        auto* slots = reinterpret_cast<T*>(
+            reinterpret_cast<uint8_t*>(reg.addr()) + sizeof(shm_layout::RingBufHdr));
+        return ShmRing(std::move(reg), hdr, slots);
+    }
+    static ShmRing open_existing(const std::string& name, uint32_t capacity,
+                                 shm::Access acc = shm::Access::ReadOnly) {
+        const size_t bytes = sizeof(shm_layout::RingBufHdr) + capacity * sizeof(T);
+        auto reg = shm::MappedRegion::open_existing(name, bytes, acc);
+        auto* hdr = reinterpret_cast<shm_layout::RingBufHdr*>(reg.addr());
+        auto* slots = reinterpret_cast<T*>(
+            reinterpret_cast<uint8_t*>(reg.addr()) + sizeof(shm_layout::RingBufHdr));
+        return ShmRing(std::move(reg), hdr, slots);
+    }
+    bool push(const T& v) {
+        const uint32_t cap = hdr_->capacity;
+        const uint32_t head = hdr_->head.load(std::memory_order_relaxed);
+        const uint32_t next = (head + 1) % cap;
+        if (next == hdr_->tail.load(std::memory_order_acquire)) return false;
+        slots_[head] = v;
+        hdr_->head.store(next, std::memory_order_release);
+        return true;
+    }
+    bool pop(T& out) {
+        const uint32_t cap = hdr_->capacity;
+        const uint32_t tail = hdr_->tail.load(std::memory_order_relaxed);
+        if (tail == hdr_->head.load(std::memory_order_acquire)) return false;
+        out = slots_[tail];
+        hdr_->tail.store((tail + 1) % cap, std::memory_order_release);
+        return true;
+    }
+private:
+    ShmRing(shm::MappedRegion&& reg, shm_layout::RingBufHdr* hdr, T* slots)
+        : reg_(std::move(reg)), hdr_(hdr), slots_(slots) {}
+    shm::MappedRegion reg_;
+    shm_layout::RingBufHdr* hdr_;
+    T* slots_;
+};
+} // namespace ipc
+
+int main(int argc, char** argv) {
+    if (argc < 2) {
+        std::cerr << "usage: " << argv[0] << " [prod|cons]\n";
+        return 1;
+    }
+    std::string mode = argv[1];
+    constexpr uint32_t CAP = 1024;
+
+    if (mode == "prod") {
+        auto rb = ipc::ShmRing<shm_layout::OrderMsg>::open_or_create("/orders_in", CAP);
+        std::cout << "[producer] writing orders into /orders_in\n";
+        int i = 0;
+        while (true) {
+            shm_layout::OrderMsg o{};
+            std::memset(&o, 0, sizeof(o));
+            std::strncpy(o.sym, "AAPL", sizeof(o.sym));
+            o.side = (i % 2 == 0) ? shm_layout::Side::Buy : shm_layout::Side::Sell;
+            o.qty  = 100.0 + i;
+            o.limit_px = 200.0 + (i % 10) * 0.01;
+            o.ts_ns = now_ns();
+            if (rb.push(o)) {
+                std::cout << "pushed order " << (o.side == shm_layout::Side::Buy ? "BUY" : "SELL")
+                          << " " << o.sym << " qty=" << o.qty << " px=" << o.limit_px << "\n";
+            }
+            ++i;
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
+    } else if (mode == "cons") {
+        auto rb = ipc::ShmRing<shm_layout::OrderMsg>::open_existing("/orders_in", CAP,
+                                                                    shm::Access::ReadWrite);
+        std::cout << "[consumer] reading orders from /orders_in\n";
+        while (true) {
+            shm_layout::OrderMsg o{};
+            while (rb.pop(o)) {
+                std::cout << "got order " << (o.side == shm_layout::Side::Buy ? "BUY" : "SELL")
+                          << " " << o.sym << " qty=" << o.qty << " px=" << o.limit_px
+                          << " ts=" << o.ts_ns << "\n";
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        }
+    } else {
+        std::cerr << "unknown mode: " << mode << "\n";
+        return 1;
+    }
+}

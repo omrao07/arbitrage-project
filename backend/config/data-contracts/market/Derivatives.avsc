@@ -1,0 +1,90 @@
+{
+  "type": "record",
+  "namespace": "market",
+  "name": "Derivative",
+  "doc": "Schema for derivative instruments (options, futures, swaps, etc.)",
+  "fields": [
+    {
+      "name": "instrument_id",
+      "type": "string",
+      "doc": "Unique identifier for this derivative instrument"
+    },
+    {
+      "name": "underlying_symbol",
+      "type": "string",
+      "doc": "Symbol/ticker of the underlying asset (e.g., AAPL, ES, BTC)"
+    },
+    {
+      "name": "derivative_type",
+      "type": {
+        "type": "enum",
+        "name": "DerivativeType",
+        "symbols": ["OPTION", "FUTURE", "SWAP", "FORWARD", "CDS"]
+      },
+      "doc": "Type of derivative contract"
+    },
+    {
+      "name": "contract_size",
+      "type": "double",
+      "doc": "Number of underlying units per contract (e.g., 100 shares per equity option)"
+    },
+    {
+      "name": "expiry_date",
+      "type": ["null", {"type": "int", "logicalType": "date"}],
+      "default": null,
+      "doc": "Contract expiry date (null if perpetual)"
+    },
+    {
+      "name": "strike_price",
+      "type": ["null", "double"],
+      "default": null,
+      "doc": "Strike price (only for options/forwards)"
+    },
+    {
+      "name": "option_type",
+      "type": ["null", {
+        "type": "enum",
+        "name": "OptionType",
+        "symbols": ["CALL", "PUT"]
+      }],
+      "default": null,
+      "doc": "Option type (CALL or PUT); null for non-options"
+    },
+    {
+      "name": "settlement_type",
+      "type": {
+        "type": "enum",
+        "name": "SettlementType",
+        "symbols": ["CASH", "PHYSICAL"]
+      },
+      "doc": "Settlement type"
+    },
+    {
+      "name": "notional_value",
+      "type": "double",
+      "doc": "Notional value of the contract (e.g., $1M for swaps)"
+    },
+    {
+      "name": "counterparty",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Counterparty name (for OTC derivatives)"
+    },
+    {
+      "name": "exchange",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Exchange or venue where the derivative trades"
+    },
+    {
+      "name": "trade_date",
+      "type": {"type": "int", "logicalType": "date"},
+      "doc": "Date the derivative was traded"
+    },
+    {
+      "name": "timestamp",
+      "type": {"type": "long", "logicalType": "timestamp-millis"},
+      "doc": "Event timestamp"
+    }
+  ]
+}

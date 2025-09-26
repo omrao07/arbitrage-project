@@ -1,0 +1,34 @@
+# Core scientific stack
+numpy>=1.24
+pandas>=2.0
+scipy>=1.11
+
+# Modeling / stats
+statsmodels>=0.14
+scikit-learn>=1.3
+
+# Data & APIs
+yfinance>=0.2
+requests>=2.31
+pydantic>=2.4
+
+# Risk / attribution math
+arch>=5.6
+numba>=0.58
+
+# Serialization / configs
+pyyaml>=6.0
+jsonlines>=4.0
+
+# Caching / infra
+redis>=5.0
+
+# Jobs / scheduling
+schedule>=1.2
+
+# Monitoring / logging
+loguru>=0.7
+tqdm>=4.66
+
+# Optional backtesting helpers
+matplotlib>=3.7

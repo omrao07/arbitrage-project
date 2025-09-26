@@ -1,0 +1,155 @@
+// src/shm_risk_wall_demo.cpp
+// Demo for /risk_wall shared memory (create/init + allow_order + on_fill).
+//
+// Build target: add_executable(shm_risk_wall_demo src/shm_risk_wall_demo.cpp)
+// Run:
+//   ./shm_risk_wall_demo prod   # gateway-style producer: updates state, checks orders
+//   ./shm_risk_wall_demo watch  # monitor: prints live state periodically
+
+#include <atomic>
+#include <chrono>
+#include <cmath>
+#include <cstring>
+#include <iostream>
+#include <string>
+#include <thread>
+
+#include "shared_memory.hpp"   // shm::MappedRegion
+#include "shm_layouts.hpp"     // shm_layout::RiskWall
+
+namespace {
+
+// Simple limits (mirror configs/risk_limits.yaml at minimum)
+struct Limits {
+  double max_gross_usd        = 5'000'000;  // cap on total gross exposure
+  double max_symbol_pos       = 50'000;     // (not enforced here; symbol map would live elsewhere)
+  double max_notional_per_ord = 1'000'000;  // single-order notional cap
+  double max_daily_loss_usd   = 100'000;    // not enforced in this tiny demo
+  double max_order_rate_per_s = 5'000;      // (optional) not enforced here
+};
+
+// Minimal wrapper over shm_layout::RiskWall in /risk_wall
+class ShmRiskWall {
+ public:
+  static constexpr const char* kName = "/risk_wall";
+
+  explicit ShmRiskWall(bool create, Limits lim = {})
+      : limits_(lim) {
+    const std::size_t BYTES = sizeof(shm_layout::RiskWall);
+    if (create) {
+      reg_ = shm::MappedRegion::open_or_create(kName, BYTES, shm::Access::ReadWrite);
+      auto* st = state();
+      std::memset(st, 0, sizeof(*st));
+      st->gross_usd.store(0.0, std::memory_order_release);
+      st->realized_pnl.store(0.0, std::memory_order_release);
+      st->order_counter.store(0, std::memory_order_release);
+    } else {
+      reg_ = shm::MappedRegion::open_existing(kName, BYTES, shm::Access::ReadWrite);
+    }
+  }
+
+  shm_layout::RiskWall* state() {
+    return reinterpret_cast<shm_layout::RiskWall*>(reg_.addr());
+  }
+  const shm_layout::RiskWall* state() const {
+    return reinterpret_cast<const shm_layout::RiskWall*>(reg_.addr());
+  }
+
+  // Pre-trade risk check (very small demo: gross & per-order notional)
+  bool allow_order(const std::string& symbol, double px, double qty, std::string& reason) {
+    (void)symbol; // symbol-level limits omitted in this minimal example
+    double notional = std::abs(px * qty);
+    if (notional > limits_.max_notional_per_ord) {
+      reason = "per_order_notional";
+      return false;
+    }
+    double gross_after = state()->gross_usd.load(std::memory_order_acquire) + notional;
+    if (gross_after > limits_.max_gross_usd) {
+      reason = "gross_limit";
+      return false;
+    }
+    // Passed checks; bump order counter (throttle logic could read this)
+    state()->order_counter.fetch_add(1, std::memory_order_acq_rel);
+    reason.clear();
+    return true;
+  }
+
+  // Apply a fill: update gross; (PnL, per-symbol pos would live elsewhere)
+  void on_fill(const std::string& symbol, double px, double qty) {
+    (void)symbol;
+    double notional = std::abs(px * qty);
+    double cur = state()->gross_usd.load(std::memory_order_acquire);
+    state()->gross_usd.store(cur + notional, std::memory_order_release);
+  }
+
+  // For monitors
+  void print_state() const {
+    auto* st = state();
+    std::cout << "gross_usd=" << st->gross_usd.load(std::memory_order_acquire)
+              << " realized_pnl=" << st->realized_pnl.load(std::memory_order_acquire)
+              << " order_counter=" << st->order_counter.load(std::memory_order_acquire)
+              << "\n";
+  }
+
+ private:
+  shm::MappedRegion reg_;
+  Limits limits_;
+};
+
+} // namespace
+
+int main(int argc, char** argv) {
+  if (argc < 2) {
+    std::cerr << "usage: " << argv[0] << " [prod|watch]\n";
+    return 1;
+  }
+  std::string mode = argv[1];
+
+  if (mode == "prod") {
+    ShmRiskWall rw(/*create=*/true, Limits{});
+    std::cout << "[producer] /risk_wall initialized. Sending a couple of test orders…\n";
+
+    // Order 1: allowed
+    {
+      std::string why;
+      bool ok = rw.allow_order("AAPL", 200.00, 1'000, why); // $200k notional
+      std::cout << "allow_order #1: " << (ok ? "ALLOWED" : ("BLOCKED:" + why)) << "\n";
+      if (ok) rw.on_fill("AAPL", 200.00, 1'000);
+    }
+    // Order 2: might be blocked if it exceeds per-order or gross
+    {
+      std::string why;
+      bool ok = rw.allow_order("AAPL", 1'500.00, 1'000, why); // $1.5M notional
+      std::cout << "allow_order #2: " << (ok ? "ALLOWED" : ("BLOCKED:" + why)) << "\n";
+      if (ok) rw.on_fill("AAPL", 1'500.00, 1'000);
+    }
+
+    // Keep the process alive a bit and update realized_pnl for demo
+    auto* st = rw.state();
+    for (int i = 0; i < 10; ++i) {
+      double pnl = st->realized_pnl.load(std::memory_order_acquire);
+      st->realized_pnl.store(pnl + 100.0, std::memory_order_release); // pretend profits
+      rw.print_state();
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+
+  } else if (mode == "watch") {
+    try {
+      ShmRiskWall rw(/*create=*/false);
+      std::cout << "[watch] reading /risk_wall every 500 ms (Ctrl+C to quit)\n";
+      while (true) {
+        rw.print_state();
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      }
+    } catch (const std::exception& e) {
+      std::cerr << "failed to open /risk_wall: " << e.what() << "\n";
+      return 2;
+    }
+
+  } else {
+    std::cerr << "unknown mode: " << mode << " (use prod|watch)\n";
+    return 1;
+  }
+
+  return 0;
+}

@@ -1,0 +1,214 @@
+# fx/fields.yaml
+# Canonical field definitions, groups, aliases, and examples for the FX domain.
+# Conventions:
+# - All percentage-like measures (vol, rr, bf, delta, sentiment, etc.) are FRACTIONS in [0,1] unless stated.
+# - Returns may be negative; do not clamp unless a dataset explicitly says so.
+
+version: 1
+
+# -------------------------------- FIELD DEFS --------------------------------
+fields:
+
+  # --- Keys / identity ---
+  pair:
+    type: string
+    desc: "FX pair, e.g., EURUSD (BASE+QUOTE, uppercase)."
+  base_ccy:
+    type: string
+    nullable: true
+    desc: "Left leg of pair (derived from pair if absent)."
+  quote_ccy:
+    type: string
+    nullable: true
+    desc: "Right leg of pair (derived from pair if absent)."
+
+  # --- Time ---
+  dt:
+    type: date
+    quality: [not_null, no_future_date]
+    desc: "Business date (UTC)."
+  ts:
+    type: timestamp
+    quality: [not_null]
+    nullable: true
+    desc: "Event timestamp (UTC)."
+
+  # --- Spot / bars ---
+  bid:
+    type: float64
+    unit: USD
+    nullable: true
+    quality: [non_negative]
+    desc: "Best bid."
+  ask:
+    type: float64
+    unit: USD
+    nullable: true
+    quality: [non_negative]
+    desc: "Best ask."
+  mid:
+    type: float64
+    unit: USD
+    nullable: true
+    quality: [non_negative]
+    desc: "Mid price ((bid+ask)/2) if not provided."
+  px_last:
+    type: float64
+    unit: USD
+    quality: [not_null, non_negative]
+    desc: "Spot last/close for the bar or EOD."
+  volume:
+    type: float64
+    unit: contracts
+    nullable: true
+    quality: [non_negative]
+    desc: "Vendor volume if available."
+  ret_1d:
+    type: float64
+    unit: pct
+    nullable: true
+    desc: "Simple return vs prior close (can be negative)."
+
+  # --- Forwards ---
+  tenor:
+    type: string
+    nullable: true
+    desc: "Tenor label (1W,1M,3M,6M,1Y,...)."
+  tenor_yrs:
+    type: float64
+    unit: years
+    nullable: true
+    quality: [non_negative]
+    desc: "Calendarized tenor expressed in years."
+  fwd_pts:
+    type: float64
+    unit: pips
+    nullable: true
+    desc: "Forward points in pips."
+  fwd_rate:
+    type: float64
+    nullable: true
+    quality: [non_negative]
+    desc: "All-in forward rate."
+
+  # --- Vol surface (fractions) ---
+  delta:
+    type: float64
+    unit: pct
+    nullable: true
+    quality: [pct_0_1]
+    desc: "Option delta as fraction (e.g., 0.25)."
+  vol:
+    type: float64
+    unit: pct
+    nullable: true
+    quality: [non_negative]
+    desc: "Implied volatility (fraction)."
+  rr:
+    type: float64
+    unit: pct
+    nullable: true
+    desc: "Risk reversal (can be negative)."
+  bf:
+    type: float64
+    unit: pct
+    nullable: true
+    desc: "Butterfly (can be negative)."
+
+  # --- Metadata (optional) ---
+  method:
+    type: string
+    nullable: true
+    desc: "Method id for derived surfaces/curves."
+  currency:
+    type: string
+    nullable: true
+    desc: "Context currency where applicable (quote CCY)."
+
+# --------------------------------- GROUPS -----------------------------------
+groups:
+  spot_eod:
+    fields: [dt, pair, px_last, ret_1d, currency]
+    quality: [non_negative]
+  spot_intraday:
+    fields: [ts, dt, pair, bid, ask, mid, px_last, volume]
+    quality: [non_negative]
+  forwards:
+    fields: [dt, pair, tenor, fwd_pts, fwd_rate]
+    quality: [non_negative]
+  forward_curve_calendarized:
+    fields: [dt, pair, tenor_yrs, fwd_rate, method]
+    quality: [non_negative]
+  vol_surface_vendor:
+    fields: [dt, pair, tenor, delta, vol, rr, bf]
+    quality: [pct_0_1]   # applies to delta only; vol non-negative; rr/bf may be negative
+  vol_surface_dense:
+    fields: [dt, pair, tenor, delta, vol, method]
+    quality: [pct_0_1]
+
+# -------------------------------- ALIASES -----------------------------------
+# Map vendor mnemonics → canonical names. Storage/search must use canonical.
+aliases:
+  # Spot / bars
+  BID: bid
+  ASK: ask
+  MID: mid
+  PX_LAST: px_last
+  VOL: volume
+
+  # Pair / tenor
+  CURRENCY_PAIR: pair
+  EXPIRY_TENOR: tenor
+  CRNCY: currency
+
+  # Forwards
+  FORWARD_PTS: fwd_pts
+  ALL_IN_FWD: fwd_rate
+
+  # Vol surface
+  DELTA: delta
+  IMPLIED_VOL: vol
+  RISK_REVERSAL: rr
+  BUTTERFLY: bf
+
+# ------------------------------- EXAMPLES -----------------------------------
+examples:
+
+  spot_eod_row:
+    dt: "2025-01-03"
+    pair: "EURUSD"
+    currency: "USD"
+    px_last: 1.1042
+    ret_1d: -0.0012
+
+  spot_1m_bar:
+    ts: "2025-01-03T14:21:00Z"
+    dt: "2025-01-03"
+    pair: "USDJPY"
+    bid: 144.215
+    ask: 144.228
+    mid: 144.2215
+    px_last: 144.220
+
+  forwards_row:
+    dt: "2025-01-03"
+    pair: "GBPUSD"
+    tenor: "3M"
+    fwd_pts: -24.3
+    fwd_rate: 1.2715
+
+  vol_surface_row:
+    dt: "2025-01-03"
+    pair: "EURUSD"
+    tenor: "1M"
+    delta: 0.25
+    vol: 0.0881
+    rr: -0.0023
+    bf: 0.0011
+
+  forward_curve_calendarized_row:
+    dt: "2025-01-03"
+    pair: "EURUSD"
+    tenor_yrs: 0.25
+    fwd_rate: 1.1060
+    method: "act365_calendarized_v1"

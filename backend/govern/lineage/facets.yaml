@@ -1,0 +1,53 @@
+# governance/lineage/facets.yaml
+# Metadata facets for jobs and datasets in the news-intel pipeline.
+
+job:
+  news-intel.pipeline_runner:
+    owner: "data-eng"
+    description: "Main enrichment pipeline: ingest → normalize → enrich → storage"
+    sla_minutes: 5
+    alerts:
+      - "slack://#data-pipeline-alerts"
+      - "email://oncall@company.com"
+
+  news-intel.sentiment_model:
+    owner: "ml-team"
+    description: "Sentiment classification component (HF/VADER/Rule-based)"
+    version: "1.0.0"
+
+  news-intel.topic_model:
+    owner: "ml-team"
+    description: "Topic classifier (rule-based + optional ML multi-label)"
+    version: "0.1.0"
+
+dataset:
+  rss.bbc_world:
+    source_system: "RSS"
+    confidentiality: "public"
+    retention_days: 7
+    tags: ["news", "world"]
+
+  rss.reuters_markets:
+    source_system: "RSS"
+    confidentiality: "public"
+    retention_days: 7
+    tags: ["news", "markets"]
+
+  sqlite.news.sqlite#articles:
+    source_system: "SQLite"
+    confidentiality: "internal"
+    retention_days: 30
+    schema: "id TEXT, title TEXT, body TEXT, topics JSON, sentiment JSON, enriched_at TIMESTAMP"
+
+  s3.news-bucket.enriched:
+    source_system: "S3"
+    confidentiality: "internal"
+    retention_days: 90
+    region: "us-east-1"
+    format: "jsonl.gz"
+
+  kafka.news.enriched:
+    source_system: "Kafka"
+    confidentiality: "internal"
+    retention_days: 3
+    topic: "news.enriched"

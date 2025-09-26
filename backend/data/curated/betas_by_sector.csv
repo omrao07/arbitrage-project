@@ -1,0 +1,41 @@
+import pandas as pd
+from datetime import date
+
+def build_betas_by_sector(as_of: str = None) -> pd.DataFrame:
+    """
+    Create sector-level betas (template).
+    Can be extended to pull real data from Damodaran or Bloomberg.
+    """
+    if as_of is None:
+        as_of = str(date.today())
+
+    rows = [
+        # sector, region, as_of, unlevered_beta, levered_beta, d/e, tax_rate, beta_err, r2, n_firms, notes
+        ("Communication Services","US",        as_of, 0.86, 1.08, 0.35, 0.21, 0.10, 0.42, 145, ""),
+        ("Communication Services","Developed", as_of, 0.83, 1.03, 0.30, 0.22, 0.11, 0.39, 310, ""),
+        ("Consumer Discretionary","US",        as_of, 0.92, 1.21, 0.50, 0.23, 0.12, 0.45, 420, ""),
+        ("Consumer Staples","US",              as_of, 0.62, 0.74, 0.20, 0.22, 0.08, 0.38, 235, ""),
+        ("Energy","US",                        as_of, 1.05, 1.38, 0.60, 0.20, 0.16, 0.33, 150, ""),
+        ("Financials","US",                    as_of, 0.75, 1.06, 0.70, 0.24, 0.14, 0.40, 570, "Leverage includes deposits"),
+        ("Healthcare","US",                    as_of, 0.70, 0.86, 0.25, 0.21, 0.09, 0.41, 390, ""),
+        ("Industrials","US",                   as_of, 0.95, 1.19, 0.45, 0.22, 0.11, 0.44, 520, ""),
+        ("Materials","US",                     as_of, 0.98, 1.25, 0.52, 0.22, 0.12, 0.41, 280, ""),
+        ("Real Estate","US",                   as_of, 0.62, 0.95, 0.90, 0.23, 0.11, 0.37, 190, "REIT leverage uses net debt"),
+        ("Technology","US",                    as_of, 0.97, 1.14, 0.25, 0.21, 0.10, 0.46, 650, ""),
+        ("Utilities","US",                     as_of, 0.43, 0.66, 0.85, 0.25, 0.08, 0.34, 140, "Regulated utilities"),
+    ]
+
+    df = pd.DataFrame(rows, columns=[
+        "sector","region","as_of",
+        "unlevered_beta","levered_beta",
+        "debt_to_equity","tax_rate",
+        "beta_std_err","r2",
+        "n_firms","notes"
+    ])
+    return df
+
+if __name__ == "__main__":
+    df = build_betas_by_sector()
+    out_path = "data/adamodar/raw/betas/betas_by_sector.csv"
+    df.to_csv(out_path, index=False)
+    print(f"✅ betas_by_sector.csv written to {out_path}")

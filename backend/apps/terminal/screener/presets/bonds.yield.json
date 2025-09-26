@@ -1,0 +1,45 @@
+{
+  "asOf": "2025-09-25T00:00:00Z",
+  "curves": [
+    {
+      "currency": "USD",
+      "points": [
+        { "tenor": "1M", "yield": 5.20 },
+        { "tenor": "3M", "yield": 5.15 },
+        { "tenor": "6M", "yield": 5.10 },
+        { "tenor": "1Y", "yield": 5.05 },
+        { "tenor": "2Y", "yield": 4.90 },
+        { "tenor": "5Y", "yield": 4.70 },
+        { "tenor": "10Y", "yield": 4.55 },
+        { "tenor": "30Y", "yield": 4.40 }
+      ]
+    },
+    {
+      "currency": "EUR",
+      "points": [
+        { "tenor": "1M", "yield": 3.25 },
+        { "tenor": "3M", "yield": 3.20 },
+        { "tenor": "6M", "yield": 3.15 },
+        { "tenor": "1Y", "yield": 3.10 },
+        { "tenor": "2Y", "yield": 3.00 },
+        { "tenor": "5Y", "yield": 2.80 },
+        { "tenor": "10Y", "yield": 2.65 },
+        { "tenor": "30Y", "yield": 2.50 }
+      ]
+    },
+    {
+      "currency": "JPY",
+      "points": [
+        { "tenor": "1M", "yield": 0.10 },
+        { "tenor": "3M", "yield": 0.12 },
+        { "tenor": "6M", "yield": 0.14 },
+        { "tenor": "1Y", "yield": 0.16 },
+        { "tenor": "2Y", "yield": 0.20 },
+        { "tenor": "5Y", "yield": 0.30 },
+        { "tenor": "10Y", "yield": 0.45 },
+        { "tenor": "30Y", "yield": 0.65 }
+      ]
+    }
+  ],
+  "notes": "Synthetic yield curve data for demo purposes only. Replace with live bond market feed."
+}

@@ -1,0 +1,18 @@
+id: CIT-0407
+firm: Citadel
+name: WTI Calendar Spread #407
+description: Cross-asset factor strategy.
+discipline: Quant
+family: Trend/Carry
+region: Global
+horizon: Swing
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

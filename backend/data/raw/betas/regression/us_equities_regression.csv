@@ -1,0 +1,28 @@
+import pandas as pd
+from datetime import date
+
+def build_us_equities_regression(as_of: str = None):
+    if as_of is None:
+        as_of = str(date.today())
+
+    rows = [
+        ("Large Cap","S&P 500",as_of,0.037,0.052,-0.05,-0.02,0.03,0.001,1.00,0.93,0.04,"Baseline US market regression"),
+        ("Small Cap","Russell 2000",as_of,0.037,0.052,0.35,0.05,0.08,0.002,1.15,0.88,0.06,"Strong size factor sensitivity"),
+        ("Growth","Nasdaq 100",as_of,0.037,0.052,0.10,-0.20,0.12,0.002,1.10,0.90,0.05,"Tech-heavy, high momentum"),
+        ("Value","Russell 1000V",as_of,0.037,0.052,-0.05,0.25,-0.02,0.001,0.95,0.89,0.05,"Classic high HML exposure"),
+        ("Mid Cap","S&P 400",as_of,0.037,0.052,0.15,0.05,0.04,0.002,1.05,0.90,0.05,"In between large and small"),
+        ("Dividend","Dow Jones",as_of,0.037,0.052,-0.10,0.15,-0.01,0.001,0.90,0.92,0.04,"High yield stocks defensive tilt"),
+    ]
+
+    df = pd.DataFrame(rows, columns=[
+        "style","index","as_of","rf_rate","erp_factor",
+        "smb_factor","hml_factor","momentum",
+        "intercept","beta_mkt","r2","std_err","notes"
+    ])
+    return df
+
+if __name__ == "__main__":
+    df = build_us_equities_regression()
+    out_path = "data/adamodar/curated/us_equities_regression.csv"
+    df.to_csv(out_path, index=False)
+    print(f"✅ us_equities_regression.csv written to {out_path}")

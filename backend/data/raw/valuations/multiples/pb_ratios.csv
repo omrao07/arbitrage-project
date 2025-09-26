@@ -1,0 +1,42 @@
+import os
+import pandas as pd
+import numpy as np
+from datetime import date
+
+OUT_PATH = "data/adamodar/curated/pb_ratios.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def seed_pb_ratios() -> pd.DataFrame:
+    today = str(date.today())
+    rows = [
+        (today,"S&P500","index","US","",72e12,25e12,2.88,2.60,0.8,"S&P modestly rich vs 10y avg"),
+        (today,"MSCI_EM","index","EM","",18e12,10e12,1.80,1.90,-0.5,"EM slightly cheap vs history"),
+        (today,"MSCI_Europe","index","Europe","",15e12,8.5e12,1.76,1.90,-0.7,"Europe below avg"),
+        (today,"US_Banks","sector","US","Banks",6.5e12,4.5e12,1.44,1.20,1.2,"Banks trading above historical PB"),
+        (today,"US_Tech","sector","US","Tech",18e12,6e12,3.00,2.50,2.0,"Tech premium vs avg"),
+        (today,"Apple","company","US","Tech",3.25e12,0.75e12,4.33,3.50,1.5,"Apple strong ROE supports premium"),
+        (today,"Petrobras","company","LatAm","Energy",1.0e11,0.08e12,1.25,1.50,-1.2,"Discount due to governance risk"),
+    ]
+    return pd.DataFrame(rows, columns=[
+        "as_of","entity","entity_type","region","sector","market_cap_usd",
+        "book_value_usd","pb_ratio","pb_hist_avg","pb_zscore","notes"
+    ])
+
+def compute_pb_ratios(df: pd.DataFrame) -> pd.DataFrame:
+    d = df.copy()
+    d["pb_ratio"] = d["market_cap_usd"] / d["book_value_usd"].replace(0, np.nan)
+    if "pb_hist_avg" in d.columns:
+        d["pb_zscore"] = (d["pb_ratio"] - d["pb_hist_avg"]) / (d["pb_hist_avg"] * 0.15)
+    return d
+
+def write_csv(df: pd.DataFrame, path: str = OUT_PATH):
+    ensure_dirs(path)
+    df.to_csv(path, index=False)
+
+if __name__ == "__main__":
+    df = seed_pb_ratios()
+    df = compute_pb_ratios(df)
+    write_csv(df)
+    print(f"✅ pb_ratios.csv written to {OUT_PATH} with {len(df)} rows")

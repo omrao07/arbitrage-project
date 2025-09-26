@@ -1,0 +1,280 @@
+{
+ 
+  "$id": "https://example.com/schema/dataset.schema.json",
+  "title": "Dataset Descriptor",
+  "description": "Portable schema for describing a dataset in a data catalog (fields, storage, lineage, quality, SLAs).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "title", "fields"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_./-]*$" },
+    "title": { "type": "string", "minLength": 1 },
+    "description": { "type": "string" },
+    "domain": { "type": "string" },
+    "tags": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "team": { "type": "string" },
+        "slack": { "type": "string" }
+      }
+    },
+    "visibility": { "type": "string", "enum": ["private", "internal", "public"] },
+    "status": { "type": "string", "enum": ["active", "deprecated", "experimental"] },
+    "version": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+
+    "fields": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/field" }
+    },
+    "primary_key": { "type": "array", "items": { "type": "string" } },
+    "grain": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Business grain; usually equals primary_key."
+    },
+    "constraints": { "type": "array", "items": { "$ref": "#/$defs/constraint" } },
+
+    "partitions": { "type": "array", "items": { "$ref": "#/$defs/partition" } },
+    "format": {
+      "type": "string",
+      "enum": ["csv", "tsv", "parquet", "orc", "json", "jsonl", "delta", "iceberg", "bigquery", "table"]
+    },
+    "compression": {
+      "type": "string",
+      "enum": ["none", "gzip", "snappy", "zstd", "bzip2", "lz4"]
+    },
+    "storage": { "$ref": "#/$defs/storage" },
+    "path": { "type": "string", "description": "Optional absolute/URI path if not fully covered by storage.*" },
+
+    "sources": { "type": "array", "items": { "$ref": "#/$defs/source" } },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "inputs": { "type": "array", "items": { "type": "string" } },
+        "outputs": { "type": "array", "items": { "type": "string" } },
+        "transform": { "type": "string", "description": "Freeform notes or a reference to a job/notebook." }
+      }
+    },
+
+    "freshness": { "$ref": "#/$defs/freshness" },
+    "schedule": { "type": "string", "description": "Cron-style schedule for updates." },
+    "sla": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_lag_minutes": { "type": "integer", "minimum": 0 },
+        "availability": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+
+    "expectations": { "type": "array", "items": { "$ref": "#/$defs/expectation" } },
+    "quality": { "$ref": "#/$defs/quality" },
+
+    "docs": { "type": "string", "description": "Markdown or a URL to extended documentation." },
+    "sample": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string" },
+        "rows": { "type": "integer", "minimum": 1 }
+      }
+    },
+
+    "license": { "type": "string" }
+  },
+
+  "$defs": {
+    "type": {
+      "oneOf": [
+        { "type": "string", "enum": ["string", "text", "int", "bigint", "float", "double", "decimal", "bool", "boolean", "date", "timestamp", "json", "bytes"] },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["array"],
+          "properties": { "array": { "$ref": "#/$defs/type" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["map"],
+          "properties": {
+            "map": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["key", "value"],
+              "properties": {
+                "key": { "$ref": "#/$defs/type" },
+                "value": { "$ref": "#/$defs/type" }
+              }
+            }
+          }
+        }
+      ]
+    },
+
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "$ref": "#/$defs/type" },
+        "description": { "type": "string" },
+        "nullable": { "type": "boolean", "default": true },
+        "unit": { "type": "string" },
+        "semantic_type": {
+          "type": "string",
+          "enum": ["id", "code", "category", "text", "bool", "date", "timestamp", "price", "rate", "quantity", "json", "other"]
+        },
+        "format": { "type": "string", "description": "Parsing hint like YYYY-MM-DD, unix_ms, etc." },
+        "example": { "type": ["string", "number", "boolean", "null"] },
+        "enum": { "type": "array", "items": { "type": ["string", "number", "boolean", "null"] } },
+        "min": { "type": ["number", "string"] },
+        "max": { "type": ["number", "string"] },
+        "unique": { "type": "boolean" },
+        "index": { "type": "boolean" },
+        "foreign_key": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "dataset": { "type": "string" },
+            "field": { "type": "string" }
+          }
+        },
+        "tags": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+      }
+    },
+
+    "constraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["check", "unique", "primary_key", "foreign_key"] },
+        "expr": { "type": "string", "description": "SQL-like or expression for check constraints." },
+        "fields": { "type": "array", "items": { "type": "string" } },
+        "reference": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "dataset": { "type": "string" },
+            "fields": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+
+    "partition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["by_time", "by_value", "by_hash"] },
+        "expr": { "type": "string" },
+        "granularity": { "type": "string", "enum": ["hour", "day", "week", "month", "year"] }
+      }
+    },
+
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "system": { "type": "string", "enum": ["s3", "gcs", "azure", "hdfs", "local", "bigquery", "snowflake", "redshift", "postgres", "duckdb"] },
+        "catalog": { "type": "string" },
+        "database": { "type": "string" },
+        "schema": { "type": "string" },
+        "table": { "type": "string" },
+        "bucket": { "type": "string" },
+        "path": { "type": "string" },
+        "region": { "type": "string" }
+      }
+    },
+
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider"],
+      "properties": {
+        "provider": { "type": "string", "enum": ["bloomberg", "koyfin", "refinitiv", "yahoo", "custom", "internal"] },
+        "symbol": { "type": "string" },
+        "query": { "type": "string" },
+        "params": { "type": "object", "additionalProperties": true },
+        "license": { "type": "string" }
+      }
+    },
+
+    "freshness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["time_field"],
+      "properties": {
+        "time_field": { "type": "string" },
+        "expected_frequency": { "type": "string", "enum": ["event", "hourly", "daily", "weekly", "monthly", "quarterly"] },
+        "max_age_days": { "type": "integer", "minimum": 0 },
+        "timezone": { "type": "string" }
+      }
+    },
+
+    "expectation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "check"],
+      "properties": {
+        "field": { "type": "string" },
+        "check": {
+          "type": "string",
+          "enum": ["not_null", "is_unique", "in_set", "matches", ">=min", "<=max", "between", "non_decreasing", "valid_json", "positive"]
+        },
+        "params": { "type": "object", "additionalProperties": true },
+        "severity": { "type": "string", "enum": ["error", "warn"] }
+      }
+    },
+
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "targets": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "completeness": { "type": "number", "minimum": 0, "maximum": 1 },
+            "validity": { "type": "number", "minimum": 0, "maximum": 1 },
+            "freshness": { "type": "number", "minimum": 0, "maximum": 1 },
+            "uniqueness": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "monitors": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  },
+
+  "examples": [
+    {
+      "id": "px_daily",
+      "title": "Prices — Daily",
+      "domain": "market",
+      "tags": ["prices", "daily"],
+      "owner": { "name": "Data Platform", "email": "data@ex.com" },
+      "format": "parquet",
+      "storage": { "system": "s3", "bucket": "data-lake", "path": "market/px_daily/" },
+      "primary_key": ["ticker", "date"],
+      "fields": [
+        { "name": "ticker", "type": "string", "semantic_type": "id" },
+        { "name": "date", "type": "date" },
+        { "name": "close", "type": "float", "min": 0 }
+      ],
+      "freshness": { "time_field": "date", "expected_frequency": "daily", "max_age_days": 2 }
+    }
+  ]
+}

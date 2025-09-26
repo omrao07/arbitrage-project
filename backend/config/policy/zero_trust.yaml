@@ -1,0 +1,130 @@
+apiVersion: v1
+kind: ZeroTrustPolicy
+metadata:
+  name: trading-os-zero-trust
+  version: 1.0.0
+  owners:
+    - role: CISO
+      contact: ciso@yourfund.com
+    - role: SecurityOps
+      contact: secops@yourfund.com
+labels:
+  environment: prod
+  scope: enterprise-wide
+standards_mapping:
+  nist800207: [Identity, Device, Network, Application, Data]
+  cisa_ztmm: [Identity, Devices, Networks, Applications, Workloads, Data]
+  iso27001: [A.9, A.10, A.12, A.13, A.14, A.18]
+  soc2: [CC6.1, CC6.6, CC7.1, CC7.2]
+principles:
+  statement: >
+    Access to systems, data, and trading workflows is never implicitly trusted.
+    Every access request is continuously verified based on identity, device,
+    context, risk signals, and least privilege. Enforcement is policy-driven
+    and adaptive.
+  review_cycle: semi-annual
+identity_and_access:
+  idp: "OIDC (Okta/Entra)"
+  authn:
+    mfa_required: true
+    phishing_resistant: true     # WebAuthn / FIDO2
+    step_up_for_sensitive:
+      triggers: [trade_submission, key_rotation, break_glass]
+  authz:
+    model: RBAC + ABAC
+    continuous_access_eval: true
+    session_timebox_minutes: 30
+    just_in_time:
+      enabled: true
+      max_hours: 4
+      approvals: [CRO, CISO]
+  service_identities:
+    issuance: short-lived
+    rotation_hours: 12
+    bound_to: workload+namespace
+devices:
+  posture_required: true
+  checks:
+    os_patch_age_days_max: 14
+    disk_encryption: required
+    endpoint_protection: required
+    jailbroken_rooted_block: true
+  conditional_access:
+    block_if_noncompliant: true
+    allow_from_noncorporate: false
+network:
+  segmentation: true
+  microsegmentation: true
+  controls:
+    - enforce_tls_min_version: "1.2"
+    - block_plain_http: true
+    - mutual_tls_internal: true
+    - default_deny: true
+  vpn_required: false  # move away from perimeter VPN
+  sdwan: enabled
+  traffic_monitoring:
+    siem_feed: true
+    anomaly_detection: true
+workloads:
+  workloads_identity: SPIFFE/SPIRE
+  admission_controls:
+    signed_artifacts: required
+    sbom_required: true
+    opa_policies_required: true
+  runtime:
+    container_runtime_security: true
+    egress_restrictions: true
+    secrets_injected_via: vault
+    no_hardcoded_secrets: enforced
+data:
+  classification_required: true
+  encryption:
+    at_rest: AES-256
+    in_transit: TLS1.2+
+    key_rotation_days: 365
+    kms_provider: AWS KMS
+  access_based_on:
+    sensitivity: true
+    context: true
+    user_role: true
+  dlp:
+    enabled: true
+    outbound_monitoring: true
+visibility_and_analytics:
+  telemetry:
+    identity: true
+    device: true
+    network: true
+    workload: true
+    data: true
+  siem: elastic/splunk
+  ueba: enabled
+  anomaly_detection: ml-based
+automation_and_orchestration:
+  enforcement_hooks:
+    opa:
+      bundles:
+        - name: zero-trust-core
+          url: "oci://registry.example.com/opa/zero-trust-core:1.0.0"
+    terraform:
+      guardrails:
+        - "guardrails/no_public_sg"
+        - "guardrails/kms_mandatory"
+        - "guardrails/signed_artifacts"
+    ci_cd:
+      required_checks: [sast, dast, sbom, policy-as-code]
+    siem:
+      alerts_on: [mfa_bypass, policy_violation, anomaly_detected]
+incident_response:
+  breach_response:
+    trigger: [identity_compromise, data_exfil, anomalous_trade]
+    auto_kill_sessions: true
+    revoke_tokens: true
+    rotate_keys: immediate
+    notify: [CISO, CRO, SOC]
+exceptions:
+  process:
+    request_form: "grc/exception-request.md"
+    timebound_days_max: 30
+    compensating_controls_required: true
+  registry_bucket: "grc-exceptions"

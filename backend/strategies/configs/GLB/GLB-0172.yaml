@@ -1,0 +1,18 @@
+id: GLB-0172
+firm: Global
+name: EM Value vs Growth (CA)
+description: Worldwide diversified strategy in Commodities & Curves — region: CA.
+discipline: Macro
+family: Commodities & Curves
+region: CA
+horizon: Macro
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

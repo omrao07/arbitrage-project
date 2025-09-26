@@ -1,0 +1,174 @@
+<!-- simulation-farm/artifacts/reports/templates/risk_report.html -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ title or "Risk Report" }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+  <style>
+    :root { --bg:#0b0e14; --panel:#121723; --text:#e5e9f0; --muted:#9aa4b2; --grid:#1c2233; --accent:#7aa2f7; --red:#f7768e; --green:#9ece6a; }
+    *{box-sizing:border-box} body{margin:0;padding:24px;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto}
+    h1{margin:0 0 6px;font-size:22px} h2{margin:12px 0 8px;font-size:16px;color:#d8e0ee}
+    .container{max-width:1200px;margin:0 auto}
+    .meta{color:var(--muted);font-size:13px;display:flex;gap:12px;flex-wrap:wrap}
+    .grid{display:grid;grid-template-columns:2fr 1fr;gap:16px} @media(max-width:900px){.grid{grid-template-columns:1fr}}
+    .card{background:var(--panel);border:1px solid #1b2333;border-radius:12px;padding:14px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+    .kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px} @media(max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)}}
+    .kpi{background:#0f1524;border:1px solid #1b2233;border-radius:10px;padding:10px 12px}
+    .kpi .k{color:var(--muted);font-size:12px}.kpi .v{font-size:18px;margin-top:2px}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th,td{padding:8px;border-bottom:1px solid #1b2333;text-align:right} th{text-align:left;color:#cbd5e1}
+    .good{color:var(--green)} .bad{color:var(--red)}
+    canvas{width:100% !important;height:360px !important}
+    .legend{color:var(--muted);font-size:12px;margin-top:6px;display:flex;gap:12px;flex-wrap:wrap}
+    .sw{width:10px;height:10px;border-radius:2px;display:inline-block;margin-right:6px}
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="card" style="margin-bottom:16px">
+    <h1>{{ title or "Risk Report" }}</h1>
+    <div class="meta">
+      {% if run_id %}<span>Run: <strong>{{ run_id }}</strong></span>{% endif %}
+      {% if strategy %}<span>Strategy: <strong>{{ strategy }}</strong></span>{% endif %}
+      {% if start_date and end_date %}<span>Period: <strong>{{ start_date }} → {{ end_date }}</strong></span>{% endif %}
+      {% if tz %}<span>TZ: <strong>{{ tz }}</strong></span>{% endif %}
+    </div>
+    <div class="kpis" style="margin-top:12px">
+      <div class="kpi"><div class="k">Vol (ann.)</div><div class="v">{{ '%0.2f%%' % (kpis.vol_annual*100) if kpis and kpis.vol_annual is not none else '—' }}</div></div>
+      <div class="kpi"><div class="k">VaR {{ kpis.var_horizon or '1d' }} @ {{ '%0.1f' % ( (kpis.var_level or 0.95)*100 ) }}%</div><div class="v">{{ '%0.2f%%' % (kpis.var * 100) if kpis and kpis.var is not none else '—' }}</div></div>
+      <div class="kpi"><div class="k">CVaR</div><div class="v">{{ '%0.2f%%' % (kpis.cvar * 100) if kpis and kpis.cvar is not none else '—' }}</div></div>
+      <div class="kpi"><div class="k">Max Drawdown</div><div class="v">{{ '%0.2f%%' % (kpis.max_dd * 100) if kpis and kpis.max_dd is not none else '—' }}</div></div>
+      <div class="kpi"><div class="k">Beta (mkt)</div><div class="v">{{ '%0.2f' % kpis.beta if kpis and kpis.beta is not none else '—' }}</div></div>
+      <div class="kpi"><div class="k">Turnover (ann.)</div><div class="v">{{ '%0.2f%%' % (kpis.turnover_annual*100) if kpis and kpis.turnover_annual is not none else '—' }}</div></div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Equity & Drawdown</h2>
+      <canvas id="eqChart"></canvas>
+      <div class="legend"><span><span class="sw" style="background:#7aa2f7"></span>Equity</span><span><span class="sw" style="background:#9ece6a"></span>Benchmark</span><span><span class="sw" style="background:#6d7b93"></span>Drawdown</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Top Drawdowns</h2>
+      <table>
+        <thead><tr><th>Start</th><th>Trough</th><th>Recovery</th><th style="text-align:right">Depth</th></tr></thead>
+        <tbody>
+        {% for dd in (drawdowns or [])[:10] %}
+          <tr>
+            <td>{{ dd.start }}</td>
+            <td>{{ dd.trough }}</td>
+            <td>{{ dd.recovery or '—' }}</td>
+            <td class="{{ 'bad' if dd.depth < 0 else '' }}" style="text-align:right">{{ '%0.2f%%' % (dd.depth*100) }}</td>
+          </tr>
+        {% endfor %}
+        {% if not drawdowns %}<tr><td colspan="4" style="text-align:center;color:var(--muted)">No drawdowns computed.</td></tr>{% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Value at Risk (Histogram)</h2>
+      <canvas id="varChart"></canvas>
+    </div>
+
+    <div class="card">
+      <h2>Factor Exposures</h2>
+      <canvas id="factorChart"></canvas>
+      <div class="legend"><span><span class="sw" style="background:#7aa2f7"></span>Exposure (β)</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Sector / Asset Exposures</h2>
+      <canvas id="sectorChart"></canvas>
+    </div>
+
+    <div class="card">
+      <h2>Stress Scenarios</h2>
+      <table>
+        <thead><tr><th>Scenario</th><th style="text-align:right">P&L (%)</th><th style="text-align:right">Notes</th></tr></thead>
+        <tbody>
+        {% for s in (stress or []) %}
+          <tr>
+            <td>{{ s.name }}</td>
+            <td class="{{ 'bad' if s.pnl_pct < 0 else 'good' }}" style="text-align:right">{{ '%0.2f' % (s.pnl_pct) }}</td>
+            <td style="text-align:right">{{ s.note or '' }}</td>
+          </tr>
+        {% endfor %}
+        {% if not stress %}<tr><td colspan="3" style="text-align:center;color:var(--muted)">No stress results.</td></tr>{% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Turnover</h2>
+      <canvas id="turnChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+  
+  // ----------------- Charts -----------------
+  const gridColor='rgba(255,255,255,0.06)', tickColor='#c8d0dc';
+
+  // Equity + Drawdown
+  const eqCtx = document.getElementById('eqChart').getContext('2d');
+  const eqDatasets = [
+    {label:'Equity', data: dates.map((d,i)=>({x:d,y:equity[i]})), borderWidth:2, pointRadius:0, tension:.15, yAxisID:'y',},
+  ];
+  if (benchmark) eqDatasets.push({label:'Benchmark', data: dates.map((d,i)=>({x:d,y:benchmark[i]})), borderWidth:1.5, borderDash:[4,3], pointRadius:0, tension:.1, yAxisID:'y'});
+  if (drawdown)  eqDatasets.push({label:'Drawdown', data: dates.map((d,i)=>({x:d,y:drawdown[i]*100})), type:'line', fill:'origin', yAxisID:'y1', borderWidth:1});
+  new Chart(eqCtx, {
+    type:'line',
+    data:{datasets:eqDatasets},
+    options:{
+      responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      scales:{
+        x:{type:'time', time:{unit:'day'}, grid:{color:gridColor}, ticks:{color:tickColor}},
+        y:{grid:{color:gridColor}, ticks:{color:tickColor}, title:{display:true,text:'Equity',color:tickColor}},
+        y1:{position:'right', grid:{display:false}, ticks:{color:tickColor, callback:v=>v+'%'}, title:{display:true,text:'Drawdown',color:tickColor}, suggestedMax:0, suggestedMin:-100}
+      },
+      elements:{ line:{ borderColor:ctx=>({ 'Equity':'#7aa2f7','Benchmark':'#9ece6a','Drawdown':'#6d7b93' }[ctx.dataset.label]||'#7aa2f7'),
+                        backgroundColor:ctx=>ctx.dataset.label==='Drawdown' ? 'rgba(109,123,147,0.35)' : 'transparent'},
+                 point:{radius:0}}
+    }
+  });
+
+  // VaR histogram
+  const varCtx = document.getElementById('varChart').getContext('2d');
+  new Chart(varCtx, {
+    type:'bar',
+    data:{labels:varBins, datasets:[{label:'Returns (%)', data:varCounts, borderWidth:0}]},
+    options:{responsive:true, maintainAspectRatio:false, scales:{x:{grid:{color:gridColor}, ticks:{color:tickColor}}, y:{grid:{color:gridColor}, ticks:{color:tickColor}}}}
+  });
+
+  // Factor exposures (bar)
+  const fNames = Object.keys(factors), fVals = Object.values(factors);
+  const facCtx = document.getElementById('factorChart').getContext('2d');
+  new Chart(facCtx, { type:'bar', data:{labels:fNames, datasets:[{label:'β', data:fVals}]},
+    options:{responsive:true, maintainAspectRatio:false, scales:{x:{grid:{color:gridColor}, ticks:{color:tickColor}}, y:{grid:{color:gridColor}, ticks:{color:tickColor}}}}
+  });
+
+  // Sector/asset exposures (horizontal bar)
+  const sNames = Object.keys(sectors), sVals = Object.values(sectors);
+  const secCtx = document.getElementById('sectorChart').getContext('2d');
+  new Chart(secCtx, { type:'bar', data:{labels:sNames, datasets:[{label:'Weight (%)', data:sVals}]},
+    options:{indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      scales:{x:{grid:{color:gridColor}, ticks:{color:tickColor}}, y:{grid:{color:gridColor}, ticks:{color:tickColor}}}}
+  });
+
+  // Turnover
+  if (turnover && turnover.dates && turnover.values) {
+    const tCtx = document.getElementById('turnChart').getContext('2d');
+    new Chart(tCtx, { type:'line', data:{datasets:[{label:'Turnover (%)', data: turnover.dates.map((d,i)=>({x:d,y:turnover.values[i]})), borderWidth:2, pointRadius:0}]},
+      options:{responsive:true, maintainAspectRatio:false, scales:{x:{type:'time', grid:{color:gridColor}, ticks:{color:tickColor}}, y:{grid:{color:gridColor}, ticks:{color:tickColor}}}}
+    });
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,43 @@
+version: "3.9"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hedgefund_app
+    env_file:
+      - .env
+    command: python -m orchestrator.backtest_job --universe all --from 2020-01-01 --to 2025-01-01
+    volumes:
+      - .:/app
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: hedgefund_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  # Optional: Postgres if you want persistent DB for runs
+  # db:
+  #   image: postgres:15-alpine
+  #   container_name: hedgefund_db
+  #   environment:
+  #     POSTGRES_USER: hedge
+  #     POSTGRES_PASSWORD: hedgepass
+  #     POSTGRES_DB: hedgefund
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - pg_data:/var/lib/postgresql/data
+  #   restart: unless-stopped
+
+volumes:
+  redis_data:
+  # pg_data:

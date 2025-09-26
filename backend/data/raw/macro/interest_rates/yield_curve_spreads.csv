@@ -1,0 +1,66 @@
+import pandas as pd
+from datetime import date
+import os
+
+OUT_PATH = "data/macro/interest_rates/yield_curve_spreads.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def init_yield_curve_spreads(seed: bool = True) -> pd.DataFrame:
+    """
+    Create yield_curve_spreads.csv with schema:
+    date, region, spread_name, short_tenor, long_tenor, spread, source, notes
+    - spread values in decimals (e.g., -0.007 = -70 bps).
+    """
+    ensure_dirs(OUT_PATH)
+    cols = ["date","region","spread_name","short_tenor","long_tenor","spread","source","notes"]
+
+    if not seed:
+        df = pd.DataFrame(columns=cols)
+        df.to_csv(OUT_PATH, index=False)
+        return df
+
+    today = str(date.today())
+    rows = [
+        ("2025-01-02","United States","2s10s","2y","10y",-0.007,"UST","Curve inverted"),
+        ("2025-01-02","United States","3m10y","3m","10y",-0.009,"UST","Classic recession signal"),
+        ("2025-01-02","United States","5s30s","5y","30y",-0.001,"UST","Slight inversion"),
+        ("2025-01-02","Developed ex-US","2s10s","2y","10y",0.004,"OECD","Eurozone + Japan composite"),
+        ("2025-01-02","Emerging Mkts","2s10s","2y","10y",0.015,"IMF","EM steep curve (inflation premia)"),
+        ("2025-01-02","Global Avg","2s10s","2y","10y",-0.002,"IMF/OECD","Weighted world curve"),
+        (today,"United States","2s10s","2y","10y",None,"Manual","Placeholder for update"),
+    ]
+    df = pd.DataFrame(rows, columns=cols)
+    df.to_csv(OUT_PATH, index=False)
+    return df
+
+# ---------------- Analytics helpers ----------------
+
+def load_yield_curve_spreads(path: str = OUT_PATH) -> pd.DataFrame:
+    df = pd.read_csv(path)
+    df["date"] = pd.to_datetime(df["date"])
+    return df
+
+def inversion_flags(df: pd.DataFrame, region: str = "United States") -> pd.DataFrame:
+    """
+    Flag inversions: spread < 0.
+    """
+    d = df[df["region"] == region].copy()
+    d["inversion_flag"] = d["spread"] < 0
+    return d
+
+def rolling_avg(df: pd.DataFrame, region: str = "United States", spread_name: str = "2s10s", window: int = 21) -> pd.DataFrame:
+    """
+    Compute rolling average of a given spread (default 21d).
+    """
+    d = df[(df["region"] == region) & (df["spread_name"] == spread_name)].sort_values("date").copy()
+    d[f"{spread_name}_ma{window}"] = d["spread"].rolling(window).mean()
+    return d
+
+if __name__ == "__main__":
+    df = init_yield_curve_spreads(seed=True)
+    print(f"✅ yield_curve_spreads.csv written to {OUT_PATH} with {len(df)} rows")
+    # Example:
+    # us_spreads = inversion_flags(load_yield_curve_spreads())
+    # print(us_spreads.tail())

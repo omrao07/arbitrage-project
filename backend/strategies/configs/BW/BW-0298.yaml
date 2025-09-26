@@ -1,0 +1,18 @@
+id: BW-0298
+firm: Bridgewater
+name: Sugar vs Ethanol Blend
+description: Brazil energy linkage.
+discipline: Macro
+family: Curves & Spreads
+region: Global
+horizon: Macro
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: macro
+created_at: 2025-09-10
+updated_at: 2025-09-10

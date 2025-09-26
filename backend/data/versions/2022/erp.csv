@@ -1,0 +1,27 @@
+import pandas as pd
+from datetime import date
+
+def build_rp(as_of: str = None):
+    if as_of is None:
+        as_of = str(date.today())
+
+    rows = [
+        ("United States",as_of,0.052,0.000,0.010,"AAA","Base ERP benchmark"),
+        ("Germany",as_of,0.052,0.005,0.012,"AAA","Eurozone anchor"),
+        ("Brazil",as_of,0.052,0.030,0.040,"BB+","CRP from EMBI spread"),
+        ("India",as_of,0.052,0.020,0.030,"BBB-","ERP + CRP adjustment"),
+        ("China",as_of,0.052,0.015,0.025,"A","Weighted by GDP growth risk"),
+        ("Nigeria",as_of,0.052,0.050,0.065,"B","High CRP (oil dependence)"),
+        ("Turkey",as_of,0.052,0.045,0.060,"B-","Political + inflation risk"),
+    ]
+
+    df = pd.DataFrame(rows, columns=[
+        "country","as_of","erp","crp","default_spread","sovereign_rating","notes"
+    ])
+    return df
+
+if __name__ == "__main__":
+    df = build_rp()
+    out_path = "data/adamodar/curated/rp.csv"
+    df.to_csv(out_path, index=False)
+    print(f"✅ rp.csv written to {out_path}")

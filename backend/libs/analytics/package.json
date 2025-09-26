@@ -1,0 +1,53 @@
+{
+  "name": "@app/analytics",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Zero-dependency analytics toolkit: time-series transforms, indicators, joins, returns, and resampling.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./index": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./indicators": {
+      "types": "./dist/indicators.d.ts",
+      "import": "./dist/indicators.js"
+    },
+    "./join": {
+      "types": "./dist/join.d.ts",
+      "import": "./dist/join.js"
+    },
+    "./resample": {
+      "types": "./dist/resample.d.ts",
+      "import": "./dist/resample.js"
+    },
+    "./returns": {
+      "types": "./dist/returns.d.ts",
+      "import": "./dist/returns.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "clean": "rimraf dist || rm -rf dist",
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -p tsconfig.json -w",
+    "check": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "rimraf": "^5.0.5",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=18.17"
+  }
+}

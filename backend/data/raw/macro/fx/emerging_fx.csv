@@ -1,0 +1,57 @@
+import pandas as pd
+from datetime import date
+import os
+
+OUT_PATH = "data/fx/emerging_fx.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def init_emerging_fx(seed: bool = True) -> pd.DataFrame:
+    """
+    Create emerging_fx.csv with schema: date, currency, pair, rate, source, notes
+    """
+    ensure_dirs(OUT_PATH)
+    cols = ["date","currency","pair","rate","source","notes"]
+
+    if not seed:
+        df = pd.DataFrame(columns=cols)
+        df.to_csv(OUT_PATH, index=False)
+        return df
+
+    today = str(date.today())
+    rows = [
+        ("2025-01-02","BRL","USD/BRL",4.95,"BCB","Brazilian real vs USD"),
+        ("2025-01-02","INR","USD/INR",83.20,"RBI","Indian rupee vs USD"),
+        ("2025-01-02","CNY","USD/CNY",7.15,"PBoC","Onshore yuan vs USD"),
+        ("2025-01-02","CNH","USD/CNH",7.20,"PBoC","Offshore yuan vs USD"),
+        ("2025-01-02","ZAR","USD/ZAR",18.30,"SARB","South African rand vs USD"),
+        ("2025-01-02","MXN","USD/MXN",16.90,"Banxico","Mexican peso vs USD"),
+        ("2025-01-02","TRY","USD/TRY",29.50,"CBT","Turkish lira vs USD"),
+        ("2025-01-02","IDR","USD/IDR",15400,"BI","Indonesian rupiah vs USD"),
+        ("2025-01-02","KRW","USD/KRW",1320,"BoK","South Korean won vs USD"),
+        ("2025-01-02","CLP","USD/CLP",890,"BCCh","Chilean peso vs USD"),
+        (today,"INR","USD/INR",None,"Manual","Placeholder row for live update"),
+    ]
+    df = pd.DataFrame(rows, columns=cols)
+    df.to_csv(OUT_PATH, index=False)
+    return df
+
+# ---------- Analytics helpers ----------
+
+def load_emerging_fx(path: str = OUT_PATH) -> pd.DataFrame:
+    df = pd.read_csv(path)
+    df["date"] = pd.to_datetime(df["date"])
+    return df
+
+def fx_return(df: pd.DataFrame, ccy: str, contract: str = "spot") -> pd.DataFrame:
+    d = df[df["currency"] == ccy].sort_values("date")
+    d["ret_1d"] = d["rate"].pct_change()
+    return d
+
+if __name__ == "__main__":
+    df = init_emerging_fx(seed=True)
+    print(f"✅ emerging_fx.csv written to {OUT_PATH} with {len(df)} rows")
+    # Example usage:
+    # fx = load_emerging_fx()
+    # print(fx_return(fx, "INR").tail())

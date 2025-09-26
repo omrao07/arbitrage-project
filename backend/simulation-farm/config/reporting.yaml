@@ -1,0 +1,48 @@
+# simulation-farm/config/reporting.yaml
+# Reporting configuration for Simulation Farm.
+
+templates:
+  summary: artifacts/reports/templates/summary.html
+  equity: artifacts/reports/templates/equity_curve.html
+  risk: artifacts/reports/templates/risk_report.html
+
+export:
+  # Default exporter (overridden per job if needed)
+  default: local
+
+  local:
+    root: artifacts/reports/out
+    make_parents: true
+
+  s3:
+    bucket: my-simfarm-reports
+    prefix: runs/
+    region: us-east-1
+    public: false
+    gzip_text: true
+
+  gcs:
+    bucket: my-simfarm-reports
+    prefix: runs/
+    project: my-gcp-project
+    make_public: false
+    gzip_text: true
+
+report_options:
+  footer: "© Simulation Farm"
+  embed_assets: false     # if true, embed CSS/JS into HTML; else use CDN
+  save_csv: true          # emit equity.csv, trades.csv, positions.csv
+  save_json: true         # emit results.json with kpis + metadata
+  max_contributors: 10
+  max_positions: 15
+  max_trades: 50
+
+metrics:
+  # Which metrics are always computed if not provided
+  - cagr
+  - sharpe
+  - sortino
+  - max_dd
+  - vol_annual
+  - win_rate
+  - trades

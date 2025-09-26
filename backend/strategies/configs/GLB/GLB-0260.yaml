@@ -1,0 +1,18 @@
+id: GLB-0260
+firm: Global
+name: Olympics Host Infra Basket (KR)
+description: Worldwide diversified strategy in Commodities & Curves — region: KR.
+discipline: Macro
+family: Commodities & Curves
+region: KR
+horizon: Macro
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

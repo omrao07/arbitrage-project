@@ -1,0 +1,30 @@
+import pandas as pd
+
+def build_betas_2022():
+    rows = [
+        ("Communication Services","US","2022-01-01",0.82,1.05,0.32,0.21,0.11,0.39,120,""),
+        ("Consumer Discretionary","US","2022-01-01",0.88,1.17,0.48,0.23,0.13,0.42,390,""),
+        ("Consumer Staples","US","2022-01-01",0.60,0.72,0.21,0.22,0.09,0.36,210,""),
+        ("Energy","US","2022-01-01",1.00,1.32,0.55,0.20,0.18,0.31,140,"Oil shock volatility"),
+        ("Financials","US","2022-01-01",0.72,1.01,0.67,0.24,0.15,0.38,540,"Includes deposits leverage"),
+        ("Healthcare","US","2022-01-01",0.66,0.81,0.24,0.21,0.10,0.40,360,""),
+        ("Industrials","US","2022-01-01",0.91,1.14,0.44,0.22,0.12,0.43,490,""),
+        ("Materials","US","2022-01-01",0.94,1.20,0.50,0.22,0.13,0.39,260,""),
+        ("Real Estate","US","2022-01-01",0.58,0.90,0.87,0.23,0.12,0.35,170,"REIT leverage net debt"),
+        ("Technology","US","2022-01-01",0.93,1.09,0.23,0.21,0.11,0.44,600,""),
+        ("Utilities","US","2022-01-01",0.40,0.63,0.81,0.25,0.09,0.32,130,"Regulated utilities"),
+    ]
+    df = pd.DataFrame(rows, columns=[
+        "sector","region","as_of",
+        "unlevered_beta","levered_beta",
+        "debt_to_equity","tax_rate",
+        "beta_std_err","r2",
+        "n_firms","notes"
+    ])
+    return df
+
+if __name__ == "__main__":
+    df = build_betas_2022()
+    out_path = "data/adamodar/versions/2022/betas.csv"
+    df.to_csv(out_path, index=False)
+    print(f"✅ betas.csv snapshot written to {out_path}")

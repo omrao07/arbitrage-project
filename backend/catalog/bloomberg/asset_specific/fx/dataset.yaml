@@ -1,0 +1,216 @@
+# fx/datasets.yaml
+# Canonical FX dataset specs (valid against _meta/schema.dataset.yaml).
+# All deltas/vols are FRACTIONS (0–1). Example: 25Δ → 0.25, 8.8% vol → 0.088.
+
+# ----------------------------------------------------------------------------
+# 1) FX Spot – End of Day (daily)
+# ----------------------------------------------------------------------------
+id: blp_fx_spot_eod
+title: Bloomberg FX Spot (EOD)
+vendor: bloomberg
+source: bpipe
+version: "1.0.0"
+frequency: daily
+description: >
+  End-of-day FX spot rates by pair. px_last is the close; ret_1d is simple return vs prior close.
+primary_key: [dt, pair]
+partitions: [dt]
+columns:
+  - { name: dt,        type: date,      quality: [not_null, no_future_date] }
+  - { name: pair,      type: string,    desc: "FX pair, e.g., EURUSD (BASE+QUOTE)" }
+  - { name: currency,  type: string,    nullable: true, desc: "Quote currency (right leg)" }
+  - { name: px_last,   type: float64,   unit: USD, quality: [not_null, non_negative], desc: "Spot close" }
+  - { name: ret_1d,    type: float64,   unit: pct,  nullable: true, desc: "Simple return vs prev close" }
+endpoints:
+  - kind: bpipe
+    path: "PX_LAST"
+    params:
+      pairs_ref: "bloomberg/baseline/symbology/mapping.yaml"
+      calendar: "utc"
+      tz: "UTC"
+lineage: []
+tags: [bloomberg, fx, prices, eod, daily]
+---
+# ----------------------------------------------------------------------------
+# 2) FX Spot – Intraday Bars (1m)
+# ----------------------------------------------------------------------------
+id: blp_fx_spot_1m
+title: Bloomberg FX Spot (1m Bars)
+vendor: bloomberg
+source: bpipe
+version: "1.0.0"
+frequency: 1m
+description: >
+  One-minute intraday spot bars with bid/ask and mid. Partitioned by dt (UTC).
+primary_key: [ts, pair]
+partitions: [dt]
+columns:
+  - { name: ts,       type: timestamp, quality: [not_null], desc: "Bar timestamp (UTC)" }
+  - { name: dt,       type: date,      quality: [not_null, no_future_date], desc: "Partition date = date(ts)" }
+  - { name: pair,     type: string }
+  - { name: bid,      type: float64,   unit: USD, nullable: true, quality: [non_negative] }
+  - { name: ask,      type: float64,   unit: USD, nullable: true, quality: [non_negative] }
+  - { name: mid,      type: float64,   unit: USD, nullable: true, quality: [non_negative], desc: "(bid+ask)/2 if not provided" }
+  - { name: px_last,  type: float64,   unit: USD, nullable: true, quality: [non_negative], desc: "Vendor last/close for the bar" }
+  - { name: volume,   type: float64,   unit: contracts, nullable: true }
+endpoints:
+  - kind: bpipe
+    path: "BID,ASK,PX_LAST"
+    params:
+      pairs_ref: "bloomberg/baseline/symbology/mapping.yaml"
+      window: "1m"
+      calendar: "utc"
+      tz: "UTC"
+lineage: []
+tags: [bloomberg, fx, prices, intraday]
+---
+# ----------------------------------------------------------------------------
+# 3) FX Forwards – Points & All-in (daily)
+# ----------------------------------------------------------------------------
+id: blp_fx_forwards
+title: Bloomberg FX Forwards (Points & All-in)
+vendor: bloomberg
+source: bpipe
+version: "1.0.0"
+frequency: daily
+description: >
+  Daily forward points (in pips) and all-in forward rates per tenor for each FX pair.
+  Deltas are not applicable; tenors are string labels (1W,1M,3M,6M,1Y, ...).
+primary_key: [dt, pair, tenor]
+partitions: [dt]
+columns:
+  - { name: dt,        type: date,      quality: [not_null, no_future_date] }
+  - { name: pair,      type: string }
+  - { name: tenor,     type: string,    desc: "1W,1M,3M,6M,1Y,... (uppercase)" }
+  - { name: fwd_pts,   type: float64,   unit: pips, nullable: true, desc: "Forward points in pips" }
+  - { name: fwd_rate,  type: float64,   nullable: true, quality: [non_negative], desc: "All-in forward rate" }
+endpoints:
+  - kind: bpipe
+    path: "FORWARD_PTS,ALL_IN_FWD"
+    params:
+      pairs_ref: "bloomberg/baseline/symbology/mapping.yaml"
+      tenors: ["1W","1M","3M","6M","1Y","2Y"]
+      calendar: "utc"
+      tz: "UTC"
+lineage: [blp_fx_spot_eod]
+tags: [bloomberg, fx, forwards, curves, daily]
+---
+# ----------------------------------------------------------------------------
+# 4) FX Vol Surface – 10/25/50Δ (daily, FRACTION deltas)
+# ----------------------------------------------------------------------------
+id: blp_fx_vol_surface
+title: Bloomberg FX Implied Volatility Surface
+vendor: bloomberg
+source: blp
+version: "1.0.0"
+frequency: daily
+description: >
+  Daily implied volatility surface at 10Δ, 25Δ and 50Δ for standard tenors.
+  Deltas are stored as fractions in [0,1] (e.g., 0.25). Vol, rr, bf are fractions too.
+primary_key: [dt, pair, tenor, delta]
+partitions: [dt]
+columns:
+  - { name: dt,     type: date,      quality: [not_null, no_future_date] }
+  - { name: pair,   type: string }
+  - { name: tenor,  type: string }
+  - { name: delta,  type: float64,   unit: pct,  quality: [pct_0_1], desc: "0.10, 0.25, 0.50 ..." }
+  - { name: vol,    type: float64,   unit: pct,  nullable: true, quality: [non_negative], desc: "Implied vol (fraction)" }
+  - { name: rr,     type: float64,   unit: pct,  nullable: true, desc: "Risk reversal (can be negative)" }
+  - { name: bf,     type: float64,   unit: pct,  nullable: true, desc: "Butterfly (can be negative)" }
+endpoints:
+  - kind: blp
+    path: "FXVOL_SURFACE"
+    params:
+      pairs_ref: "bloomberg/baseline/symbology/mapping.yaml"
+      tenors: ["1W","1M","3M","6M","1Y","2Y"]
+      deltas: [0.10, 0.25, 0.50]
+      calendar: "utc"
+      tz: "UTC"
+lineage: []
+tags: [bloomberg, fx, vol_surface, daily]
+---
+# ----------------------------------------------------------------------------
+# 5) FX Spot – Koyfin Daily (alt vendor)
+# ----------------------------------------------------------------------------
+id: koyfin_fx_spot_daily
+title: Koyfin FX Spot (Daily)
+vendor: koyfin
+source: rest
+version: "1.0.0"
+frequency: daily
+description: >
+  Alternative vendor for FX daily spot closes. Used for parity checks/fallback.
+primary_key: [dt, pair]
+partitions: [dt]
+columns:
+  - { name: dt,       type: date,      quality: [not_null, no_future_date] }
+  - { name: pair,     type: string }
+  - { name: px_last,  type: float64,   quality: [not_null, non_negative] }
+endpoints:
+  - kind: rest
+    path: "/v1/fx/spot"
+    params:
+      pairs_ref: "bloomberg/baseline/symbology/mapping.yaml"
+      fields: ["px_last"]
+      tz: "UTC"
+lineage: []
+tags: [koyfin, fx, prices, eod, daily]
+---
+# ----------------------------------------------------------------------------
+# 6) Derived – Interpolated FX Vol Surface (dense grid)
+# ----------------------------------------------------------------------------
+id: internal_fx_vol_surface_interp
+title: Interpolated FX Vol Surface (Dense Grid)
+vendor: internal
+source: file
+version: "0.1.0"
+frequency: daily
+description: >
+  Dense, arbitrage-aware vol surface built from vendor points. Deltas/vols are fractions.
+  Includes method id for reproducibility.
+primary_key: [dt, pair, tenor, delta]
+partitions: [dt]
+columns:
+  - { name: dt,     type: date,      quality: [not_null, no_future_date] }
+  - { name: pair,   type: string }
+  - { name: tenor,  type: string }
+  - { name: delta,  type: float64,   unit: pct, quality: [pct_0_1] }
+  - { name: vol,    type: float64,   unit: pct, quality: [non_negative] }
+  - { name: method, type: string,    nullable: true, desc: "Interpolation/arb-clean method id" }
+endpoints:
+  - kind: file
+    path: "derived/fx/vol_surface_interp/{dt}.parquet"
+    params:
+      format: parquet
+      compression: snappy
+lineage: [blp_fx_vol_surface]
+tags: [internal, fx, vol_surface, derived, daily]
+---
+# ----------------------------------------------------------------------------
+# 7) Derived – Normalized Forward Curve (calendarized)
+# ----------------------------------------------------------------------------
+id: internal_fx_forward_curve
+title: Normalized FX Forward Curve (Calendarized Tenors)
+vendor: internal
+source: file
+version: "0.1.0"
+frequency: daily
+description: >
+  Forward curves normalized to actual calendar days/ACT-365 with business-day adjustments.
+  Built from spot and vendor forward points; outputs standardized tenors in years.
+primary_key: [dt, pair, tenor_yrs]
+partitions: [dt]
+columns:
+  - { name: dt,        type: date,      quality: [not_null, no_future_date] }
+  - { name: pair,      type: string }
+  - { name: tenor_yrs, type: float64,   unit: years, quality: [non_negative] }
+  - { name: fwd_rate,  type: float64,   quality: [non_negative] }
+  - { name: method,    type: string,    nullable: true, desc: "Day-count/calendar normalization id" }
+endpoints:
+  - kind: file
+    path: "derived/fx/forward_curve/{dt}.parquet"
+    params:
+      format: parquet
+      compression: snappy
+lineage: [blp_fx_spot_eod, blp_fx_forwards]
+tags: [internal, fx, forwards, curves, derived, daily]

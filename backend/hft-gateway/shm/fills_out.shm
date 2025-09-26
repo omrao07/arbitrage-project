@@ -1,0 +1,134 @@
+// src/shm_fills_out_demo.cpp
+// Minimal demo for /fills_out shm ring buffer (create/init + push + pop)
+
+#include <cstring>
+#include <iostream>
+#include <chrono>
+#include <thread>
+
+#include "shared_memory.hpp"   // shm::MappedRegion
+#include "shm_layouts.hpp"     // shm_layout::{RingBufHdr, FillMsg, Side}
+
+namespace ipc {
+
+// Generic SPSC ring over a mapped region (Header + slots[T])
+template <typename T>
+class ShmRing {
+public:
+    // Create or open the shm region and initialize header if new
+    static ShmRing open_or_create(const std::string& name, uint32_t capacity) {
+        const std::size_t bytes = header_bytes() + slot_bytes(capacity);
+        auto reg = shm::MappedRegion::open_or_create(name, bytes, shm::Access::ReadWrite);
+
+        // Initialize header if freshly created (heuristic: capacity field zero)
+        auto* hdr = reinterpret_cast<shm_layout::RingBufHdr*>(reg.addr());
+        if (hdr->capacity == 0 || hdr->elem_size != sizeof(T)) {
+            // Zero whole region, then set header
+            std::memset(reg.addr(), 0, reg.size());
+            new (hdr) shm_layout::RingBufHdr();  // placement new (trivial)
+            hdr->head.store(0, std::memory_order_relaxed);
+            hdr->tail.store(0, std::memory_order_relaxed);
+            hdr->capacity = capacity;
+            hdr->elem_size = sizeof(T);
+        }
+
+        T* slots = reinterpret_cast<T*>(reinterpret_cast<std::uint8_t*>(reg.addr()) + header_bytes());
+        return ShmRing(std::move(reg), hdr, slots);
+    }
+
+    // Open an existing ring (read-only or read/write)
+    static ShmRing open_existing(const std::string& name, uint32_t capacity, shm::Access acc = shm::Access::ReadOnly) {
+        const std::size_t bytes = header_bytes() + slot_bytes(capacity);
+        auto reg = shm::MappedRegion::open_existing(name, bytes, acc);
+        auto* hdr = reinterpret_cast<shm_layout::RingBufHdr*>(reg.addr());
+        T* slots = reinterpret_cast<T*>(reinterpret_cast<std::uint8_t*>(reg.addr()) + header_bytes());
+        return ShmRing(std::move(reg), hdr, slots);
+    }
+
+    // Producer-side push (returns false if full)
+    bool push(const T& v) {
+        const uint32_t cap  = hdr_->capacity;
+        const uint32_t head = hdr_->head.load(std::memory_order_relaxed);
+        const uint32_t next = (head + 1) % cap;
+
+        if (next == hdr_->tail.load(std::memory_order_acquire)) {
+            return false;  // full
+        }
+        slots_[head] = v;  // POD copy
+        hdr_->head.store(next, std::memory_order_release);
+        return true;
+    }
+
+    // Consumer-side pop (returns false if empty)
+    bool pop(T& out) {
+        const uint32_t cap  = hdr_->capacity;
+        const uint32_t tail = hdr_->tail.load(std::memory_order_relaxed);
+
+        if (tail == hdr_->head.load(std::memory_order_acquire)) {
+            return false;  // empty
+        }
+        out = slots_[tail];
+        const uint32_t next = (tail + 1) % cap;
+        hdr_->tail.store(next, std::memory_order_release);
+        return true;
+    }
+
+    uint32_t size() const {
+        const uint32_t h = hdr_->head.load(std::memory_order_acquire);
+        const uint32_t t = hdr_->tail.load(std::memory_order_acquire);
+        return (h >= t) ? (h - t) : (hdr_->capacity - (t - h));
+    }
+
+    uint32_t capacity() const { return hdr_->capacity; }
+
+private:
+    static constexpr std::size_t header_bytes() { return sizeof(shm_layout::RingBufHdr); }
+    static constexpr std::size_t slot_bytes(uint32_t cap) { return sizeof(T) * cap; }
+
+    ShmRing(shm::MappedRegion&& reg, shm_layout::RingBufHdr* hdr, T* slots)
+        : reg_(std::move(reg)), hdr_(hdr), slots_(slots) {}
+
+    shm::MappedRegion reg_;
+    shm_layout::RingBufHdr* hdr_{nullptr};
+    T* slots_{nullptr};
+};
+
+} // namespace ipc
+
+// ---------- Example usage for /fills_out ----------
+int main() {
+    constexpr uint32_t CAPACITY = 4096;
+
+    // Gateway process: create/init ring and push a few fills
+    auto fills_out = ipc::ShmRing<shm_layout::FillMsg>::open_or_create("/fills_out", CAPACITY);
+
+    // Build a fill
+    shm_layout::FillMsg f{};
+    std::memset(&f, 0, sizeof(f));
+    std::strncpy(f.sym, "AAPL", sizeof(f.sym));  // null-padded
+    f.side  = shm_layout::Side::Buy;
+    f.qty   = 100.0;
+    f.px    = 200.12;
+    f.ts_ns = static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
+    f.ack   = true;
+
+    if (!fills_out.push(f)) {
+        std::cerr << "fills_out ring is FULL\n";
+    } else {
+        std::cout << "pushed fill for " << f.sym << " qty=" << f.qty << " px=" << f.px << "\n";
+    }
+
+    // (For demo only) Read it back in the same process.
+    // In production your consumer would be another process mapping /fills_out read-only.
+    shm_layout::FillMsg got{};
+    if (fills_out.pop(got)) {
+        std::cout << "popped fill for " << got.sym
+                  << " side=" << (got.side == shm_layout::Side::Buy ? "BUY" : "SELL")
+                  << " qty=" << got.qty << " px=" << got.px
+                  << " ack=" << (got.ack ? "1" : "0") << "\n";
+    } else {
+        std::cout << "ring empty\n";
+    }
+
+    return 0;
+}

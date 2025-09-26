@@ -1,0 +1,42 @@
+import os
+import pandas as pd
+import numpy as np
+from datetime import date
+
+OUT_PATH = "data/adamodar/curated/ev_ebitda.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def seed_ev_ebitda() -> pd.DataFrame:
+    today = str(date.today())
+    rows = [
+        (today,"S&P500","index","US","",72e12,6e12,12.0,11.0,0.8,"S&P slightly rich vs 10y avg"),
+        (today,"MSCI_EM","index","EM","",18e12,2.4e12,7.5,8.0,-0.5,"EM trades cheap vs history"),
+        (today,"MSCI_Europe","index","Europe","",15e12,1.7e12,8.8,9.5,-0.4,"Europe below avg"),
+        (today,"Tech Sector","sector","US","Tech",18e12,1.15e12,15.6,14.5,0.9,"US Tech premium"),
+        (today,"Energy Sector","sector","US","Energy",6e12,0.75e12,8.0,7.0,0.7,"Energy closer to norm"),
+        (today,"Apple","company","US","Tech",3.25e12,0.24e12,13.5,12.0,1.1,"Apple still premium"),
+        (today,"Petrobras","company","LatAm","Energy",1.0e11,2.0e10,5.0,6.5,-1.2,"Petrobras discounted"),
+    ]
+    return pd.DataFrame(rows, columns=[
+        "as_of","entity","entity_type","region","sector","ev_usd","ebitda_usd",
+        "ev_ebitda","ev_ebitda_hist_avg","ev_ebitda_zscore","notes"
+    ])
+
+def compute_ev_ebitda(df: pd.DataFrame) -> pd.DataFrame:
+    d = df.copy()
+    d["ev_ebitda"] = d["ev_usd"] / d["ebitda_usd"].replace(0, np.nan)
+    if "ev_ebitda_hist_avg" in d.columns:
+        d["ev_ebitda_zscore"] = (d["ev_ebitda"] - d["ev_ebitda_hist_avg"]) / (d["ev_ebitda_hist_avg"] * 0.15)
+    return d
+
+def write_csv(df: pd.DataFrame, path: str = OUT_PATH):
+    ensure_dirs(path)
+    df.to_csv(path, index=False)
+
+if __name__ == "__main__":
+    df = seed_ev_ebitda()
+    df = compute_ev_ebitda(df)
+    write_csv(df)
+    print(f"✅ ev_ebitda.csv written to {OUT_PATH} with {len(df)} rows")

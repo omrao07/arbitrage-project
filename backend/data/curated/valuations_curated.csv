@@ -1,0 +1,27 @@
+import pandas as pd
+from datetime import date
+
+def build_valuations_curated(as_of: str = None):
+    if as_of is None:
+        as_of = str(date.today())
+
+    rows = [
+        ("AAPL","Apple Inc.","Technology","US",as_of,220.0,200.0,0.10,"DCF",0.09,0.02,"Undervalued ~10%"),
+        ("MSFT","Microsoft","Technology","US",as_of,390.0,410.0,-0.05,"DCF",0.08,0.02,"Overvalued ~5%"),
+        ("TSLA","Tesla","Cons Disc","US",as_of,220.0,250.0,-0.12,"DCF + Comps",0.11,0.03,"Overvalued by market optimism"),
+        ("JPM","JPMorgan","Financials","US",as_of,150.0,145.0,0.03,"PB / PE",0.10,0.02,"Slightly undervalued"),
+        ("XOM","ExxonMobil","Energy","US",as_of,120.0,100.0,0.20,"EV/EBITDA",0.12,0.01,"Undervalued on cash flow basis"),
+    ]
+
+    df = pd.DataFrame(rows, columns=[
+        "ticker","company_name","sector","region","as_of",
+        "intrinsic_value","market_price","mispricing",
+        "valuation_method","wacc","terminal_growth","notes"
+    ])
+    return df
+
+if __name__ == "__main__":
+    df = build_valuations_curated()
+    out_path = "data/adamodar/curated/valuations_curated.csv"
+    df.to_csv(out_path, index=False)
+    print(f"✅ valuations_curated.csv written to {out_path}")

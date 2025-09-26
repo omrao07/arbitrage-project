@@ -1,0 +1,46 @@
+# deepspeech.yaml
+# Config for Mozilla DeepSpeech ASR (speech-to-text)
+# Place under kb/asr/configs/
+
+asr:
+  engine: deepspeech
+  model_path: models/deepspeech/deepspeech-0.9.3-models.pbmm   # acoustic model
+  scorer_path: models/deepspeech/deepspeech-0.9.3-models.scorer # external scorer (LM)
+  beam_width: 1024             # search beam width (trade-off: accuracy vs speed)
+
+inference:
+  sample_rate: 16000           # DeepSpeech default
+  frame_size: 512              # frame size for streaming mode
+  language: en-US              # supported language
+  hotwords:                    # bias recognition for specific words
+    - word: "CDS"
+      boost: 15.0
+    - word: "arbitrage"
+      boost: 12.0
+    - word: "quant"
+      boost: 10.0
+
+training:
+  enabled: false               # toggle if fine-tuning
+  epochs: 50
+  batch_size: 32
+  learning_rate: 0.0001
+  dropout: 0.20
+  train_data_dir: data/asr/train
+  dev_data_dir: data/asr/dev
+  test_data_dir: data/asr/test
+  export_dir: exports/deepspeech_finetuned
+
+runtime:
+  use_gpu: true
+  gpu_device: 0
+  mixed_precision: false       # AMP training
+  num_threads: 4
+  streaming: true              # enable streaming inference
+  log_level: INFO
+
+output:
+  transcripts_dir: outputs/transcripts/deepspeech/
+  save_format: jsonl           # jsonl or txt
+  include_timestamps: true
+  save_confidence: true

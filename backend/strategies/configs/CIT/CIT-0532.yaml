@@ -1,0 +1,18 @@
+id: CIT-0532
+firm: Citadel
+name: Copper vs China PMI #532
+description: Commodity curve relative value.
+discipline: Quant
+family: Ensemble ML
+region: Global
+horizon: Swing
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

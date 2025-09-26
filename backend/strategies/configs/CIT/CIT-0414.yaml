@@ -1,0 +1,18 @@
+id: CIT-0414
+firm: Citadel
+name: Loans vs Bonds Arb #414
+description: Systematic volatility premia.
+discipline: Credit
+family: IG/HY RV
+region: Global
+horizon: Swing
+status: research
+engine: credit_cds
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

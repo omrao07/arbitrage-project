@@ -1,0 +1,32 @@
+# queries/correlations.gql
+#
+# Query correlation matrix entries.
+# Supports filtering by assets, factors, strategies, and date range.
+
+query Correlations(
+  $entities: [String!]
+  $start: DateTime
+  $end: DateTime
+  $type: String = "pearson" # could be "pearson", "spearman", "kendall"
+  $limit: Int = 100
+) {
+  correlations(
+    filter: {
+      entities: $entities
+      start: $start
+      end: $end
+      type: $type
+    }
+    limit: $limit
+    orderBy: { absValue: desc }
+  ) {
+    id
+    entityX
+    entityY
+    type
+    value
+    pValue
+    window
+    updatedAt
+  }
+}

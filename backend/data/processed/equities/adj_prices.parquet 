@@ -1,0 +1,40 @@
+import pandas as pd
+
+# Load raw prices and corporate actions
+raw = pd.read_csv("data/cache/raw/equities/raw_prices.csv", parse_dates=["date"])
+actions = pd.read_csv("data/cache/raw/equities/corporate_actions.csv", parse_dates=["date"])
+
+# Example adjustment factors (simplified)
+def get_adjustment_factor(ticker, date, actions_df):
+    # Default = 1 (no adjustment)
+    factor = 1.0
+    # Stock splits
+    splits = actions_df[(actions_df["ticker"] == ticker) & 
+                        (actions_df["action_type"] == "Stock Split") & 
+                        (actions_df["date"] <= date)]
+    for _, row in splits.iterrows():
+        factor /= row["amount"]  # e.g. 3 = 3-for-1 → price ÷ 3
+    return factor
+
+# Apply adjustments
+adjusted = []
+for _, row in raw.iterrows():
+    factor = get_adjustment_factor(row["ticker"], row["date"], actions)
+    adj_row = {
+        "date": row["date"],
+        "ticker": row["ticker"],
+        "open": row["open"] / factor,
+        "high": row["high"] / factor,
+        "low": row["low"] / factor,
+        "close": row["close"] / factor,
+        "volume": row["volume"] * factor,  # reverse adjustment
+        "currency": row["currency"]
+    }
+    adjusted.append(adj_row)
+
+adj_df = pd.DataFrame(adjusted)
+
+# Save to Parquet
+adj_df.to_parquet("data/cache/processed/equities/adj_prices.parquet", engine="pyarrow", index=False)
+
+print("✅ adj_prices.parquet written with shape:", adj_df.shape)

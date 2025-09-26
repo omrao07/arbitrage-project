@@ -1,0 +1,433 @@
+# retail_altdata/fields.yaml
+# Canonical field definitions, groups, aliases, and examples
+# for Retail Alt-Data: card spend, foot traffic, web traffic,
+# app rankings/usage, price baskets, and the retail entity map.
+#
+# Conventions:
+# - Percentages are FRACTIONS (1% => 0.01).
+# - Dates/timestamps are UTC.
+# - String codes (e.g., platform) are lowercase unless noted.
+
+version: 1
+
+# ---------------------------------------------------------------------------
+# FIELD DEFINITIONS (vendor-agnostic, normalized names)
+# ---------------------------------------------------------------------------
+fields:
+
+  # ---- Shared / common keys ----
+  dt:
+    type: date
+    quality: [not_null, no_future_date]
+    desc: "Business date (UTC)."
+
+  week:
+    type: date
+    desc: "ISO week ending date (UTC Friday by convention)."
+
+  ticker:
+    type: string
+    nullable: true
+    desc: "Linked listed equity ticker (internal canonical)."
+
+  country:
+    type: string
+    nullable: true
+    desc: "ISO country (2-letter or 3-letter as configured)."
+
+  region:
+    type: string
+    nullable: true
+    desc: "State/Province/Region code if available."
+
+  currency:
+    type: string
+    nullable: true
+    desc: "ISO 4217 currency code."
+
+  method:
+    type: string
+    nullable: true
+    desc: "Ingestion/normalization method id."
+
+  # ---- Card Spend (merchant-level) ----
+  merchant_id:
+    type: string
+    desc: "Stable provider merchant id."
+
+  merchant_name:
+    type: string
+    nullable: true
+
+  spend_total:
+    type: float64
+    unit: USD
+    quality: [non_negative]
+    desc: "Total card spend for the panel in `currency`."
+
+  transactions:
+    type: float64
+    quality: [non_negative]
+    desc: "Number of transactions (panel)."
+
+  customers:
+    type: float64
+    nullable: true
+    quality: [non_negative]
+    desc: "Distinct cards (panel)."
+
+  avg_ticket:
+    type: float64
+    nullable: true
+    desc: "spend_total / transactions."
+
+  share_of_wallet:
+    type: float64
+    unit: pct
+    nullable: true
+    desc: "Merchant share-of-wallet within category (0..1)."
+
+  panel_coverage:
+    type: float64
+    unit: pct
+    nullable: true
+    desc: "Panel representativeness (0..1)."
+
+  # ---- Foot Traffic (store/POI-level) ----
+  location_id:
+    type: string
+    desc: "Provider POI id."
+
+  visits:
+    type: float64
+    quality: [non_negative]
+
+  unique_visitors:
+    type: float64
+    nullable: true
+    quality: [non_negative]
+
+  dwell_median_min:
+    type: float64
+    nullable: true
+    desc: "Median dwell time in minutes."
+
+  visits_index:
+    type: float64
+    nullable: true
+    desc: "Index vs provider baseline (=1.0 baseline)."
+
+  closures_flag:
+    type: bool
+    nullable: true
+    desc: "Store temporarily closed indicator."
+
+  # ---- Web Traffic (domain-level) ----
+  domain:
+    type: string
+    desc: "Brand primary domain (lowercase)."
+
+  pages_per_visit:
+    type: float64
+    nullable: true
+
+  avg_session_sec:
+    type: float64
+    nullable: true
+
+  bounce_rate:
+    type: float64
+    unit: pct
+    nullable: true
+    desc: "Share of single-page sessions (0..1)."
+
+  # ---- App Rankings / Usage ----
+  app_id:
+    type: string
+    desc: "Store-specific app identifier."
+
+  app_name:
+    type: string
+    nullable: true
+
+  platform:
+    type: string
+    desc: "ios|android."
+
+  category:
+    type: string
+    nullable: true
+
+  rank_free:
+    type: float64
+    nullable: true
+    desc: "App store free chart rank (1 = top)."
+
+  rank_grossing:
+    type: float64
+    nullable: true
+    desc: "App store grossing chart rank (1 = top)."
+
+  dau:
+    type: float64
+    nullable: true
+    quality: [non_negative]
+    desc: "Daily active users (provider-estimated)."
+
+  mau:
+    type: float64
+    nullable: true
+    quality: [non_negative]
+    desc: "Monthly active users (provider-estimated)."
+
+  rating:
+    type: float64
+    nullable: true
+    desc: "Average user rating (e.g., 0..5)."
+
+  rating_count:
+    type: float64
+    nullable: true
+    quality: [non_negative]
+    desc: "Cumulative rating count."
+
+  # ---- Price Basket (retailer-level, weekly) ----
+  retailer_id:
+    type: string
+    desc: "Provider/internal retailer id."
+
+  retailer_name:
+    type: string
+    nullable: true
+
+  basket_id:
+    type: string
+    desc: "Internal basket code (e.g., GROCERY_CORE_50)."
+
+  basket_name:
+    type: string
+    nullable: true
+
+  sku_count:
+    type: int32
+    nullable: true
+    quality: [non_negative]
+
+  price_basket:
+    type: float64
+    quality: [non_negative]
+    desc: "Sum of latest in-stock SKU prices."
+
+  promo_pct:
+    type: float64
+    unit: pct
+    nullable: true
+
+  oos_pct:
+    type: float64
+    unit: pct
+    nullable: true
+    desc: "Out-of-stock share across SKUs (0..1)."
+
+  # ---- Retail Entity Map (reference) ----
+  entity_id:
+    type: string
+    desc: "Stable internal entity id."
+
+  domains:
+    type: string[]
+    nullable: true
+
+  app_ids:
+    type: string[]
+    nullable: true
+    desc: "Store-specific ids (prefixed ios:/android:)."
+
+  poi_location_ids:
+    type: string[]
+    nullable: true
+
+  brand_tags:
+    type: string[]
+    nullable: true
+
+  as_of:
+    type: date
+    nullable: true
+    desc: "Last updated date for the mapping row."
+
+# ---------------------------------------------------------------------------
+# GROUPS
+# ---------------------------------------------------------------------------
+groups:
+  card_spend_daily:
+    fields: [dt, merchant_id, merchant_name, ticker, country, region, currency,
+             spend_total, transactions, customers, avg_ticket, share_of_wallet, panel_coverage, method]
+
+  foot_traffic_daily:
+    fields: [dt, location_id, merchant_id, ticker, country, region,
+             visits, unique_visitors, dwell_median_min, visits_index, closures_flag, method]
+
+  web_traffic_daily:
+    fields: [dt, domain, merchant_id, ticker, country,
+             visits, unique_visitors, pages_per_visit, avg_session_sec, bounce_rate, method]
+
+  app_ranking_daily:
+    fields: [dt, app_id, app_name, platform, country, category,
+             rank_free, rank_grossing, dau, mau, rating, rating_count, merchant_id, ticker, method]
+
+  price_basket_weekly:
+    fields: [week, retailer_id, retailer_name, ticker, country, currency,
+             basket_id, basket_name, sku_count, price_basket, promo_pct, oos_pct, method]
+
+  retail_entity_reference:
+    fields: [entity_id, merchant_id, merchant_name, ticker,
+             domains, app_ids, poi_location_ids, country, brand_tags, as_of]
+
+# ---------------------------------------------------------------------------
+# ALIASES (vendor mnemonics → canonical)
+# ---------------------------------------------------------------------------
+aliases:
+  # Card panel (generic)
+  merchantId: merchant_id
+  merchantName: merchant_name
+  totalSpend: spend_total
+  txns: transactions
+  users: customers
+  avgTicket: avg_ticket
+  sow: share_of_wallet
+  coverage: panel_coverage
+
+  # Foot traffic (Placer-like)
+  poi_id: location_id
+  device_visits: visits
+  unique_devices: unique_visitors
+  median_dwell_min: dwell_median_min
+  visits_idx: visits_index
+  closed_flag: closures_flag
+
+  # Web traffic (Similarweb-like)
+  site: domain
+  sessions: visits
+ 
+  pagesPerVisit: pages_per_visit
+  avgSessionSec: avg_session_sec
+  bounceRate: bounce_rate
+
+  # App (data.ai-like)
+  application_id: app_id
+  free_rank: rank_free
+  grossing_rank: rank_grossing
+  daily_active_users: dau
+  monthly_active_users: mau
+  ratings_avg: rating
+  ratings_count: rating_count
+  os: platform
+  country_code: country
+
+  # Price basket (internal)
+  retailerId: retailer_id
+  basketId: basket_id
+  price_sum: price_basket
+  promoShare: promo_pct
+  oosShare: oos_pct
+
+  # Entity map (internal)
+  entityId: entity_id
+  websites: domains
+  appIds: app_ids
+  poiIds: poi_location_ids
+  tags: brand_tags
+  updated_at: as_of
+
+# ---------------------------------------------------------------------------
+# EXAMPLES
+# ---------------------------------------------------------------------------
+examples:
+
+  card_spend_row:
+    dt: "2025-01-03"
+    merchant_id: "mc_12345"
+    merchant_name: "Walmart"
+    ticker: "WMT"
+    country: "US"
+    region: "CA"
+    currency: "USD"
+    spend_total: 1523456.78
+    transactions: 48213
+    customers: 26190
+    avg_ticket: 31.60
+    share_of_wallet: 0.27
+    panel_coverage: 0.62
+    method: "normalize_v1"
+
+  foot_traffic_row:
+    dt: "2025-01-03"
+    location_id: "poi_98765"
+    merchant_id: "mc_12345"
+    ticker: "WMT"
+    country: "US"
+    region: "CA"
+    visits: 1842
+    unique_visitors: 1610
+    dwell_median_min: 19.5
+    visits_index: 1.08
+    closures_flag: false
+    method: "ingest_v2"
+
+  web_traffic_row:
+    dt: "2025-01-03"
+    domain: "walmart.com"
+    merchant_id: "mc_12345"
+    ticker: "WMT"
+    country: "US"
+    visits: 12834000
+    unique_visitors: 10250000
+    pages_per_visit: 5.2
+    avg_session_sec: 312
+    bounce_rate: 0.42
+    method: "api_v1"
+
+  app_ranking_row:
+    dt: "2025-01-03"
+    app_id: "ios:338137227"
+    app_name: "Walmart: Fast & Easy Shopping"
+    platform: "ios"
+    country: "US"
+    category: "shopping"
+    rank_free: 6
+    rank_grossing: 54
+    dau: 2450000
+    mau: 18700000
+    rating: 4.7
+    rating_count: 2900000
+    merchant_id: "mc_12345"
+    ticker: "WMT"
+    method: "dataai_v1"
+
+  price_basket_row:
+    week: "2025-01-03"
+    retailer_id: "ret_001"
+    retailer_name: "Walmart US"
+    ticker: "WMT"
+    country: "US"
+    currency: "USD"
+    basket_id: "GROCERY_CORE_50"
+    basket_name: "Core Grocery 50"
+    sku_count: 50
+    price_basket: 142.37
+    promo_pct: 0.18
+    oos_pct: 0.06
+    method: "scrape_rollup_v3"
+
+  entity_map_row:
+    entity_id: "ent_wmt_us"
+    merchant_id: "mc_12345"
+    merchant_name: "Walmart"
+    ticker: "WMT"
+    domains: ["walmart.com","walmartgrocery.com"]
+    app_ids: ["ios:338137227","android:com.walmart.android"]
+    poi_location_ids: ["poi_98765","poi_98766"]
+    country: "US"
+    brand_tags: ["big_box","grocery","omnichannel"]
+    as_of: "2025-01-02"

@@ -1,0 +1,51 @@
+import os
+import pandas as pd
+import numpy as np
+
+OUT_PATH = "data/adamodar/curated/operating_margin.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def seed_operating_margin() -> pd.DataFrame:
+    rows = [
+        ("United States","region","United States","2023-01-01",22.0e12,3.30e12,0.150,"","","Baseline"),
+        ("United States","region","United States","2024-01-01",23.2e12,3.50e12,0.151,"","","Stable OPEX"),
+        ("United States","region","United States","2025-01-01",24.2e12,3.65e12,0.151,"","","AI-driven productivity gains"),
+        ("Emerging Mkts","region","EM Aggregate","2023-01-01",10.5e12,1.20e12,0.114,"","","Baseline"),
+        ("Emerging Mkts","region","EM Aggregate","2024-01-01",11.3e12,1.28e12,0.113,"","","Higher input costs"),
+        ("Emerging Mkts","region","EM Aggregate","2025-01-01",12.0e12,1.34e12,0.112,"","","FX drag"),
+        ("Tech Sector","sector","United States","2023-01-01",5.6e12,1.35e12,0.241,"","","Big tech OPEX leverage"),
+        ("Tech Sector","sector","United States","2024-01-01",6.1e12,1.50e12,0.246,"","","Cloud momentum"),
+        ("Tech Sector","sector","United States","2025-01-01",6.55e12,1.56e12,0.238,"","","Capex headwinds"),
+    ]
+    return pd.DataFrame(rows, columns=[
+        "entity","entity_type","region","as_of","revenue_usd","operating_income_usd",
+        "op_margin","margin_change_yoy","margin_3y_avg","notes"
+    ])
+
+def compute_margin_changes(df: pd.DataFrame) -> pd.DataFrame:
+    d = df.copy()
+    d["as_of"] = pd.to_datetime(d["as_of"])
+    d.sort_values(["entity","as_of"], inplace=True)
+
+    # recompute operating margin
+    d["op_margin"] = d["operating_income_usd"] / d["revenue_usd"]
+
+    # YoY change
+    d["margin_change_yoy"] = d.groupby("entity")["op_margin"].diff()
+
+    # trailing 3-year avg
+    d["margin_3y_avg"] = d.groupby("entity")["op_margin"].rolling(3).mean().reset_index(level=0, drop=True)
+
+    return d
+
+def write_csv(df: pd.DataFrame, path: str = OUT_PATH):
+    ensure_dirs(path)
+    df.to_csv(path, index=False)
+
+if __name__ == "__main__":
+    df = seed_operating_margin()
+    df = compute_margin_changes(df)
+    write_csv(df)
+    print(f"✅ operating_margin.csv written to {OUT_PATH} with {len(df)} rows")

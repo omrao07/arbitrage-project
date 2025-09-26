@@ -1,0 +1,28 @@
+import pandas as pd
+from datetime import date
+import os
+
+def build_agriculture(as_of: str | None = None) -> pd.DataFrame:
+    if as_of is None:
+        as_of = str(date.today())
+    
+    rows = [
+        ("United States",as_of,4.5e11,5.5e10,3.5e10,7.0e10,2.0e10,1.2,0.11,0.08,8.0,0.020,"Large agribusiness & farming"),
+        ("Developed ex-US",as_of,3.0e11,4.0e10,2.8e10,5.0e10,1.5e10,1.1,0.10,0.09,7.5,0.025,"EU & Australia farming systems"),
+        ("Emerging Mkts",as_of,2.8e11,3.2e10,2.0e10,4.0e10,1.8e10,1.6,0.12,0.07,6.5,0.030,"Brazil, India, SE Asia agri"),
+        ("Frontier Mkts",as_of,1.0e11,0.9e10,0.5e10,1.3e10,0.5e10,2.0,0.09,0.05,5.8,0.035,"Africa & frontier farming"),
+        ("Global Avg",as_of,1.16e12,1.36e11,0.91e11,1.76e11,5.8e10,1.3,0.11,0.08,7.2,0.027,"Weighted across agriculture"),
+    ]
+    
+    df = pd.DataFrame(rows, columns=[
+        "region","as_of","revenue","operating_income","net_income","ebitda","capex",
+        "debt_to_equity","roe","net_margin","ev_ebitda","dividend_yield","notes"
+    ])
+    return df
+
+if __name__ == "__main__":
+    df = build_agriculture()
+    out_path = "data/adamodar/curated/sectors/agriculture.csv"
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    df.to_csv(out_path, index=False)
+    print(f"✅ Agriculture dataset written to {out_path}")

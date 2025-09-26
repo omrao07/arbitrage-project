@@ -1,0 +1,37 @@
+# observability/tracing/otel_config.yaml
+# OpenTelemetry SDK + Collector configuration
+
+service:
+  name: news-intel
+  namespace: observability
+  instance_id: ${HOSTNAME}
+
+resource:
+  attributes:
+    service.version: "1.0.0"
+    deployment.environment: "dev"
+
+tracer:
+  sampler: parentbased_always_on   # other: always_off, traceidratio(0.1), parentbased_always_off
+  max_attributes: 128
+  max_events: 128
+  max_links: 32
+
+exporter:
+  type: otlp
+  protocol: grpc                  # grpc | http/protobuf | http/json
+  endpoint: "localhost:4317"      # default for OTLP gRPC
+  timeout_ms: 10000
+  compression: gzip
+  headers:
+    x-service-token: "${OTEL_AUTH_TOKEN}"
+
+processor:
+  type: batch
+  batch_timeout_ms: 5000
+  max_queue_size: 2048
+  max_export_batch_size: 512
+
+logging:
+  level: INFO
+  include_traces: false           # set true to also log spans

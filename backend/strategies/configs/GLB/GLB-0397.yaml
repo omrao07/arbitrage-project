@@ -1,0 +1,18 @@
+id: GLB-0397
+firm: Global
+name: USD/INR Inflation Pair (AU)
+description: Worldwide diversified strategy in Vol/Options — region: AU.
+discipline: Quant
+family: Vol/Options
+region: AU
+horizon: Macro
+status: research
+engine: options_vol
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

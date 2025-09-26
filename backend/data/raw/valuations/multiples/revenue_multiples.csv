@@ -1,0 +1,42 @@
+import os
+import pandas as pd
+import numpy as np
+from datetime import date
+
+OUT_PATH = "data/adamodar/curated/revenue_multiples.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def seed_revenue_multiples() -> pd.DataFrame:
+    today = str(date.today())
+    rows = [
+        (today,"S&P500","index","US","",72e12,4.0e12,18.0,16.0,1.2,"Index trades above avg"),
+        (today,"MSCI_EM","index","EM","",18e12,5.9e12,3.05,3.5,-0.8,"EM slightly cheap"),
+        (today,"MSCI_Europe","index","Europe","",15e12,5.0e12,3.0,3.2,-0.5,"Europe below avg"),
+        (today,"US_SaaS","sector","US","Tech",2.5e12,0.15e12,16.7,12.0,2.5,"SaaS at high premium"),
+        (today,"US_Biotech","sector","US","Healthcare",1.2e12,0.3e12,4.0,5.0,-1.0,"Biotech at discount"),
+        (today,"Apple","company","US","Tech",3.25e12,0.4e12,8.13,7.0,1.2,"Apple modestly rich"),
+        (today,"Petrobras","company","LatAm","Energy",1.0e11,1.0e11,1.0,1.2,-1.0,"Petrobras discounted"),
+    ]
+    return pd.DataFrame(rows, columns=[
+        "as_of","entity","entity_type","region","sector",
+        "market_cap_usd","revenue_usd","psales_ratio","psales_hist_avg","psales_zscore","notes"
+    ])
+
+def compute_revenue_multiples(df: pd.DataFrame) -> pd.DataFrame:
+    d = df.copy()
+    d["psales_ratio"] = d["market_cap_usd"] / d["revenue_usd"].replace(0, np.nan)
+    if "psales_hist_avg" in d.columns:
+        d["psales_zscore"] = (d["psales_ratio"] - d["psales_hist_avg"]) / (d["psales_hist_avg"] * 0.15)
+    return d
+
+def write_csv(df: pd.DataFrame, path: str = OUT_PATH):
+    ensure_dirs(path)
+    df.to_csv(path, index=False)
+
+if __name__ == "__main__":
+    df = seed_revenue_multiples()
+    df = compute_revenue_multiples(df)
+    write_csv(df)
+    print(f"✅ revenue_multiples.csv written to {OUT_PATH} with {len(df)} rows")

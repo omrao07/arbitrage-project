@@ -1,0 +1,18 @@
+id: GLB-0496
+firm: Global
+name: EV Metals Basket (KR)
+description: Worldwide diversified strategy in Cross-Asset Factors — region: KR.
+discipline: Quant
+family: Cross-Asset Factors
+region: KR
+horizon: Macro
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

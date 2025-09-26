@@ -1,0 +1,18 @@
+id: GLB-0126
+firm: Global
+name: GBP Political Risk Hedge (IN)
+description: Worldwide diversified strategy in Credit & Structured — region: IN.
+discipline: Credit
+family: Credit & Structured
+region: IN
+horizon: Swing
+status: research
+engine: credit_cds
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: credit
+created_at: 2025-09-10
+updated_at: 2025-09-10

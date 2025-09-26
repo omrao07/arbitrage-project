@@ -1,0 +1,18 @@
+id: BW-0380
+firm: Bridgewater
+name: Cross-Asset Momentum Overlay (EU)
+description: Trend across futures.
+discipline: Quant
+family: Cross-Asset Overlays
+region: EU
+horizon: Macro
+status: research
+engine: futures_macro
+params:
+risk:
+  risk_budget: 0.02
+data:
+  requirements:
+owner: quant
+created_at: 2025-09-10
+updated_at: 2025-09-10

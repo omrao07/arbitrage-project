@@ -1,0 +1,118 @@
+{
+  "type": "record",
+  "namespace": "risk",
+  "name": "StressResult",
+  "doc": "Outcome of a stress scenario applied to a portfolio/strategy/instrument at a point in time.",
+  "fields": [
+    /* Identity & linkage */
+    { "name": "stress_id",     "type": "string", "doc": "Unique id for this stress result (e.g., <scenario>-<portfolio>-<ts>)" },
+    { "name": "scenario_id",   "type": "string", "doc": "Foreign key to risk.scenario.scenario_id" },
+    { "name": "run_id",        "type": ["null","string"], "default": null, "doc": "Batch/run identifier for grouping results" },
+
+    /* Scope */
+    {
+      "name": "scope",
+      "type": { "type":"enum", "name":"StressScope", "symbols":["PORTFOLIO","STRATEGY","INSTRUMENT"] },
+      "doc": "Aggregation level of this result"
+    },
+    { "name": "portfolio_id",  "type": "string", "doc": "Portfolio/account identifier" },
+    { "name": "strategy_tag",  "type": ["null","string"], "default": null, "doc": "Optional strategy/book tag" },
+    { "name": "instrument_id", "type": ["null","string"], "default": null, "doc": "Optional instrument identifier for single-name result" },
+
+    /* Timing & currency */
+    { "name": "as_of_time",    "type": { "type":"long", "logicalType":"timestamp-millis" }, "doc": "Timestamp of the positions snapshot (UTC)" },
+    { "name": "report_ccy",    "type": "string", "doc": "Reporting/base currency (e.g., USD)" },
+
+    /* P&L & exposure effects (report_ccy) */
+    { "name": "pnl",           "type": "double", "doc": "Total stressed P&L impact in report_ccy (signed)" },
+    { "name": "pnl_pct_nav",   "type": ["null","double"], "default": null, "doc": "P&L as % of portfolio NAV at as_of_time" },
+    { "name": "unrealized_pnl","type": ["null","double"], "default": null, "doc": "Portion of P&L that is mark-to-market" },
+    { "name": "realized_pnl",  "type": ["null","double"], "default": null, "doc": "Portion considered realized (usually 0 for hypothetical)" },
+
+    { "name": "gross_exposure_before", "type": ["null","double"], "default": null, "doc": "Gross notional before stress (report_ccy)" },
+    { "name": "gross_exposure_after",  "type": ["null","double"], "default": null, "doc": "Gross notional after stress (report_ccy)" },
+    { "name": "net_exposure_before",   "type": ["null","double"], "default": null, "doc": "Net notional before stress" },
+    { "name": "net_exposure_after",    "type": ["null","double"], "default": null, "doc": "Net notional after stress" },
+
+    /* Risk metric deltas */
+    { "name": "var_95_before", "type": ["null","double"], "default": null, "doc": "1-day 95% VaR before stress" },
+    { "name": "var_95_after",  "type": ["null","double"], "default": null, "doc": "1-day 95% VaR after stress" },
+    { "name": "es_97_before",  "type": ["null","double"], "default": null, "doc": "Expected Shortfall 97.5% before stress" },
+    { "name": "es_97_after",   "type": ["null","double"], "default": null, "doc": "Expected Shortfall 97.5% after stress" },
+
+    /* Bucketed attribution (flexible) */
+    {
+      "name": "attribution",
+      "type": ["null", {
+        "type":"array",
+        "items": {
+          "type":"record",
+          "name":"Attribution",
+          "fields":[
+            { "name":"bucket", "type":"string", "doc":"e.g., Sector:Tech, Country:US, Factor:Value, Strategy:StatArb" },
+            { "name":"pnl",    "type":"double", "doc":"PnL contribution of this bucket (report_ccy)" }
+          ]
+        }
+      }],
+      "default": null,
+      "doc": "PnL breakdown by arbitrary buckets"
+    },
+
+    /* Factor-level contributions (optional, for deeper diagnostics) */
+    {
+      "name": "factor_contrib",
+      "type": ["null", {
+        "type":"array",
+        "items": {
+          "type":"record",
+          "name":"FactorContribution",
+          "fields":[
+            { "name":"factor_id", "type":"string", "doc":"Risk factor identifier (e.g., SPX, US10Y, USDJPY, IG_SPREAD)" },
+            { "name":"pnl",       "type":"double", "doc":"PnL contribution from this factor" },
+            { "name":"delta",     "type":["null","double"], "default": null, "doc":"1st-order exposure change (e.g., DV01, Delta)" },
+            { "name":"gamma",     "type":["null","double"], "default": null, "doc":"2nd-order sensitivity (optional)" }
+          ]
+        }
+      }],
+      "default": null
+    },
+
+    /* Limit checks / breaches */
+    {
+      "name": "breaches",
+      "type": ["null", {
+        "type":"array",
+        "items": {
+          "type":"record",
+          "name":"Breach",
+          "fields":[
+            { "name":"limit_id",  "type":"string", "doc":"Risk limit identifier (from your risk limits registry)" },
+            { "name":"metric",    "type":"string", "doc":"Metric tested (e.g., pnl_pct_nav, var_95, gross_exposure)" },
+            { "name":"threshold", "type":"double", "doc":"Configured limit threshold" },
+            { "name":"observed",  "type":"double", "doc":"Observed value under stress" },
+            { "name":"severity",  "type": { "type":"enum","name":"BreachSeverity","symbols":["WARN","MINOR","MAJOR","CRITICAL"] } },
+            { "name":"notes",     "type":["null","string"], "default": null }
+          ]
+        }
+      }],
+      "default": null,
+      "doc": "All limit breaches triggered by this stress result"
+    },
+
+    /* Tags & provenance */
+    { "name": "tags", "type": ["null", {"type":"array","items":"string"}], "default": null, "doc":"Labels (book, desk, region, etc.)" },
+    {
+      "name": "source",
+      "type": ["null", {
+        "type":"record",
+        "name":"SourceInfo",
+        "fields":[
+          { "name":"engine",  "type":"string", "doc":"Computation engine (e.g., stress-runner-v1)" },
+          { "name":"version", "type":"string", "doc":"Semantic version/git SHA" },
+          { "name":"params",  "type":["null",{"type":"array","items":"string"}], "default": null, "doc":"Free-form param strings (window, sampling, etc.)" }
+        ]
+      }],
+      "default": null
+    }
+  ]
+}

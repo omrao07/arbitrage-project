@@ -1,0 +1,9 @@
+date,ticker,action_type,details,amount,currency
+2025-09-01,AAPL,Dividend,"Quarterly cash dividend",0.24,USD
+2025-09-02,TSLA,Stock Split,"3-for-1 stock split",3,NA
+2025-09-03,MSFT,Buyback,"Share repurchase program",5000000000,USD
+2025-09-04,JPM,Dividend,"Quarterly dividend",1.05,USD
+2025-09-05,AMZN,Special Dividend,"One-time cash dividend after asset sale",1.50,USD
+2025-09-08,NVDA,Rights Issue,"Rights issue for capital raise",2000000000,USD
+2025-09-09,GOOG,Stock Split,"2-for-1 stock split",2,NA
+2025-09-10,XOM,Dividend,"Quarterly dividend",0.95,USD

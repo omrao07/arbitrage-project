@@ -1,0 +1,47 @@
+import os
+import pandas as pd
+import numpy as np
+
+OUT_PATH = "data/adamodar/curated/pe_by_sector.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def seed_pe_by_sector() -> pd.DataFrame:
+    rows = [
+        ("Technology","United States","2023-01-01",19.0e12,0.95e12,20.0,0.80,"Rich vs history"),
+        ("Technology","United States","2024-01-01",21.0e12,1.02e12,20.6,0.82,"Still expensive"),
+        ("Technology","United States","2025-01-01",22.5e12,1.09e12,20.6,0.81,"Flat multiples"),
+        ("Energy","United States","2023-01-01",4.5e12,0.60e12,7.5,0.35,"Cheap"),
+        ("Energy","United States","2024-01-01",4.8e12,0.64e12,7.5,0.38,"Still value"),
+        ("Energy","United States","2025-01-01",5.0e12,0.67e12,7.5,0.36,"Profits steady"),
+        ("Financials","United States","2023-01-01",7.8e12,0.975e12,8.0,0.45,"Normalized"),
+        ("Financials","United States","2024-01-01",8.2e12,1.02e12,8.0,0.47,"Stable"),
+        ("Financials","United States","2025-01-01",8.6e12,1.07e12,8.0,0.46,"Steady"),
+    ]
+    return pd.DataFrame(rows, columns=[
+        "sector","region","as_of","market_cap_usd","net_income_usd","pe_ratio","pe_pctile","notes"
+    ])
+
+def compute_pe(df: pd.DataFrame) -> pd.DataFrame:
+    d = df.copy()
+    d["as_of"] = pd.to_datetime(d["as_of"])
+    d.sort_values(["sector","as_of"], inplace=True)
+
+    # recompute P/E
+    d["pe_ratio"] = d["market_cap_usd"] / d["net_income_usd"]
+
+    # rank within sector by percentile
+    d["pe_pctile"] = d.groupby("sector")["pe_ratio"].rank(pct=True)
+
+    return d
+
+def write_csv(df: pd.DataFrame, path: str = OUT_PATH):
+    ensure_dirs(path)
+    df.to_csv(path, index=False)
+
+if __name__ == "__main__":
+    df = seed_pe_by_sector()
+    df = compute_pe(df)
+    write_csv(df)
+    print(f"✅ pe_by_sector.csv written to {OUT_PATH} with {len(df)} rows")

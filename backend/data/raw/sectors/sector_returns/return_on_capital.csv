@@ -1,0 +1,51 @@
+import os
+import pandas as pd
+import numpy as np
+
+OUT_PATH = "data/adamodar/curated/return_on_capital.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def seed_roc() -> pd.DataFrame:
+    rows = [
+        ("United States","region","United States","2023-01-01",3.10e12,21.0e12,0.148,"","","Baseline"),
+        ("United States","region","United States","2024-01-01",3.40e12,22.0e12,0.155,"","","Efficiency gains"),
+        ("United States","region","United States","2025-01-01",3.60e12,22.8e12,0.158,"","","Stable ROC"),
+        ("Emerging Mkts","region","EM Aggregate","2023-01-01",1.25e12,9.5e12,0.132,"","","Baseline"),
+        ("Emerging Mkts","region","EM Aggregate","2024-01-01",1.38e12,10.2e12,0.135,"","","Capex productivity"),
+        ("Emerging Mkts","region","EM Aggregate","2025-01-01",1.45e12,10.7e12,0.136,"","","Resilient"),
+        ("Tech Sector","sector","United States","2023-01-01",1.40e12,5.0e12,0.280,"","","Asset-light model"),
+        ("Tech Sector","sector","United States","2024-01-01",1.58e12,5.3e12,0.298,"","","AI expansion"),
+        ("Tech Sector","sector","United States","2025-01-01",1.66e12,5.6e12,0.296,"","","High plateau"),
+    ]
+    return pd.DataFrame(rows, columns=[
+        "entity","entity_type","region","as_of","ebit_usd","capital_employed_usd",
+        "roc","roc_change_yoy","roc_3y_avg","notes"
+    ])
+
+def compute_roc_changes(df: pd.DataFrame) -> pd.DataFrame:
+    d = df.copy()
+    d["as_of"] = pd.to_datetime(d["as_of"])
+    d.sort_values(["entity","as_of"], inplace=True)
+
+    # recompute ROC
+    d["roc"] = d["ebit_usd"] / d["capital_employed_usd"]
+
+    # YoY change
+    d["roc_change_yoy"] = d.groupby("entity")["roc"].diff()
+
+    # trailing 3y avg
+    d["roc_3y_avg"] = d.groupby("entity")["roc"].rolling(3).mean().reset_index(level=0, drop=True)
+
+    return d
+
+def write_csv(df: pd.DataFrame, path: str = OUT_PATH):
+    ensure_dirs(path)
+    df.to_csv(path, index=False)
+
+if __name__ == "__main__":
+    df = seed_roc()
+    df = compute_roc_changes(df)
+    write_csv(df)
+    print(f"✅ return_on_capital.csv written to {OUT_PATH} with {len(df)} rows")

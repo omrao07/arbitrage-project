@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: trading
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: hedgefund
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+      app.kubernetes.io/component: monitoring
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: prometheus
+        app.kubernetes.io/component: monitoring
+        app.kubernetes.io/part-of: hedgefund
+    spec:
+      serviceAccountName: default
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.53.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus"
+            - "--storage.tsdb.retention.time=15d"
+            - "--web.enable-lifecycle"         # allow /-/reload
+            - "--web.route-prefix=/"
+            - "--web.enable-admin-api=false"
+          ports:
+            - name: http
+              containerPort: 9090
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 4
+          resources:
+            requests:
+              cpu: "300m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+          volumeMounts:
+            - name: prom-config
+              mountPath: /etc/prometheus
+            - name: prom-data
+              mountPath: /prometheus
+            - name: alert-rules
+              mountPath: /etc/prometheus/rules/alerts
+            - name: recording-rules
+              mountPath: /etc/prometheus/rules/recording
+      volumes:
+        - name: prom-config
+          configMap:
+            name: prom-config              # from prom configmap.yaml
+        - name: alert-rules
+          configMap:
+            name: alert-rules              # from alert rules.yaml
+            optional: true
+        - name: recording-rules
+          configMap:
+            name: recording-rules          # from recording rules.yaml
+            optional: true
+        - name: prom-data
+          persistentVolumeClaim:
+            claimName: prom-pvc            # create a PVC with this name

@@ -1,0 +1,80 @@
+import pandas as pd
+from datetime import date
+import os
+
+OUT_PATH = "data/macro/interest_rates/us_treasury_yields.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def init_us_treasury_yields(seed: bool = True) -> pd.DataFrame:
+    """
+    Create us_treasury_yields.csv with schema:
+    date, tenor, yield, source, notes
+    - yield stored as decimal (0.042 = 4.2%)
+    """
+    ensure_dirs(OUT_PATH)
+    cols = ["date","tenor","yield","source","notes"]
+
+    if not seed:
+        df = pd.DataFrame(columns=cols)
+        df.to_csv(OUT_PATH, index=False)
+        return df
+
+    today = str(date.today())
+    rows = [
+        ("2025-01-02","1m",0.052,"UST","T-bill"),
+        ("2025-01-02","3m",0.053,"UST","T-bill"),
+        ("2025-01-02","6m",0.052,"UST","T-bill"),
+        ("2025-01-02","1y",0.051,"UST","Treasury bill"),
+        ("2025-01-02","2y",0.049,"UST","Constant maturity"),
+        ("2025-01-02","5y",0.045,"UST","Constant maturity"),
+        ("2025-01-02","10y",0.042,"UST","Benchmark Treasury note"),
+        ("2025-01-02","20y",0.043,"UST","Constant maturity"),
+        ("2025-01-02","30y",0.044,"UST","Long bond"),
+        (today,"10y",None,"Manual","Placeholder for next update"),
+    ]
+    df = pd.DataFrame(rows, columns=cols)
+    df.to_csv(OUT_PATH, index=False)
+    return df
+
+# ---------------- Analytics helpers ----------------
+
+def load_us_treasury_yields(path: str = OUT_PATH) -> pd.DataFrame:
+    df = pd.read_csv(path)
+    df["date"] = pd.to_datetime(df["date"])
+    return df
+
+def get_curve(df: pd.DataFrame, on_date: str) -> pd.DataFrame:
+    """
+    Return yield curve snapshot for a given date.
+    """
+    d = df[df["date"] == pd.to_datetime(on_date)].copy()
+    return d.pivot(index="date", columns="tenor", values="yield")
+
+def slope(df: pd.DataFrame, on_date: str, short="2y", long="10y") -> float | None:
+    """
+    Compute slope (long - short).
+    """
+    d = df[df["date"] == pd.to_datetime(on_date)]
+    try:
+        y_short = float(d[d["tenor"] == short]["yield"])
+        y_long = float(d[d["tenor"] == long]["yield"])
+        return y_long - y_short
+    except Exception:
+        return None
+
+def inversion_flag(df: pd.DataFrame, on_date: str, short="2y", long="10y") -> bool:
+    """
+    Flag curve inversion (short > long).
+    """
+    s = slope(df, on_date, short, long)
+    return s is not None and s < 0
+
+if __name__ == "__main__":
+    df = init_us_treasury_yields(seed=True)
+    print(f"✅ us_treasury_yields.csv written to {OUT_PATH} with {len(df)} rows")
+    # Example usage:
+    # curve = get_curve(load_us_treasury_yields(), "2025-01-02")
+    # print(curve)
+    # print(inversion_flag(load_us_treasury_yields(), "2025-01-02"))

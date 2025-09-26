@@ -1,0 +1,248 @@
+# meta/tags.yaml
+# Centralized tag taxonomy used across the catalog.
+# Keep tags short, lowercase, and kebab/underscore-free if single word.
+# Canonical form: lowercase, words separated by underscores (e.g., fx, vol_surface).
+
+version: 1
+
+conventions:
+  case: lower
+  separator: "_"
+  examples: ["prices", "intraday", "fx", "vol_surface", "risk", "esg"]
+
+# ---------------------------------------------------------------------------
+# Canonical tag namespaces (for linting and UI grouping)
+# ---------------------------------------------------------------------------
+namespaces:
+  asset_class:
+    - equities
+    - etf
+    - fx
+    - rates
+    - credit
+    - commodities
+    - bond
+    - index
+    - crypto
+
+  market_data:
+    - prices
+    - intraday
+    - eod
+    - refdata
+    - corporate_actions
+    - greeks
+    - vol_surface
+    - options
+    - futures
+    - curves
+    - yields
+    - spreads
+    - dividends
+    - splits
+
+  analytics:
+    - factors
+    - factor_value
+    - factor_growth
+    - factor_quality
+    - factor_momentum
+    - factor_size
+    - beta
+    - alpha
+    - attribution
+    - risk
+    - var
+    - es
+    - stress
+    - limits
+    - exposures
+    - optimization
+
+  news:
+    - news
+    - headlines
+    - sentiment
+    - topics
+
+  vendor:
+    - bloomberg
+    - koyfin
+    - hammer_pro
+    - internal
+
+  frequency:
+    - tick
+    - _1m
+    - _5m
+    - hourly
+    - daily
+    - weekly
+    - monthly
+    - ad_hoc
+
+  region:
+    - global
+    - us
+    - eu
+    - uk
+    - in
+    - jp
+    - apac
+    - emea
+    - latam
+
+  currency:
+    - usd
+    - eur
+    - gbp
+    - jpy
+    - inr
+
+  portfolio:
+    - household
+    - account
+    - sleeve
+    - strategy
+
+  pipeline:
+    - raw
+    - staged
+    - normalized
+    - enriched
+    - derived
+
+  quality:
+    - validated
+    - backfilled
+    - realtime
+    - delayed
+
+# ---------------------------------------------------------------------------
+# Alias map (synonyms → canonical tag)
+# Use during ingestion so storage/search stays consistent.
+# ---------------------------------------------------------------------------
+aliases:
+  # asset class
+  equity: equities
+  equities_equity: equities
+  forex: fx
+  ccy: fx
+  rates_curve: rates
+  commodity: commodities
+  crypto_asset: crypto
+
+  # market data
+  eod_prices: eod
+  end_of_day: eod
+  bars_1m: intraday
+  intraday_bars: intraday
+  greeks_options: greeks
+  vol: vol_surface
+  vols: vol_surface
+  curve: curves
+  yield_curve: curves
+  dividend: dividends
+  split: splits
+  ca: corporate_actions
+  ref_data: refdata
+
+  # analytics
+  factors_value: factor_value
+  factors_growth: factor_growth
+  factors_quality: factor_quality
+  factors_momentum: factor_momentum
+  factors_size: factor_size
+  exposure: exposures
+  value_at_risk: var
+  expected_shortfall: es
+  stress_test: stress
+  portfolio_limits: limits
+  perf_attribution: attribution
+
+  # news
+  headline: headlines
+  sentiments: sentiment
+  topic: topics
+
+  # frequency
+  one_min: _1m
+  five_min: _5m
+  ad_hoc: ad_hoc
+
+  # vendor
+  blp: bloomberg
+  koy: koyfin
+  hammer: hammer_pro
+
+  # region
+  eu_emea: emea
+  apac_asia: apac
+  india: in
+  united_states: us
+  europe: eu
+  japan: jp
+
+  # pipeline/quality
+  real_time: realtime
+  backfill: backfilled
+
+# ---------------------------------------------------------------------------
+# Bundles (macro tags that expand to multiple canonical tags)
+# Useful for UI filters and dataset templates.
+# ---------------------------------------------------------------------------
+bundles:
+  intraday_equities:
+    - equities
+    - intraday
+    - prices
+  daily_eod_equities:
+    - equities
+    - eod
+    - prices
+  fx_vol_core:
+    - fx
+    - vol_surface
+    - daily
+  rates_curves_daily:
+    - rates
+    - curves
+    - daily
+  news_with_sentiment:
+    - news
+    - headlines
+    - sentiment
+  risk_core:
+    - risk
+    - var
+    - es
+    - stress
+
+# ---------------------------------------------------------------------------
+# Lint rules (simple, optional)
+# ---------------------------------------------------------------------------
+lint:
+  # Disallow mixing conflicting frequencies in one dataset tag set.
+  exclusive_groups:
+    - ["tick", "_1m", "_5m", "hourly", "daily", "weekly", "monthly", "ad_hoc"]
+  # Require at least one of these groups for every dataset.
+  require_one_of:
+    - asset_class
+    - market_data
+  # Forbidden tags (reserved for future use).
+  forbidden:
+    - experimental
+    - temp
+
+# ---------------------------------------------------------------------------
+# Examples
+# ---------------------------------------------------------------------------
+examples:
+  blp_eod_prices:
+    tags: [bloomberg, equities, prices, eod, daily]
+  blp_fx_vol_surface:
+    tags: [bloomberg, fx, vol_surface, daily]
+  koyfin_factor_scores:
+    tags: [koyfin, equities, factors, daily]
+  hammer_news_sentiment:
+    tags: [hammer_pro, news, headlines, sentiment, hourly]

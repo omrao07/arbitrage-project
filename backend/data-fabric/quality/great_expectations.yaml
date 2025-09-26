@@ -1,0 +1,139 @@
+# quality/great_expectations.yaml
+# Great Expectations project config for Hyper-OS lakehouse
+
+config_version: 3.0
+fluent_datasources: {}
+
+# ------------------------
+# Datasources
+# ------------------------
+datasources:
+  lakehouse_parquet:
+    class_name: Datasource
+    execution_engine:
+      class_name: PandasExecutionEngine
+    data_connectors:
+      default_runtime_data_connector:
+        class_name: RuntimeDataConnector
+        batch_identifiers: ["default_identifier"]
+
+  duckdb_lakehouse:
+    class_name: Datasource
+    execution_engine:
+      class_name: SqlAlchemyExecutionEngine
+      connection_string: duckdb:///lakehouse.duckdb
+    data_connectors:
+      default_inferred_connector:
+        class_name: InferredAssetSqlDataConnector
+        include_schema_name: true
+
+# ------------------------
+# Stores
+# ------------------------
+stores:
+  expectations_store:
+    class_name: ExpectationsStore
+    store_backend:
+      class_name: InMemoryStoreBackend
+
+  validations_store:
+    class_name: ValidationsStore
+    store_backend:
+      class_name: InMemoryStoreBackend
+
+  evaluation_parameter_store:
+    class_name: EvaluationParameterStore
+
+# ------------------------
+# Data Docs
+# ------------------------
+data_docs_sites:
+  local_site:
+    class_name: SiteBuilder
+    store_backend:
+      class_name: FileSystemStoreBackend
+      base_directory: uncommitted/data_docs/local_site/
+    site_index_builder:
+      class_name: DefaultSiteIndexBuilder
+
+# ------------------------
+# Expectation Suites
+# ------------------------
+expectation_suites:
+
+  - name: equities_prices_suite
+    expectations:
+      - expect_column_values_to_not_be_null:
+          column: ticker
+      - expect_column_values_to_not_be_null:
+          column: ts
+      - expect_column_values_to_be_between:
+          column: close
+          min_value: 0
+      - expect_column_values_to_be_between:
+          column: high
+          min_value: 0
+      - expect_column_pair_values_a_to_be_greater_than_b:
+          column_A: high
+          column_B: low
+
+  - name: fx_rates_suite
+    expectations:
+      - expect_column_values_to_not_be_null:
+          column: base
+      - expect_column_values_to_not_be_null:
+          column: quote
+      - expect_column_values_to_be_between:
+          column: rate
+          min_value: 0.00001
+          max_value: 1000.0
+      - expect_compound_columns_to_be_unique:
+          column_list: ["ts", "base", "quote"]
+
+  - name: macro_series_suite
+    expectations:
+      - expect_column_values_to_not_be_null:
+          column: series_id
+      - expect_column_values_to_be_of_type:
+          column: value
+          type_: DOUBLE
+      - expect_column_values_to_not_be_null:
+          column: ts
+
+  - name: portfolio_positions_suite
+    expectations:
+      - expect_column_values_to_not_be_null:
+          column: account_id
+      - expect_column_values_to_be_of_type:
+          column: qty
+          type_: DOUBLE
+      - expect_column_values_to_be_of_type:
+          column: market_value
+          type_: DOUBLE
+      - expect_column_values_to_be_between:
+          column: market_value
+          min_value: -1.0e12
+          max_value: 1.0e12
+
+  - name: portfolio_orders_suite
+    expectations:
+      - expect_column_values_to_not_be_null:
+          column: order_id
+      - expect_column_values_to_be_in_set:
+          column: status
+          value_set: ["NEW", "PARTIAL", "FILLED", "CANCELLED"]
+      - expect_column_values_to_be_in_set:
+          column: side
+          value_set: ["BUY", "SELL"]
+
+  - name: risk_var_suite
+    expectations:
+      - expect_column_values_to_be_between:
+          column: var_95
+          min_value: 0
+      - expect_column_values_to_be_between:
+          column: var_99
+          min_value: 0
+      - expect_column_pair_values_a_to_be_greater_than_b:
+          column_A: var_99
+          column_B: var_95

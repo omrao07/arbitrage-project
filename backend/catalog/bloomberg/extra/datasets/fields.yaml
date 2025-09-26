@@ -1,0 +1,327 @@
+# extra/fields.yaml
+# Canonical field definitions, groups, aliases, and examples
+# for the "extra" datasets (corporate actions, index membership,
+# FX spot EOD, ETF holdings, news headlines).
+#
+# Conventions:
+# - Percentages are FRACTIONS (1% => 0.01) unless noted.
+# - Dates/timestamps are UTC unless stated.
+# - Strings should be uppercase where they represent codes (e.g., action_type).
+
+version: 1
+
+# ---------------------------------------------------------------------------
+# FIELD DEFINITIONS (vendor-agnostic, normalized names)
+# ---------------------------------------------------------------------------
+fields:
+
+  # ---- Shared / common keys ----
+  dt:
+    type: date
+    quality: [not_null, no_future_date]
+    desc: "Business date (UTC)."
+
+  ts:
+    type: timestamp
+    nullable: true
+    desc: "Event/ingestion timestamp (UTC)."
+
+  ticker:
+    type: string
+    nullable: true
+    desc: "Internal canonical symbol."
+
+  currency:
+    type: string
+    nullable: true
+    desc: "ISO 4217 currency code."
+
+  # ---- Corporate actions (equities) ----
+  ex_dt:
+    type: date
+    desc: "Ex-date (UTC)."
+  action_type:
+    type: string
+    desc: "DIV|SPLIT|ID_CHANGE|SPIN|MERGER|OTHER."
+  div_amt:
+    type: float64
+    unit: USD
+    nullable: true
+    desc: "Cash dividend per share."
+  div_currency:
+    type: string
+    nullable: true
+    desc: "Dividend currency."
+  record_dt:
+    type: date
+    nullable: true
+    desc: "Record date."
+  pay_dt:
+    type: date
+    nullable: true
+    desc: "Payment date."
+  split_ratio:
+    type: float64
+    nullable: true
+    quality: [non_negative]
+    desc: "Shares-after / shares-before (e.g., 2.0 for 2-for-1)."
+  old_ticker:
+    type: string
+    nullable: true
+  new_ticker:
+    type: string
+    nullable: true
+  old_cusip:
+    type: string
+    nullable: true
+  new_cusip:
+    type: string
+    nullable: true
+  announce_dt:
+    type: date
+    nullable: true
+  effective_dt:
+    type: date
+    nullable: true
+  notes:
+    type: string
+    nullable: true
+
+  # ---- Index membership ----
+  index_id:
+    type: string
+    desc: "Internal index code (e.g., SPX, NDX, NIFTY50)."
+  action:
+    type: string
+    nullable: true
+    desc: "ADD|REMOVE|REBAL|HOLD."
+  weight:
+    type: float64
+    unit: pct
+    nullable: true
+    desc: "Constituent weight as a fraction."
+  shares:
+    type: float64
+    unit: shares
+    nullable: true
+  freefloat_adj:
+    type: float64
+    unit: pct
+    nullable: true
+    desc: "Free-float adjustment factor (0..1)."
+
+  # ---- FX spot EOD ----
+  pair:
+    type: string
+    desc: "BASE+QUOTE, e.g., EURUSD."
+  base_ccy:
+    type: string
+    nullable: true
+  quote_ccy:
+    type: string
+    nullable: true
+  px_close:
+    type: float64
+    quality: [non_negative]
+    desc: "EOD close."
+  px_high:
+    type: float64
+    nullable: true
+    quality: [non_negative]
+  px_low:
+    type: float64
+    nullable: true
+    quality: [non_negative]
+  source:
+    type: string
+    nullable: true
+    desc: "Vendor/source tag."
+
+  # ---- ETF holdings ----
+  as_of:
+    type: date
+    desc: "Holdings report date (UTC)."
+  fund_ticker:
+    type: string
+    desc: "Fund ticker (internal canonical)."
+  asset_ticker:
+    type: string
+    desc: "Constituent asset ticker (internal canonical)."
+  market_value:
+    type: float64
+    unit: USD
+    nullable: true
+  country:
+    type: string
+    nullable: true
+  sector:
+    type: string
+    nullable: true
+
+  # ---- News headlines (normalized metadata) ----
+  id:
+    type: string
+    desc: "Stable article id."
+  source_name:
+    type: string
+    nullable: true
+    desc: "Publisher/vendor short name."
+  tickers:
+    type: string[]
+    nullable: true
+    desc: "Array of linked tickers."
+  title:
+    type: string
+  summary:
+    type: string
+    nullable: true
+  url:
+    type: string
+  sentiment:
+    type: float64
+    nullable: true
+    desc: "If provided by vendor; typically −1..1."
+  importance:
+    type: float64
+    nullable: true
+  lang:
+    type: string
+    nullable: true
+
+# ---------------------------------------------------------------------------
+# GROUPS
+# ---------------------------------------------------------------------------
+groups:
+  corporate_actions_equities:
+    fields: [ex_dt, ticker, action_type, div_amt, div_currency, record_dt, pay_dt,
+             split_ratio, old_ticker, new_ticker, old_cusip, new_cusip,
+             announce_dt, effective_dt, notes]
+
+  index_membership_daily:
+    fields: [dt, index_id, ticker, action, weight, shares, freefloat_adj, notes]
+
+  fx_spot_eod:
+    fields: [dt, pair, base_ccy, quote_ccy, px_close, px_high, px_low, source]
+
+  etf_holdings_daily:
+    fields: [as_of, fund_ticker, asset_ticker, weight, shares, market_value, country, sector]
+
+  news_headlines_normalized:
+    fields: [ts, dt, id, source_name, tickers, title, summary, url, sentiment, importance, lang]
+
+# ---------------------------------------------------------------------------
+# ALIASES (vendor mnemonics → canonical)
+# ---------------------------------------------------------------------------
+aliases:
+  # Corporate actions (Bloomberg)
+  DVD_AMT: div_amt
+  CRNCY_DVD: div_currency
+  REC_DT: record_dt
+  PAY_DT: pay_dt
+  EQY_SPLIT_RATIO: split_ratio
+  ID_CHG_OLD_TICKER: old_ticker
+  ID_CHG_NEW_TICKER: new_ticker
+  ID_CUSIP_OLD: old_cusip
+  ID_CUSIP_NEW: new_cusip
+  ANNOUNCE_DT: announce_dt
+  EFF_DT: effective_dt
+  ACTION_TYPE: action_type
+
+  # Index membership (Bloomberg generics)
+  INDX_ID: index_id
+  INDX_MEMBER: ticker
+  INDX_ACTION: action
+  INDX_WEIGHT: weight
+  INDX_SHARES: shares
+  INDX_FF: freefloat_adj
+
+  # FX spot (Bloomberg)
+  PX_LAST: px_close
+  PX_HIGH: px_high
+  PX_LOW: px_low
+  CRNCY_PAIR: pair
+  BASE_CRNCY: base_ccy
+  QUOTE_CRNCY: quote_ccy
+  SOURCE: source
+
+  # ETF holdings
+  HOLDING_TICKER: asset_ticker
+  FUND_TICKER: fund_ticker
+  HOLDING_WEIGHT: weight
+  HOLDING_SHARES: shares
+  HOLDING_MV: market_value
+
+  # News metadata
+  
+  HEADLINE: title
+  ABSTRACT: summary
+  LINK: url
+  SYMBOLS: tickers
+  SCORE_SENTIMENT: sentiment
+  SCORE_IMPORTANCE: importance
+  LANGUAGE: lang
+
+# ---------------------------------------------------------------------------
+# EXAMPLES
+# ---------------------------------------------------------------------------
+examples:
+
+  corp_action_div:
+    ex_dt: "2025-02-07"
+    ticker: "AAPL"
+    action_type: "DIV"
+    div_amt: 0.24
+    div_currency: "USD"
+    record_dt: "2025-02-10"
+    pay_dt: "2025-02-20"
+    announce_dt: "2025-02-01"
+
+  corp_action_split:
+    ex_dt: "2025-06-10"
+    ticker: "TSLA"
+    action_type: "SPLIT"
+    split_ratio: 3.0
+    announce_dt: "2025-05-20"
+    effective_dt: "2025-06-10"
+
+  index_member_row:
+    dt: "2025-01-03"
+    index_id: "SPX"
+    ticker: "MSFT"
+    action: "HOLD"
+    weight: 0.0682
+    shares: 6556000000
+    freefloat_adj: 0.88
+
+  fx_spot_row:
+    dt: "2025-01-03"
+    pair: "EURUSD"
+    base_ccy: "EUR"
+    quote_ccy: "USD"
+    px_close: 1.1042
+    px_high: 1.1060
+    px_low: 1.1015
+    source: "blp"
+
+  etf_holding_row:
+    as_of: "2025-01-03"
+    fund_ticker: "SPY"
+    asset_ticker: "AAPL"
+    weight: 0.0725
+    shares: 180345000
+    market_value: 34215000000
+    country: "US"
+    sector: "Information Technology"
+
+  news_headline_row:
+    ts: "2025-01-03T14:05:22Z"
+    dt: "2025-01-03"
+    id: "ft-20250103-abc123"
+    source_name: "FT"
+    tickers: ["AAPL","MSFT"]
+    title: "Big Tech rallies on AI optimism"
+    summary: "Mega-cap tech led gains as markets priced faster AI adoption."
+    url: "https://example.com/article"
+    sentiment: 0.34
+    importance: 0.71
+    lang: "en"

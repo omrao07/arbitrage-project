@@ -1,0 +1,91 @@
+{
+  "asOf": "2025-09-25T00:00:00Z",
+  "universe": [
+    {
+      "symbol": "AAPL",
+      "name": "Apple Inc.",
+      "sector": "Tech",
+      "country": "US",
+      "pe": 28.4,
+      "pb": 34.2,
+      "ps": 7.1,
+      "divYield": 0.55,
+      "evEbitda": 21.3,
+      "valueScore": 42,
+      "signal": "overvalued"
+    },
+    {
+      "symbol": "MSFT",
+      "name": "Microsoft Corp.",
+      "sector": "Tech",
+      "country": "US",
+      "pe": 31.7,
+      "pb": 13.8,
+      "ps": 11.2,
+      "divYield": 0.80,
+      "evEbitda": 19.7,
+      "valueScore": 48,
+      "signal": "overvalued"
+    },
+    {
+      "symbol": "TSLA",
+      "name": "Tesla Inc.",
+      "sector": "Consumer Disc.",
+      "country": "US",
+      "pe": 52.9,
+      "pb": 18.4,
+      "ps": 9.6,
+      "divYield": 0.00,
+      "evEbitda": 27.5,
+      "valueScore": 30,
+      "signal": "expensive"
+    },
+    {
+      "symbol": "RELIANCE",
+      "name": "Reliance Industries",
+      "sector": "Energy",
+      "country": "IN",
+      "pe": 19.3,
+      "pb": 3.4,
+      "ps": 2.1,
+      "divYield": 0.95,
+      "evEbitda": 12.7,
+      "valueScore": 68,
+      "signal": "undervalued"
+    },
+    {
+      "symbol": "TCS",
+      "name": "Tata Consultancy Services",
+      "sector": "Tech",
+      "country": "IN",
+      "pe": 24.6,
+      "pb": 8.2,
+      "ps": 5.7,
+      "divYield": 1.15,
+      "evEbitda": 16.3,
+      "valueScore": 54,
+      "signal": "fair"
+    },
+    {
+      "symbol": "SONY",
+      "name": "Sony Group Corp.",
+      "sector": "Consumer Disc.",
+      "country": "JP",
+      "pe": 15.8,
+      "pb": 1.7,
+      "ps": 0.9,
+      "divYield": 1.75,
+      "evEbitda": 9.6,
+      "valueScore": 72,
+      "signal": "undervalued"
+    }
+  ],
+  "metrics": {
+    "avgPE": 28.8,
+    "avgPB": 13.3,
+    "avgDivYield": 0.87,
+    "cheapest": ["SONY", "RELIANCE"],
+    "mostExpensive": ["TSLA", "MSFT"]
+  },
+  "notes": "Synthetic equity value dataset (P/E, P/B, P/S, Yield, EV/EBITDA, composite valueScore). Replace with live financials."
+}

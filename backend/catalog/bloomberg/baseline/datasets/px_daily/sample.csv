@@ -1,0 +1,9 @@
+dataset_id,dt,ticker,currency,px_open,px_high,px_low,px_close,px_last,vwap,volume,turnover,split_ratio,dividend_amt,shares_out,marketcap,ret_1d_raw,adj_factor_split,adj_factor_div,adj_factor_total,px_open_adj,px_high_adj,px_low_adj,px_close_adj,vwap_adj,volume_adj,ret_1d,ret_1d_px,source_px_close,method
+blp_eq_px_eod,2025-01-03,AAPL,USD,189.20,191.05,188.90,190.42,190.45,190.02,61234567,, ,0.24,15500000000,2950000000000,0.0048,,,,,,,,,,,,,
+blp_eq_px_eod,2025-01-03,MSFT,USD,402.10,407.80,401.60,406.55,406.62,405.10,28543210,, ,0.75,7450000000,3028000000000,0.0062,,,,,,,,,,,,,
+blp_eq_px_eod,2025-01-03,TSLA,USD,255.80,259.40,252.90,258.10,258.05,257.10,98123456,, , ,3180000000,820000000000,-0.0035,,,,,,,,,,,,,
+koyfin_eq_px_eod,2025-01-03,AAPL,USD,,,,190.39,,190.01,61000000,,,,,, ,,,,,,,,,,,,
+koyfin_eq_px_eod,2025-01-03,MSFT,USD,,,,406.40,,404.95,28650000,,,,,, ,,,,,,,,,,,,
+internal_eq_px_eod_normalized,2025-01-03,AAPL,USD,,,,,,,,,, ,15500000000,,,1.0000,1.0020,1.0020,188.82,190.66,188.51,190.03,189.64,61234567,0.0051,0.0039,blend,ca_adjust_v1
+internal_eq_px_eod_normalized,2025-01-03,MSFT,USD,,,,,,,,,, ,7450000000,,,1.0000,1.0010,1.0010,401.70,407.38,401.18,406.15,404.72,28543210,0.0060,0.0052,blend,ca_adjust_v1
+internal_eq_px_eod_normalized,2025-01-03,TSLA,USD,,,,,,,,,, ,3180000000,,,1.0000,1.0000,1.0000,255.80,259.40,252.90,258.10,257.10,98123456,-0.0035,-0.0035,blp,ca_adjust_v1

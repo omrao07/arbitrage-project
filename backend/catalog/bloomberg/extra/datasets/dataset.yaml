@@ -1,0 +1,165 @@
+# extra/datasets.yaml
+# Add-on datasets that aren’t tied to a single asset module (fx/credit/equity).
+# Valid against _meta/schema.dataset.yaml. Keep column names vendor-agnostic.
+
+# ----------------------------------------------------------------------------
+# 1) Corporate Actions (Equities) – cash dividends, splits, symbol/cusip changes
+# ----------------------------------------------------------------------------
+id: blp_corporate_actions_equities
+title: Corporate Actions – Equities (Dividends, Splits, ID changes)
+vendor: bloomberg
+source: bpipe
+version: "1.0.0"
+frequency: daily
+description: >
+  Point-in-time corporate actions for listed equities. Use for pricing
+  adjustments and universe maintenance.
+primary_key: [ex_dt, ticker, action_type]
+partitions: [ex_dt]
+columns:
+  - { name: ex_dt,                 type: date,      desc: "Ex-date (UTC)." }
+  - { name: ticker,                type: string,    desc: "Internal canonical symbol." }
+  - { name: action_type,           type: string,    desc: "DIV|SPLIT|ID_CHANGE|SPIN|MERGER|OTHER" }
+  # Dividend fields
+  - { name: div_amt,               type: float64,   unit: USD, nullable: true, desc: "Cash dividend per share." }
+  - { name: div_currency,          type: string,    nullable: true }
+  - { name: record_dt,             type: date,      nullable: true }
+  - { name: pay_dt,                type: date,      nullable: true }
+  # Split fields
+  - { name: split_ratio,           type: float64,   nullable: true, desc: "Shares-after / shares-before." }
+  # Identifier change
+  - { name: old_ticker,            type: string,    nullable: true }
+  - { name: new_ticker,            type: string,    nullable: true }
+  - { name: old_cusip,             type: string,    nullable: true }
+  - { name: new_cusip,             type: string,    nullable: true }
+  # Generic
+  - { name: announce_dt,           type: date,      nullable: true }
+  - { name: effective_dt,          type: date,      nullable: true }
+  - { name: notes,                 type: string,    nullable: true }
+endpoints:
+  - kind: bpipe
+    path: "DVD_EX_DT DVD_AMT CRNCY_DVD PAY_DT REC_DT EQY_SPLIT_RATIO ID_CHG_NEW_TICKER ID_CHG_OLD_TICKER ID_CUSIP_NEW ID_CUSIP_OLD ANNOUNCE_DT EFF_DT"
+    params:
+      universe_ref: "bloomberg/baseline/symbology/mapping.yaml"
+      tz: "UTC"
+tags: [bloomberg, equities, corporate_actions, adjustments]
+---
+# ----------------------------------------------------------------------------
+# 2) Index Membership (adds/removes & weights)
+# ----------------------------------------------------------------------------
+id: blp_index_membership
+title: Index Membership (Constituents & Weights)
+vendor: bloomberg
+source: bpipe
+version: "1.0.0"
+frequency: daily
+description: >
+  Point-in-time index membership and weights for major equity indices.
+primary_key: [dt, index_id, ticker]
+partitions: [dt, index_id]
+columns:
+  - { name: dt,            type: date,    desc: "Effective date (UTC)." }
+  - { name: index_id,      type: string,  desc: "Internal index code (e.g., SPX, NDX, NIFTY50)." }
+  - { name: ticker,        type: string }
+  - { name: action,        type: string,  nullable: true, desc: "ADD|REMOVE|REBAL|HOLD" }
+  - { name: weight,        type: float64, unit: pct, nullable: true }
+  - { name: shares,        type: float64, unit: shares, nullable: true }
+  - { name: freefloat_adj, type: float64, unit: pct, nullable: true }
+  - { name: notes,         type: string,  nullable: true }
+endpoints:
+  - kind: bpipe
+    path: "INDX_MWEIGHT INDX_MEMBERS"
+    params:
+      index_universe_ref: "extra/indexes/index_map.yaml"   # your curated list
+      tz: "UTC"
+tags: [bloomberg, index, membership, weights]
+---
+# ----------------------------------------------------------------------------
+# 3) FX Spot – EOD close for liquid pairs (for normalization & conversions)
+# ----------------------------------------------------------------------------
+id: blp_fx_spot_eod
+title: FX Spot (EOD) – Major Pairs
+vendor: bloomberg
+source: bpipe
+version: "1.0.0"
+frequency: daily
+description: >
+  End-of-day FX spot close for major currency pairs. Use for cross-currency
+  normalization and portfolio conversion.
+primary_key: [dt, pair]
+partitions: [dt]
+columns:
+  - { name: dt,         type: date }
+  - { name: pair,       type: string, desc: "e.g., EURUSD, USDJPY (BASEQUOTE)." }
+  - { name: base_ccy,   type: string }
+  - { name: quote_ccy,  type: string }
+  - { name: px_close,   type: float64, quality: [non_negative] }
+  - { name: px_high,    type: float64, nullable: true }
+  - { name: px_low,     type: float64, nullable: true }
+  - { name: source,     type: string,  nullable: true }
+endpoints:
+  - kind: bpipe
+    path: "PX_LAST PX_HIGH PX_LOW"
+    params:
+      universe_ref: "bloomberg/baseline/fx/pairs.yaml"
+      tz: "UTC"
+tags: [bloomberg, fx, prices, eod]
+---
+# ----------------------------------------------------------------------------
+# 4) ETF Holdings – daily or most recent disclosure
+# ----------------------------------------------------------------------------
+id: blp_etf_holdings_daily
+title: ETF Holdings (Constituents & Weights)
+vendor: bloomberg
+source: bpipe
+version: "1.0.0"
+frequency: daily
+description: >
+  ETF constituent holdings with weights and share counts; latest available per fund.
+primary_key: [as_of, fund_ticker, asset_ticker]
+partitions: [as_of, fund_ticker]
+columns:
+  - { name: as_of,        type: date }
+  - { name: fund_ticker,  type: string }
+  - { name: asset_ticker, type: string }
+  - { name: weight,       type: float64, unit: pct, nullable: true }
+  - { name: shares,       type: float64, unit: shares, nullable: true }
+  - { name: market_value, type: float64, unit: USD,  nullable: true }
+  - { name: country,      type: string,  nullable: true }
+  - { name: sector,       type: string,  nullable: true }
+endpoints:
+  - kind: bpipe
+    path: "FUND_HOLDINGS"
+    params:
+      universe_ref: "extra/etf/fund_list.yaml"
+      tz: "UTC"
+tags: [bloomberg, etf, holdings, membership]
+---
+# ----------------------------------------------------------------------------
+# 5) News Headlines (normalized) – metadata only
+# ----------------------------------------------------------------------------
+id: internal_news_headlines
+title: News Headlines (Normalized Metadata)
+vendor: internal
+source: rest
+version: "0.1.0"
+frequency: minutely
+description: >
+  Normalized news headline metadata for tickers and topics. Content body is not
+  stored; only URLs, summaries, and vendor scores for ranking.
+primary_key: [ts, id]
+partitions: [dt]
+columns:
+  - { name: ts,           type: timestamp, desc: "Ingestion timestamp (UTC)." }
+  - { name: dt,           type: date,      desc: "Business date (UTC)." }
+  - { name: id,           type: string,    desc: "Stable article id." }
+  - { name: source,       type: string }
+
+  - { name: url,          type: string }
+  - { name: headline,     type: string }
+  - { name: summary,      type: string,    nullable: true }
+  - { name: published_at, type: timestamp, nullable: true }
+  - { name: topics,       type: array,     items: { type: string }, nullable: true }
+  - { name: tickers,      type: array,     items: { type: string }, nullable: true }
+  - { name: relevance_score, type: float64, nullable: true, desc: "Vendor relevance score (0–1)." }
+  - { name: sentiment_score, type: float64, nullable: true, desc: "Vendor sentiment score (-1 to 1)." }

@@ -1,0 +1,43 @@
+import os
+import pandas as pd
+import numpy as np
+from datetime import date
+
+OUT_PATH = "data/adamodar/curated/pe_ratios.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def seed_pe_ratios() -> pd.DataFrame:
+    today = str(date.today())
+    rows = [
+        (today,"S&P500","index","US","",72e12,3.2e12,22.5,18.0,1.5,"S&P rich vs 10y avg"),
+        (today,"MSCI_EM","index","EM","",18e12,1.5e12,12.0,13.5,-1.0,"EM trades at discount"),
+        (today,"MSCI_Europe","index","Europe","",15e12,1.1e12,13.6,14.5,-0.6,"Europe below avg"),
+        (today,"US_Tech","sector","US","Tech",18e12,0.6e12,30.0,25.0,2.0,"Tech premium vs avg"),
+        (today,"US_Banks","sector","US","Banks",6.5e12,0.52e12,12.5,11.0,1.0,"Banks slightly rich"),
+        (today,"Apple","company","US","Tech",3.25e12,0.1e12,32.5,28.0,1.5,"Apple strong profitability supports premium"),
+        (today,"Petrobras","company","LatAm","Energy",1.0e11,2.0e10,5.0,8.0,-2.0,"Petrobras discounted"),
+    ]
+    return pd.DataFrame(rows, columns=[
+        "as_of","entity","entity_type","region","sector",
+        "market_cap_usd","net_income_usd","pe_ratio",
+        "pe_hist_avg","pe_zscore","notes"
+    ])
+
+def compute_pe_ratios(df: pd.DataFrame) -> pd.DataFrame:
+    d = df.copy()
+    d["pe_ratio"] = d["market_cap_usd"] / d["net_income_usd"].replace(0, np.nan)
+    if "pe_hist_avg" in d.columns:
+        d["pe_zscore"] = (d["pe_ratio"] - d["pe_hist_avg"]) / (d["pe_hist_avg"] * 0.15)
+    return d
+
+def write_csv(df: pd.DataFrame, path: str = OUT_PATH):
+    ensure_dirs(path)
+    df.to_csv(path, index=False)
+
+if __name__ == "__main__":
+    df = seed_pe_ratios()
+    df = compute_pe_ratios(df)
+    write_csv(df)
+    print(f"✅ pe_ratios.csv written to {OUT_PATH} with {len(df)} rows")

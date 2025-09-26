@@ -1,0 +1,57 @@
+{
+  "type": "record",
+  "namespace": "news",
+  "name": "Source",
+  "doc": "Schema for news feed/source metadata (publisher, feed, reliability).",
+  "fields": [
+    {
+      "name": "source_id",
+      "type": "string",
+      "doc": "Unique identifier for the source (e.g., reuters-main, bloomberg-terminal)"
+    },
+    {
+      "name": "publisher",
+      "type": "string",
+      "doc": "Publisher name (e.g., Reuters, Bloomberg, Dow Jones)"
+    },
+    {
+      "name": "feed_type",
+      "type": {
+        "type": "enum",
+        "name": "FeedType",
+        "symbols": ["WIRE", "TERMINAL", "API", "SOCIAL", "OTHER"]
+      },
+      "doc": "How the news is delivered"
+    },
+    {
+      "name": "language",
+      "type": "string",
+      "doc": "Primary language of the feed (ISO 639-1, e.g., en, fr, zh)"
+    },
+    {
+      "name": "geo_scope",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Geographic focus (e.g., GLOBAL, US, EU, APAC)"
+    },
+    {
+      "name": "credibility",
+      "type": "float",
+      "doc": "Credibility/reliability score in [0,1] from internal ratings"
+    },
+    {
+      "name": "latency_class",
+      "type": {
+        "type": "enum",
+        "name": "LatencyClass",
+        "symbols": ["REALTIME", "DELAYED", "ARCHIVE"]
+      },
+      "doc": "Timeliness of the feed"
+    },
+    {
+      "name": "last_updated",
+      "type": { "type": "long", "logicalType": "timestamp-millis" },
+      "doc": "When this source definition was last updated"
+    }
+  ]
+}

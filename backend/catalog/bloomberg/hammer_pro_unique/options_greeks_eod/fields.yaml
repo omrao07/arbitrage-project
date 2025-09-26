@@ -1,0 +1,312 @@
+# options_greeks_eod/fields.yaml
+# Canonical field definitions, groups, aliases, and examples for EOD options chains with greeks.
+# Conventions:
+# - Percentages are FRACTIONS (1% => 0.01).
+# - right: "C" (call) or "P" (put).
+# - Delta sign: calls ≥ 0, puts ≤ 0. Gamma/vega ≥ 0 (non-negative). Theta typically ≤ 0.
+# - Vega/theta/rho are PER CONTRACT and per 0.01 move in vol/rates unless vendor notes otherwise.
+
+version: 1
+
+# ---------------------------------------------------------------------------
+# FIELD DEFINITIONS (vendor-agnostic, normalized names)
+# ---------------------------------------------------------------------------
+fields:
+
+  # --- Keys / joins ---
+  dt:
+    type: date
+    quality: [not_null, no_future_date]
+    desc: "Business date (UTC)."
+
+  option_id:
+    type: string
+    desc: "Canonical option contract id (stable within your system)."
+
+  underlying_ticker:
+    type: string
+    desc: "Internal ticker of the underlying instrument."
+
+  # --- Contract reference ---
+  expiration_dt:
+    type: date
+    desc: "Option expiry date (UTC)."
+
+  dte:
+    type: int32
+    nullable: true
+    desc: "Days to expiry (calendar days)."
+
+  strike:
+    type: float64
+    quality: [non_negative]
+    desc: "Strike price in quote currency."
+
+  right:
+    type: string
+    desc: "C|P (Call or Put)."
+
+  exercise_style:
+    type: string
+    nullable: true
+    desc: "AMERICAN|EUROPEAN|OTHER."
+
+  settlement:
+    type: string
+    nullable: true
+    desc: "PHYSICAL|CASH."
+
+  multiplier:
+    type: float64
+    nullable: true
+    quality: [non_negative]
+    desc: "Contract multiplier (e.g., 100)."
+
+  currency:
+    type: string
+    nullable: true
+    desc: "Quote currency (ISO 4217)."
+
+  # --- Market (prices/size) ---
+  bid:
+    type: float64
+    nullable: true
+    quality: [non_negative]
+  ask:
+    type: float64
+    nullable: true
+    quality: [non_negative]
+  mid:
+    type: float64
+    nullable: true
+    quality: [non_negative]
+    desc: "(bid+ask)/2 or vendor mid."
+  last:
+    type: float64
+    nullable: true
+    quality: [non_negative]
+  mark:
+    type: float64
+    nullable: true
+    quality: [non_negative]
+    desc: "Vendor mark/theo or mid."
+  volume:
+    type: float64
+    unit: contracts
+    nullable: true
+    quality: [non_negative]
+  open_interest:
+    type: float64
+    unit: contracts
+    nullable: true
+    quality: [non_negative]
+  underlying_close:
+    type: float64
+    nullable: true
+    quality: [non_negative]
+    desc: "Underlying EOD close in same currency."
+
+  # --- Greeks / vol ---
+  iv:
+    type: float64
+    unit: pct
+    nullable: true
+    desc: "Implied volatility (annualized, fraction)."
+
+  delta:
+    type: float64
+    nullable: true
+    desc: "Per 1.0 underlying unit; calls ≥0, puts ≤0."
+
+  gamma:
+    type: float64
+    nullable: true
+    desc: "Per 1.0 underlying unit²; non-negative."
+
+  vega:
+    type: float64
+    nullable: true
+    desc: "Per 0.01 vol change; per contract."
+
+  theta:
+    type: float64
+    nullable: true
+    desc: "Per calendar day; per contract (often ≤0)."
+
+  rho:
+    type: float64
+    nullable: true
+    desc: "Per 0.01 interest-rate change; per contract."
+
+  # --- Diagnostics / provenance ---
+  surface_tenor:
+    type: string
+    nullable: true
+    desc: "Vendor tenor label (e.g., 1M, Week 3)."
+
+  src_bid_ask:
+    type: string
+    nullable: true
+    desc: "blp|koyfin|blend (chosen source for prices)."
+
+  src_greeks:
+    type: string
+    nullable: true
+    desc: "blp|koyfin|calc (chosen source for greeks)."
+
+  quality_flag:
+    type: string
+    nullable: true
+    desc: "OK|WIDE_BA|IV_CLIP|BAD_MARK|MISSING (optional QA tag)."
+
+  method:
+    type: string
+    nullable: true
+    desc: "Normalization method/version id."
+
+# ---------------------------------------------------------------------------
+# GROUPS
+# ---------------------------------------------------------------------------
+groups:
+  keys:
+    fields: [dt, option_id, underlying_ticker]
+
+  reference:
+    fields: [expiration_dt, dte, strike, right, exercise_style, settlement, multiplier, currency]
+
+  market:
+    fields: [bid, ask, mid, last, mark, volume, open_interest, underlying_close]
+
+  greeks_vol:
+    fields: [iv, delta, gamma, vega, theta, rho, surface_tenor]
+
+  provenance_quality:
+    fields: [src_bid_ask, src_greeks, quality_flag, method]
+
+# ---------------------------------------------------------------------------
+# ALIASES (vendor mnemonics → canonical)
+# Keep conservative; extend as you wire specific feeds.
+# ---------------------------------------------------------------------------
+aliases:
+  # --- Bloomberg (typical fields; may vary by endpoint) ---
+  OPT_EXPIRE_DT: expiration_dt
+  EXPIRATION: expiration_dt
+  DTE: dte
+  STRIKE: strike
+  OPT_STRIKE_PX: strike
+  OPT_PUT_CALL: right     # values often CALL|PUT; map to C|P in your loader
+  EXERCISE_STYLE: exercise_style
+  SETTL_METHOD: settlement
+  MULTIPLIER: multiplier
+  CRNCY: currency
+  BID: bid
+  ASK: ask
+  PX_LAST: last
+  LAST_PRICE: last
+  MID: mid
+  THEO: mark
+  MARK: mark
+  VOLUME: volume
+  OPEN_INT: open_interest
+  UNDERLYING_PX_CLOSE: underlying_close
+  IVOL_MID: iv
+  IMPLIED_VOLATILITY: iv
+  DELTA: delta
+  GAMMA: gamma
+  VEGA: vega
+  THETA: theta
+  RHO: rho
+  TENOR: surface_tenor
+
+  # --- Koyfin / generic REST ---
+  expiration: expiration_dt
+  strike_price: strike
+  put_call: right
+  style: exercise_style
+  settlement_type: settlement
+  contract_multiplier: multiplier
+  currency: currency
+  bid: bid
+  ask: ask
+  mid: mid
+  last: last
+  mark: mark
+  vol: volume
+  openInterest: open_interest
+  underlyingClose: underlying_close
+  iv: iv
+  delta: delta
+  gamma: gamma
+  vega: vega
+  theta: theta
+  rho: rho
+  tenor: surface_tenor
+
+# ---------------------------------------------------------------------------
+# EXAMPLES
+# ---------------------------------------------------------------------------
+examples:
+
+  call_row:
+    dt: "2025-01-03"
+    option_id: "AAPL-2025-03-21-C-200"
+    underlying_ticker: "AAPL"
+    expiration_dt: "2025-03-21"
+    dte: 77
+    strike: 200
+    right: "C"
+    exercise_style: "AMERICAN"
+    settlement: "PHYSICAL"
+    multiplier: 100
+    currency: "USD"
+    bid: 7.95
+    ask: 8.10
+    mid: 8.025
+    last: 8.05
+    mark: 8.03
+    volume: 18234
+    open_interest: 125430
+    underlying_close: 190.42
+    iv: 0.32
+    delta: 0.56
+    gamma: 0.012
+    vega: 0.85
+    theta: -0.06
+    rho: 0.21
+    surface_tenor: "3M"
+    src_bid_ask: "blend"
+    src_greeks: "blp"
+    quality_flag: "OK"
+    method: "normalize_v1"
+
+  put_row:
+    dt: "2025-01-03"
+    option_id: "MSFT-2025-06-20-P-360"
+    underlying_ticker: "MSFT"
+    expiration_dt: "2025-06-20"
+    dte: 168
+    strike: 360
+    right: "P"
+    exercise_style: "AMERICAN"
+    settlement: "PHYSICAL"
+    multiplier: 100
+    currency: "USD"
+    bid: 9.55
+    ask: 9.85
+    mid: 9.70
+    last: 9.70
+    mark: 9.70
+    volume: 9420
+    open_interest: 88410
+    underlying_close: 406.55
+    iv: 0.28
+    delta: -0.44
+    gamma: 0.009
+    vega: 0.92
+    theta: -0.05
+    rho: -0.31
+    surface_tenor: "6M"
+    src_bid_ask: "blp"
+    src_greeks: "koyfin"
+    quality_flag: "OK"
+    method: "normalize_v1"

@@ -1,0 +1,202 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: analytics
+  labels:
+    project: hyper-os
+    tier: analytics
+    istio-injection: enabled
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: flink-operator
+  namespace: analytics
+  annotations:
+    # EKS IRSA example:
+    # eks.amazonaws.com/role-arn: arn:aws:iam::<ACCOUNT_ID>:role/hyper-os-sa-flink
+    # GKE Workload Identity example:
+    # iam.gke.io/gcp-service-account: flink-operator@<PROJECT_ID>.iam.gserviceaccount.com
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: flink-operator
+rules:
+  - apiGroups: ["flink.apache.org"]
+    resources: ["*"]
+    verbs: ["*"]
+  - apiGroups: [""]
+    resources: ["pods","pods/log","configmaps","secrets","services","endpoints","events","persistentvolumeclaims","serviceaccounts"]
+    verbs: ["*"]
+  - apiGroups: ["apps"]
+    resources: ["deployments","statefulsets","replicasets"]
+    verbs: ["*"]
+  - apiGroups: ["batch"]
+    resources: ["jobs","cronjobs"]
+    verbs: ["*"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["*"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: flink-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: flink-operator
+subjects:
+  - kind: ServiceAccount
+    name: flink-operator
+    namespace: analytics
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-kubernetes-operator
+  namespace: analytics
+  labels:
+    app: flink-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: flink-operator }
+  template:
+    metadata:
+      labels: { app: flink-operator }
+    spec:
+      serviceAccountName: flink-operator
+      containers:
+        - name: operator
+          image: ghcr.io/apache/flink-kubernetes-operator:1.8.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --leader-election-namespace=analytics
+            - --metrics.reporter.prom.class=org.apache.flink.metrics.prometheus.PrometheusReporter
+            - --metrics.reporter.prom.port=9999
+          ports:
+            - name: metrics
+              containerPort: 9999
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits:   { cpu: "1",    memory: "1Gi" }
+          livenessProbe:
+            httpGet: { path: /livez, port: 8081 }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet: { path: /readyz, port: 8081 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+# ================== EXAMPLE APPLICATION ==================
+# Replace image, Kafka endpoints, and artifact storage.
+apiVersion: flink.apache.org/v1beta1
+kind: FlinkDeployment
+metadata:
+  name: market-streams
+  namespace: analytics
+  labels:
+    app: flink
+spec:
+  image: ghcr.io/your-org/market-streams:latest   # <— your built Flink app (Scala/Java/PyFlink)
+  flinkVersion: v1_18
+  serviceAccount: flink-operator                   # inherits IRSA/WI for S3/GCS/Kafka creds if configured
+  ingress:                                         # optional; enable if exposing REST externally
+    template: ""
+    annotations: {}
+    className: ""
+  mode: native
+  jobManager:
+    resource:
+      cpu: 1
+      memory: "2048m"
+    replicas: 1
+    podTemplate:
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        labels: { tier: jm }
+      spec:
+        # Add secrets/config mounts if you need custom truststores, etc.
+        containers:
+          - name: main
+            env:
+              # Kafka creds via env/secret if needed
+              - name: JAVA_TOOL_OPTIONS
+                value: "-Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts"
+  taskManager:
+    resource:
+      cpu: 2
+      memory: "4096m"
+    replicas: 2
+    podTemplate:
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        labels: { tier: tm }
+      spec:
+        containers:
+          - name: main
+            env:
+              - name: FLINK_TM_HEAP
+                value: "3072m"
+  job:
+    entryClass: com.yourorg.streams.MarketMain        # <— your main class for Java/Scala; for PyFlink use python: {}
+    parallelism: 4
+    upgradeMode: stateful
+    state: running
+    restartNonce: 1
+    jarURI: ""                                        # leave empty if image is fat JAR; else set to gs://... or s3://...
+    # For PyFlink:
+    # python:
+    #   pythonFile: local:///opt/flink/usd_inr_job.py
+  # Core Flink configuration
+  flinkConfiguration:
+    taskmanager.numberOfTaskSlots: "2"
+    execution.checkpointing.interval: "30s"
+    execution.checkpointing.mode: EXACTLY_ONCE
+    execution.checkpointing.timeout: "5m"
+    execution.checkpointing.min-pause: "5s"
+    execution.checkpointing.unaligned: "true"
+    execution.checkpointing.tolerable-failed-checkpoints: "3"
+    state.savepoints.dir: "s3://REPLACE_BUCKET_curated/flink/savepoints/"     # OR gs://...
+    # ===== Choose ONE backend block below (S3 or GCS) =====
+    # --- S3 (IRSA; no keys in pod) ---
+    s3.path.style.access: "true"
+    s3.endpoint: "s3.amazonaws.com"
+    state.backend: rocksdb
+    state.checkpoints.dir: "s3://REPLACE_BUCKET_curated/flink/checkpoints/"
+    # --- GCS (Workload Identity) ---
+    # fs.gs.project.id: "<PROJECT_ID>"
+    # state.backend: rocksdb
+    # state.checkpoints.dir: "gs://REPLACE_GCS_BUCKET_curated/flink/checkpoints/"
+    # ===== Metrics (Prometheus) =====
+    metrics.reporter.prom.class: "org.apache.flink.metrics.prometheus.PrometheusReporter"
+    metrics.reporter.prom.port: "9404"
+    # ===== Kafka connector (Flink 1.18) =====
+    pipeline.jars: "local:///opt/flink/lib/flink-connector-kafka-1.18.0.jar"
+  # HighAvailability (K8s-native)
+  highAvailability:
+    type: kubernetes
+    # HA storage for leader election & metadata (uses ConfigMaps by default)
+---
+# (Optional) Service for scraping operator metrics
+apiVersion: v1
+kind: Service
+metadata:
+  name: flink-operator-metrics
+  namespace: analytics
+  labels: { app: flink-operator }
+spec:
+  selector: { app: flink-operator }
+  ports:
+    - name: metrics
+      port: 9999
+      targetPort: 9999

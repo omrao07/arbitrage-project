@@ -1,0 +1,39 @@
+# queries/graph.gql
+#
+# Query graph of entities and their relationships.
+# Can be used to power network visualizations (nodes + edges).
+
+query Graph(
+  $entities: [String!]
+  $start: DateTime
+  $end: DateTime
+  $limit: Int = 200
+  $relationTypes: [String!]
+) {
+  graph(
+    filter: {
+      entities: $entities
+      start: $start
+      end: $end
+      relationTypes: $relationTypes
+    }
+    limit: $limit
+  ) {
+    nodes {
+      id
+      label
+      type        # e.g., "strategy", "asset", "factor", "news"
+      sector
+      region
+      tags
+    }
+    edges {
+      id
+      source
+      target
+      type        # e.g., "correlation", "influences", "co-moves"
+      weight
+      updatedAt
+    }
+  }
+}

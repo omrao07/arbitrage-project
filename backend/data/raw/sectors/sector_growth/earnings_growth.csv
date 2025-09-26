@@ -1,0 +1,75 @@
+import os
+from datetime import date
+import pandas as pd
+import numpy as np
+
+OUT_PATH = "data/adamodar/curated/earnings_growth.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def seed_earnings_growth() -> pd.DataFrame:
+    rows = [
+        ("United States","region","United States","2023-01-01",210.0,1950,"","","","","Baseline year"),
+        ("United States","region","United States","2024-01-01",225.0,2100,"","","","","Broad-based growth"),
+        ("United States","region","United States","2025-01-01",240.0,2250,"","","","","Strong tech contributions"),
+        ("Emerging Mkts","region","EM Aggregate","2023-01-01",95.0,950,"","","","","Baseline year"),
+        ("Emerging Mkts","region","EM Aggregate","2024-01-01",105.0,1020,"","","","","India/China EPS drivers"),
+        ("Emerging Mkts","region","EM Aggregate","2025-01-01",112.0,1100,"","","","","Growth slowing"),
+        ("Tech Sector","sector","United States","2023-01-01",320.0,950,"","","","","Big 7 earnings surge"),
+        ("Tech Sector","sector","United States","2024-01-01",350.0,1020,"","","","","AI-led demand"),
+        ("Tech Sector","sector","United States","2025-01-01",375.0,1090,"","","","","Margins holding"),
+    ]
+    df = pd.DataFrame(rows, columns=[
+        "entity","entity_type","region","as_of","eps_usd","net_income_usd_bn",
+        "eps_growth_yoy","ni_growth_yoy","eps_3y_cagr","ni_3y_cagr","notes"
+    ])
+    return df
+
+def compute_growths(df: pd.DataFrame) -> pd.DataFrame:
+    d = df.copy()
+    d["as_of"] = pd.to_datetime(d["as_of"])
+    d.sort_values(["entity","as_of"], inplace=True)
+
+    # YoY growth
+    d["eps_growth_yoy"] = d.groupby("entity")["eps_usd"].pct_change()
+    d["ni_growth_yoy"] = d.groupby("entity")["net_income_usd_bn"].pct_change()
+
+    # 3Y CAGR
+    for col in ["eps_usd","net_income_usd_bn"]:
+        start = d.groupby("entity")[col].shift(2)
+        end = d[col]
+        years = (d["as_of"] - d.groupby("entity")["as_of"].shift(2)).dt.days / 365.25
+        d[f"{'eps' if 'eps' in col else 'ni'}_3y_cagr"] = np.where(
+            start.notna() & end.notna(),
+            (end / start) ** (1 / years) - 1,
+            np.nan
+        )
+    return d
+
+def upsert_row(df: pd.DataFrame, row: dict) -> pd.DataFrame:
+    """Idempotent upsert by (entity, as_of)."""
+    key_cols = ["entity","as_of"]
+    for k in key_cols:
+        if k not in row:
+            raise ValueError(f"Missing key '{k}' in upsert row")
+    row = row.copy()
+    row["as_of"] = pd.to_datetime(row["as_of"]).strftime("%Y-%m-%d")
+
+    mask = (df["entity"] == row["entity"]) & (pd.to_datetime(df["as_of"]) == pd.to_datetime(row["as_of"]))
+    if mask.any():
+        for k, v in row.items():
+            df.loc[mask, k] = v
+    else:
+        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+    return df
+
+def write_csv(df: pd.DataFrame, path: str = OUT_PATH):
+    ensure_dirs(path)
+    df.to_csv(path, index=False)
+
+if __name__ == "__main__":
+    df = seed_earnings_growth()
+    df = compute_growths(df)
+    write_csv(df)
+    print(f"✅ earnings_growth.csv written to {OUT_PATH} with {len(df)} rows")

@@ -1,0 +1,11 @@
+dataset_id,dt,ts,entity_id,entity_name,index_code,series,version,ticker,currency,doc_clause,tier,tenor_yrs,spread_bp,upfront_pct,recovery,px_last,ret_1d,total_return,oas_bp,z_spread,yield,duration,convexity,rating_moody,rating_sp
+blp_cds_spreads,2025-01-03,,ISSU-000123,Acme Corp,,,,,USD,CR,SR,1,68.2,,0.40,,,,,,,,,,
+blp_cds_spreads,2025-01-03,,ISSU-000123,Acme Corp,,,,,USD,CR,SR,3,95.0,,0.40,,,,,,,,,,
+blp_cds_spreads,2025-01-03,,ISSU-000123,Acme Corp,,,,,USD,CR,SR,5,123.4,0.02,0.40,,,,,,,,,,
+blp_cds_spreads,2025-01-03,,ISSU-000456,Beta PLC,,,,,GBP,CR,SR,5,175.9,,0.40,,,,,,,,,,
+blp_credit_indices,2025-01-03,,,,"CDXIG","42","1",,,,,,,78.9,,,"99.12",0.0008,0.0015,,,,,
+blp_credit_indices,2025-01-03,,,,"CDXHY","42","1",,,,,,,356.4,,,"101.34",-0.0012,0.0020,,,,,
+blp_credit_indices,2025-01-03,,,,"ITRAXXEUR","44","1",,,,,,,62.3,,,"98.45",0.0001,0.0007,,,,,
+blp_corp_oas,2025-01-03,,,,,,,"ACME 4.0 2030",USD,,,,,,,,,,145.0,150.0,0.0512,6.8,0.42,Baa2,BBB
+blp_corp_oas,2025-01-03,,,,,,,"BETA 5.5 2028",GBP,,,,,,,,,,210.0,220.0,0.0630,4.3,0.28,Ba1,BB+
+blp_corp_oas,2025-01-03,,,,,,,"OMEGA 3.0 2035",USD,,,,,,,,,,95.0,100.0,0.0420,9.1,0.78,A3,A-

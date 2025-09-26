@@ -1,0 +1,82 @@
+{
+  "type": "record",
+  "namespace": "portfolio",
+  "name": "PnL",
+  "doc": "Aggregated P&L snapshot (portfolio/strategy/instrument) with attribution and FX normalization.",
+  "fields": [
+    { "name": "pnl_id",        "type": "string", "doc": "Unique record id (e.g., <portfolio>-<ts>-<scope>)" },
+    { "name": "portfolio_id",  "type": "string", "doc": "Portfolio/account identifier" },
+    { "name": "strategy_tag",  "type": ["null","string"], "default": null, "doc": "Optional strategy identifier for scoped P&L" },
+    { "name": "instrument_id", "type": ["null","string"], "default": null, "doc": "Optional instrument for single-name P&L" },
+
+    {
+      "name": "scope",
+      "type": { "type":"enum","name":"PnLScope","symbols":["PORTFOLIO","STRATEGY","INSTRUMENT"] },
+      "doc": "Aggregation scope of this P&L record"
+    },
+    {
+      "name": "period",
+      "type": { "type":"enum","name":"PnLPeriod","symbols":["INTRADAY","DAILY","WEEKLY","MONTHLY"] },
+      "doc": "Aggregation period for the values"
+    },
+
+    { "name": "as_of_time", "type": { "type":"long","logicalType":"timestamp-millis" }, "doc": "Timestamp end of period (UTC)" },
+
+    /* Currency / FX context */
+    { "name": "report_ccy", "type": "string", "doc": "Reporting/base currency code (e.g., USD)" },
+    { "name": "local_ccy",  "type": ["null","string"], "default": null, "doc": "Local currency for instrument/venue (if applicable)" },
+    { "name": "fx_rate_l2r", "type": ["null","double"], "default": null, "doc": "FX rate local->reporting used for conversion" },
+
+    /* Core P&L (reporting currency) */
+    { "name": "realized_pnl",   "type": "double", "doc": "Realized P&L for the period (report_ccy)" },
+    { "name": "unrealized_pnl", "type": "double", "doc": "Unrealized/MTM P&L for the period (report_ccy)" },
+    { "name": "total_pnl",      "type": "double", "doc": "Sum of realized + unrealized + carry/dividends - costs" },
+
+    /* Components (reporting currency) */
+    { "name": "dividends",   "type": ["null","double"], "default": null, "doc": "Cash dividends/coupons received" },
+    { "name": "carry",       "type": ["null","double"], "default": null, "doc": "Funding/borrow/carry (incl. swap/funding)" },
+    { "name": "fees",        "type": ["null","double"], "default": null, "doc": "Brokerage, exchange, clearing fees" },
+    { "name": "slippage",    "type": ["null","double"], "default": null, "doc": "Implementation shortfall/slippage" },
+    { "name": "taxes",       "type": ["null","double"], "default": null, "doc": "Withholding or realized tax impacts" },
+
+    /* Exposures & risk context */
+    { "name": "gross_exposure", "type": ["null","double"], "default": null, "doc": "Absolute long + short notional exposure" },
+    { "name": "net_exposure",   "type": ["null","double"], "default": null, "doc": "Long minus short notional exposure" },
+    { "name": "var_95",         "type": ["null","double"], "default": null, "doc": "One-day 95% VaR (report_ccy)" },
+    { "name": "beta_to_bm",     "type": ["null","double"], "default": null, "doc": "Beta vs benchmark for the window" },
+
+    /* Optional detailed attribution buckets */
+    {
+      "name": "attribution",
+      "type": ["null",{
+        "type":"array",
+        "items": {
+          "type":"record",
+          "name":"Attribution",
+          "fields":[
+            { "name":"bucket", "type":"string", "doc":"Name (e.g., Sector:Tech, Factor:Value, Strategy:StatArb)" },
+            { "name":"amount", "type":"double", "doc":"PnL contribution in report_ccy" }
+          ]
+        }
+      }],
+      "default": null,
+      "doc": "Arbitrary P&L contribution buckets"
+    },
+
+    /* Provenance */
+    {
+      "name": "source",
+      "type": ["null",{
+        "type":"record",
+        "name":"PnLSource",
+        "fields":[
+          { "name":"engine",  "type":"string", "doc":"Computation engine (e.g., backtest-v2, realtime-pnl)" },
+          { "name":"version", "type":"string", "doc":"Semantic version/git SHA of calc code" },
+          { "name":"window",  "type":["null","string"], "default": null, "doc":"Lookback window used for risk/beta (e.g., 60d)" }
+        ]
+      }],
+      "default": null,
+      "doc": "How this PnL was computed"
+    }
+  ]
+}

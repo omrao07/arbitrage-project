@@ -1,0 +1,17 @@
+# shm/.gitkeep
+# ------------------------------------------------------------
+# This file exists only to keep the shm/ directory in version control.
+# At runtime, the gateway will create shared memory objects under /dev/shm
+# (POSIX shm_open) such as:
+#   /risk_wall
+#   /md_ringbuf
+#   /orders_in
+#   /fills_out
+#   /heartbeat
+#
+# These appear in /dev/shm on Linux and should NOT be checked into git.
+# Add to .gitignore:
+#   shm/*.shm
+#
+# Safe to delete or leave empty — purpose is directory tracking.
+# ------------------------------------------------------------

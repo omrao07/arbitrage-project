@@ -1,0 +1,52 @@
+import pandas as pd
+from datetime import date
+import os
+
+OUT_PATH = "data/macro/global_gdp.csv"
+
+def ensure_dirs(path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def init_global_gdp(seed: bool = True) -> pd.DataFrame:
+    """
+    Create global_gdp.csv with schema:
+    year, region, gdp_usd_trn, gdp_growth_yoy, source, notes
+    """
+    ensure_dirs(OUT_PATH)
+    cols = ["year","region","gdp_usd_trn","gdp_growth_yoy","source","notes"]
+
+    if not seed:
+        df = pd.DataFrame(columns=cols)
+        df.to_csv(OUT_PATH, index=False)
+        return df
+
+    rows = [
+        (2022,"United States",25.0,0.021,"BEA","Post-COVID rebound slowing"),
+        (2022,"Developed ex-US",33.0,0.018,"OECD/IMF","Europe + Japan + Canada + Australia"),
+        (2022,"Emerging Mkts",23.0,0.048,"IMF/World Bank","Stronger EM growth"),
+        (2022,"Frontier Mkts",2.5,0.037,"IMF/World Bank","Africa + smaller EM basket"),
+        (2022,"Global Total",83.5,0.028,"IMF/World Bank","Weighted total"),
+        (2023,"United States",26.5,0.060,"BEA","Inflation-driven nominal growth"),
+        (2023,"Developed ex-US",34.2,0.036,"OECD/IMF","Eurozone inflation bump"),
+        (2023,"Emerging Mkts",24.5,0.065,"IMF","India & China drove EM expansion"),
+        (2023,"Frontier Mkts",2.7,0.050,"IMF","FX depreciation offset part of growth"),
+        (2023,"Global Total",87.9,0.053,"IMF/World Bank",""),
+        (2024,"United States",27.8,0.049,"BEA","Strong consumer sector"),
+        (2024,"Developed ex-US",35.0,0.023,"OECD/IMF","EU slowdown, Japan stable"),
+        (2024,"Emerging Mkts",26.0,0.061,"IMF","India-led EM expansion"),
+        (2024,"Frontier Mkts",2.9,0.045,"IMF","Still small, but positive contribution"),
+        (2024,"Global Total",91.7,0.043,"IMF/World Bank",""),
+        (2025,"United States",28.5,0.025,"BEA","Q1 projection"),
+        (2025,"Developed ex-US",35.5,0.018,"OECD/IMF","Europe still weak"),
+        (2025,"Emerging Mkts",27.0,0.038,"IMF","EM resilience amid global tightening"),
+        (2025,"Frontier Mkts",3.0,0.034,"IMF","Small contributor"),
+        (2025,"Global Total",94.0,0.030,"IMF/World Bank","Weighted world GDP"),
+    ]
+
+    df = pd.DataFrame(rows, columns=cols)
+    df.to_csv(OUT_PATH, index=False)
+    return df
+
+if __name__ == "__main__":
+    df = init_global_gdp(seed=True)
+    print(f"✅ global_gdp.csv written to {OUT_PATH} with {len(df)} rows")

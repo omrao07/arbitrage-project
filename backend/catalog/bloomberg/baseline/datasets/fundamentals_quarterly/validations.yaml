@@ -1,0 +1,414 @@
+# fundamentals_quarterly/validations.yaml
+# Runbook-friendly validations for Quarterly Fundamentals.
+# Your engine (SQL/Spark/DuckDB/etc.) enforces the semantics for each rule.
+
+version: 1
+
+# -----------------------------------------------------------------------------
+# Global defaults (override per-dataset as needed)
+# -----------------------------------------------------------------------------
+defaults:
+  timezone: "UTC"
+  severity:
+    freshness_breach: warn          # warn|error
+    schema_mismatch: error
+    null_violation: error
+    range_violation: error
+    join_unmatched: warn
+    duplicate_pk: error
+    variance_spike: warn
+    monotonic_break: warn
+  # Quarterly data can arrive long after period end; give a wide SLA window.
+  freshness_sla_min: 129600         # 90 days
+  row_count_variance_pct: 25        # ±25% vs baseline window
+  baseline_window_days: 360         # use last ~year for quarterly baselines
+  allowed_currencies: ["USD","EUR","GBP","JPY","INR","AUD","CHF","CAD","NZD","CNY","HKD","SEK","NOK","SGD"]
+  numeric_eps: 1e-12
+  money_abs_tol: 1e4                # ~$10k absolute tolerance for identity checks
+  money_rel_tol: 0.02               # 2% relative tolerance for identity checks
+  pct_abs_tol: 0.01                 # 1pp absolute tolerance for percent checks
+
+# -----------------------------------------------------------------------------
+# Reusable macros (names only; engine defines implementations)
+# -----------------------------------------------------------------------------
+macros:
+  - not_null
+  - non_negative
+  - pct_0_1
+  - no_future_date
+
+# -----------------------------------------------------------------------------
+# Dataset-specific validations
+# -----------------------------------------------------------------------------
+datasets:
+
+  # ==================== 1) Bloomberg Fundamentals (Quarterly) =================
+  blp_fundamentals_quarterly:
+    freshness_sla_min: 129600
+    primary_key: ["dt","ticker"]
+
+    schema:
+      require_columns:
+        - dt
+        - ticker
+        - fiscal_year
+        - fiscal_quarter
+        - revenue
+        - net_income
+      types:
+        dt: date
+        ticker: string
+        fiscal_year: int32
+        fiscal_quarter: int32
+        report_date: date
+        currency: string
+        revenue: float64
+        cost_of_revenue: float64
+        gross_profit: float64
+        operating_expenses: float64
+        ebit: float64
+        interest_expense: float64
+        pretax_income: float64
+        tax_expense: float64
+        net_income: float64
+        eps_basic: float64
+        eps_diluted: float64
+        assets_total: float64
+        liabilities_total: float64
+        equity_total: float64
+        cash_and_equiv: float64
+        receivables: float64
+        inventory: float64
+        debt_total: float64
+        cfo: float64
+        cfi: float64
+        cff: float64
+        capex: float64
+        dividends_paid: float64
+        shares_out: float64
+
+    row_rules:
+      - { name: dt_present,          columns: ["dt"],            check: not_null }
+      - { name: dt_not_future,       columns: ["dt"],            check: no_future_date }
+      - { name: ticker_present,      columns: ["ticker"],        check: not_null }
+      - { name: year_nonneg,         columns: ["fiscal_year"],   check: non_negative }
+      - name: quarter_bounds
+        sql: "fiscal_quarter BETWEEN 1 AND 4"
+      - name: currency_enum
+        sql: "currency IS NULL OR currency IN (${allowed_currencies})"
+      - name: revenue_nonneg
+        columns: ["revenue"]
+        check: non_negative
+      - name: cor_nonneg
+        columns: ["cost_of_revenue"]
+        check: non_negative
+      - name: shares_nonneg
+        columns: ["shares_out"]
+        check: non_negative
+
+      # Accounting identities (soft checks with relative/absolute tolerances)
+      - name: gp_identity
+        sql: >
+          gross_profit IS NULL OR revenue IS NULL OR cost_of_revenue IS NULL OR
+          ABS(gross_profit - (revenue - cost_of_revenue)) <=
+          (${money_abs_tol} + ${money_rel_tol} * GREATEST(1, ABS(revenue)))
+      - name: ebit_identity
+        sql: >
+          ebit IS NULL OR gross_profit IS NULL OR operating_expenses IS NULL OR
+          ABS(ebit - (gross_profit - operating_expenses)) <=
+          (${money_abs_tol} + ${money_rel_tol} * GREATEST(1, ABS(gross_profit)))
+      - name: pretax_identity
+        sql: >
+          pretax_income IS NULL OR ebit IS NULL OR interest_expense IS NULL OR
+          ABS(pretax_income - (ebit - interest_expense)) <=
+          (${money_abs_tol} + ${money_rel_tol} * GREATEST(1, ABS(ebit)))
+      - name: net_income_identity
+        sql: >
+          net_income IS NULL OR pretax_income IS NULL OR tax_expense IS NULL OR
+          ABS(net_income - (pretax_income - tax_expense)) <=
+          (${money_abs_tol} + ${money_rel_tol} * GREATEST(1, ABS(pretax_income)))
+      - name: balance_sheet_identity
+        sql: >
+          equity_total IS NULL OR assets_total IS NULL OR liabilities_total IS NULL OR
+          ABS(equity_total - (assets_total - liabilities_total)) <=
+          (${money_abs_tol} + ${money_rel_tol} * GREATEST(1, ABS(assets_total)))
+
+      # EPS (very soft; many vendors apply adjustments)
+      - name: eps_diluted_consistency
+        sql: >
+          eps_diluted IS NULL OR net_income IS NULL OR shares_out IS NULL OR shares_out <= 0 OR
+          ABS(eps_diluted - (net_income / NULLIF(shares_out,0))) <=
+          (0.10 * GREATEST(1, ABS(eps_diluted)) + 0.01)
+
+    ranges:
+      - { field: revenue,           min: 0,    max: 1e14 }
+      - { field: cost_of_revenue,   min: 0,    max: 1e14 }
+      - { field: gross_profit,      min: -1e14, max: 1e14 }
+      - { field: operating_expenses,min: -1e14, max: 1e14 }
+      - { field: ebit,              min: -1e14, max: 1e14 }
+      - { field: interest_expense,  min: -1e14, max: 1e14 }
+      - { field: pretax_income,     min: -1e14, max: 1e14 }
+      - { field: tax_expense,       min: -1e14, max: 1e14 }
+      - { field: net_income,        min: -1e14, max: 1e14 }
+      - { field: eps_basic,         min: -1e6,  max: 1e6 }
+      - { field: eps_diluted,       min: -1e6,  max: 1e6 }
+      - { field: assets_total,      min: 0,     max: 1e15 }
+      - { field: liabilities_total, min: 0,     max: 1e15 }
+      - { field: equity_total,      min: -1e15, max: 1e15 }
+      - { field: cash_and_equiv,    min: -1e14, max: 1e14 }
+      - { field: debt_total,        min: 0,     max: 1e15 }
+      - { field: cfo,               min: -1e14, max: 1e14 }
+      - { field: cfi,               min: -1e14, max: 1e14 }
+      - { field: cff,               min: -1e14, max: 1e14 }
+      - { field: capex,             min: -1e14, max: 1e14 }
+      - { field: dividends_paid,    min: -1e14, max: 1e14 }
+      - { field: shares_out,        min: 0,     max: 1e15 }
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 360
+      max_delta_pct: 25
+
+    monotonic:
+      - name: fiscal_progression
+        by: ["ticker"]
+        order_by: ["dt"]
+        expr: "(fiscal_year*4 + fiscal_quarter) >= LAG(fiscal_year*4 + fiscal_quarter)"
+
+  # ===================== 2) Koyfin Fundamentals (Quarterly) ==================
+  koyfin_fundamentals_quarterly:
+    freshness_sla_min: 129600
+    primary_key: ["dt","ticker"]
+
+    schema:
+      require_columns: ["dt","ticker","fiscal_year","fiscal_quarter","revenue","net_income"]
+      types:
+        dt: date
+        ticker: string
+        fiscal_year: int32
+        fiscal_quarter: int32
+        report_date: date
+        currency: string
+        revenue: float64
+        gross_profit: float64
+        operating_expenses: float64
+        ebit: float64
+        net_income: float64
+        eps_diluted: float64
+        assets_total: float64
+        liabilities_total: float64
+        equity_total: float64
+        cash_and_equiv: float64
+        cfo: float64
+        capex: float64
+        shares_out: float64
+
+    row_rules:
+      - { name: dt_present,        columns: ["dt"],          check: not_null }
+      - { name: dt_not_future,     columns: ["dt"],          check: no_future_date }
+      - { name: ticker_present,    columns: ["ticker"],      check: not_null }
+      - { name: year_nonneg,       columns: ["fiscal_year"], check: non_negative }
+      - name: quarter_bounds
+        sql: "fiscal_quarter BETWEEN 1 AND 4"
+      - name: currency_enum
+        sql: "currency IS NULL OR currency IN (${allowed_currencies})"
+      - { name: revenue_nonneg,    columns: ["revenue"],     check: non_negative }
+
+    ranges:
+      - { field: revenue,           min: 0,    max: 1e14 }
+      - { field: net_income,        min: -1e14, max: 1e14 }
+      - { field: eps_diluted,       min: -1e6,  max: 1e6 }
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 360
+      max_delta_pct: 30
+
+  # ================= 3) Internal Derived (Ratios & Growth, Q) ================
+  internal_fundamentals_quarterly_derived:
+    freshness_sla_min: 129600
+    primary_key: ["dt","ticker"]
+
+    schema:
+      require_columns:
+        ["dt","ticker","revenue_t4q","ebit_t4q","net_income_t4q","cfo_t4q",
+         "gross_margin_t4q","ebit_margin_t4q","net_margin_t4q",
+         "fcf_t4q","fcf_margin_t4q"]
+      types:
+        dt: date
+        ticker: string
+        currency: string
+        revenue_t4q: float64
+        ebit_t4q: float64
+        net_income_t4q: float64
+        cfo_t4q: float64
+        gross_margin_t4q: float64
+        ebit_margin_t4q: float64
+        net_margin_t4q: float64
+        leverage: float64
+        roa_t4q: float64
+        roe_t4q: float64
+        fcf_t4q: float64
+        fcf_margin_t4q: float64
+        revenue_yoy: float64
+        net_income_yoy: float64
+        eps_diluted_yoy: float64
+        method: string
+
+    row_rules:
+      - { name: dt_present,          columns: ["dt"], check: not_null }
+      - { name: dt_not_future,       columns: ["dt"], check: no_future_date }
+      - name: margins_loose_bounds
+        sql: >
+          gross_margin_t4q BETWEEN -5 AND 5 AND
+          ebit_margin_t4q BETWEEN -5 AND 5 AND
+          net_margin_t4q BETWEEN -5 AND 5
+      - name: fcf_margin_consistency
+        sql: >
+          fcf_t4q IS NULL OR revenue_t4q IS NULL OR revenue_t4q = 0 OR
+          ABS(fcf_margin_t4q - (fcf_t4q / NULLIF(revenue_t4q,0))) <= ${pct_abs_tol}
+
+    ranges:
+      - { field: revenue_t4q,     min: 0,     max: 1e15 }
+      - { field: ebit_t4q,        min: -1e15, max: 1e15 }
+      - { field: net_income_t4q,  min: -1e15, max: 1e15 }
+      - { field: cfo_t4q,         min: -1e15, max: 1e15 }
+      - { field: fcf_t4q,         min: -1e15, max: 1e15 }
+      - { field: fcf_margin_t4q,  min: -5,    max: 5 }
+      - { field: leverage,        min: -10,   max: 100 }   # equity can be negative; allow wide range
+      - { field: roa_t4q,         min: -5,    max: 5 }
+      - { field: roe_t4q,         min: -50,   max: 50 }
+      - { field: revenue_yoy,     min: -5,    max: 5 }
+      - { field: net_income_yoy,  min: -5,    max: 5 }
+      - { field: eps_diluted_yoy, min: -5,    max: 5 }
+
+    duplicate_pk:
+      enabled: true
+
+    variance:
+      row_count_window_days: 360
+      max_delta_pct: 25
+
+# -----------------------------------------------------------------------------
+# Cross-dataset integrity checks
+# -----------------------------------------------------------------------------
+cross_checks:
+
+  # Vendor parity on overlapping rows (soft tolerance)
+  - name: blp_vs_koyfin_revenue_parity
+    description: "For overlapping (dt,ticker), |revenue_blp - revenue_koy| / max(1,|revenue_blp|) ≤ 5% median over last year."
+    sql: >
+      WITH joined AS (
+        SELECT a.dt, a.ticker, a.revenue AS blp_rev, b.revenue AS koy_rev
+        FROM blp_fundamentals_quarterly a
+        JOIN koyfin_fundamentals_quarterly b
+          ON a.dt = b.dt AND a.ticker = b.ticker
+        WHERE a.dt >= dateadd('day', -365, current_date)
+      )
+      SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (ABS(blp_rev - koy_rev)/NULLIF(ABS(blp_rev),0))) AS p50_rel_diff
+      FROM joined
+    expect:
+      p50_rel_diff_lte: 0.05
+
+  - name: blp_vs_koyfin_net_income_parity
+    description: "Median relative difference in net_income between vendors ≤ 7% over last year."
+    sql: >
+      WITH joined AS (
+        SELECT a.dt, a.ticker, a.net_income AS blp_ni, b.net_income AS koy_ni
+        FROM blp_fundamentals_quarterly a
+        JOIN koyfin_fundamentals_quarterly b
+          ON a.dt = b.dt AND a.ticker = b.ticker
+        WHERE a.dt >= dateadd('day', -365, current_date)
+      )
+      SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (ABS(blp_ni - koy_ni)/NULLIF(ABS(blp_ni),0))) AS p50_rel_diff
+      FROM joined
+    expect:
+      p50_rel_diff_lte: 0.07
+
+  # T4Q construction check for derived table against Bloomberg base
+  - name: t4q_sums_revenue
+    description: "Derived revenue_t4q equals rolling sum of last 4 quarters revenue from Bloomberg within 2%."
+    sql: >
+      WITH base AS (
+        SELECT ticker, dt, revenue,
+               SUM(revenue) OVER (PARTITION BY ticker ORDER BY dt ROWS BETWEEN 3 PRECEDING AND CURRENT ROW) AS rev_t4q_calc
+        FROM blp_fundamentals_quarterly
+      ),
+      cmp AS (
+        SELECT d.ticker, d.dt, d.revenue_t4q, b.rev_t4q_calc
+        FROM internal_fundamentals_quarterly_derived d
+        JOIN base b ON d.ticker = b.ticker AND d.dt = b.dt
+      )
+      SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (ABS(revenue_t4q - rev_t4q_calc)/NULLIF(ABS(rev_t4q_calc),0))) AS p50_rel_diff
+      FROM cmp
+    expect:
+      p50_rel_diff_lte: 0.02
+
+  # YoY growth sanity check for derived table
+  - name: yoy_revenue_consistency
+    description: "revenue_yoy ≈ (curr_rev / lag_4_rev - 1) within 2pp where both available."
+    sql: >
+      WITH base AS (
+        SELECT ticker, dt, revenue,
+               LAG(revenue, 4) OVER (PARTITION BY ticker ORDER BY dt) AS rev_lag4
+        FROM blp_fundamentals_quarterly
+      ),
+      cmp AS (
+        SELECT d.ticker, d.dt, d.revenue_yoy, b.revenue AS rev_now, b.rev_lag4
+        FROM internal_fundamentals_quarterly_derived d
+        JOIN base b ON d.ticker = b.ticker AND d.dt = b.dt
+        WHERE b.rev_lag4 IS NOT NULL AND b.rev_lag4 <> 0
+      )
+      SELECT AVG(ABS(revenue_yoy - ((rev_now / rev_lag4) - 1))) AS avg_abs_err
+      FROM cmp
+    expect:
+      avg_abs_err_lte: 0.02
+
+  # Balance-sheet derived metrics sanity (requires join to base PE balances)
+  - name: leverage_roa_roe_consistency
+    description: "Leverage/ROA/ROE align with base period-end balances within wide tolerances."
+    sql: >
+      WITH pe AS (
+        SELECT dt, ticker, assets_total, equity_total, debt_total, net_income
+        FROM blp_fundamentals_quarterly
+      ),
+      cmp AS (
+        SELECT d.dt, d.ticker, d.leverage, d.roa_t4q, d.roe_t4q,
+               p.assets_total, p.equity_total, p.net_income
+        FROM internal_fundamentals_quarterly_derived d
+        JOIN pe p ON d.dt = p.dt AND d.ticker = p.ticker
+      )
+      SELECT
+        AVG(CASE WHEN p.equity_total IS NULL OR p.equity_total = 0 OR d.leverage IS NULL
+                 THEN NULL
+                 ELSE ABS(d.leverage - (p.debt_total / NULLIF(p.equity_total,0))) END) AS avg_lev_abs_err,
+        AVG(CASE WHEN p.assets_total IS NULL OR p.assets_total = 0 OR d.roa_t4q IS NULL OR d.net_income_t4q IS NULL
+                 THEN NULL
+                 ELSE ABS(d.roa_t4q - (d.net_income_t4q / NULLIF(p.assets_total,0))) END) AS avg_roa_abs_err,
+        AVG(CASE WHEN p.equity_total IS NULL OR p.equity_total = 0 OR d.roe_t4q IS NULL OR d.net_income_t4q IS NULL
+                 THEN NULL
+                 ELSE ABS(d.roe_t4q - (d.net_income_t4q / NULLIF(p.equity_total,0))) END) AS avg_roe_abs_err
+      FROM cmp d
+      JOIN pe p ON d.dt = p.dt AND d.ticker = p.ticker
+    expect:
+      avg_lev_abs_err_lte: 0.50     # very loose; accounting policies differ
+      avg_roa_abs_err_lte: 0.05
+      avg_roe_abs_err_lte: 0.10
+
+# -----------------------------------------------------------------------------
+# Alert routing hints (map to channels in your runner)
+# -----------------------------------------------------------------------------
+alerts:
+  routes:
+    - match: { dataset: "blp_fundamentals_quarterly", type: "schema_mismatch" }
+      to: ["slack:#fundamentals-pipeline"]
+    - match: { dataset: "blp_fundamentals_quarterly", type: "duplicate_pk" }
+      to: ["slack:#data-quality"]
+    - match: { dataset: "koyfin_fundamentals_quarterly", type: "freshness_breach" }
+      to: ["slack:#fundamentals-pipeline"]
+    - match: { dataset: "internal_fundamentals_quarterly_derived", type: "variance_spike" }
+      to: ["slack:#analytics-quality"]
