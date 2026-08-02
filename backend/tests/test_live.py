@@ -1,10 +1,8 @@
 # backend/tests/test_live.py
-"""Tests for backend/live/ modules."""
+"""Tests for the generic/paper path of backend/live_engine/."""
 import time
 
-from backend.live.engine import LiveEngine
-from backend.live.risk_gates import RiskGates
-from backend.live.signal_aggregator import SignalAggregator
+from backend.live_engine import LiveEngine, RiskGates, SignalAggregator
 
 # ---- RiskGates tests -------------------------------------------------------
 

@@ -10,6 +10,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
+from backend.api.ws_auth import authenticate_ws
+
 # ---------- Optional Redis ----------
 USE_REDIS = True
 try:
@@ -199,6 +201,9 @@ async def ws_greeks(
     strike_max: Optional[float] = Query(None),
     warmup: int = Query(200, ge=0, le=2000),   # how many cached ticks to send initially
 ):
+    if not await authenticate_ws(ws):
+        return
+
     client = _Client(ws, symbol, expiry, right, strike_min, strike_max)
     await _HUB.connect(client)
 

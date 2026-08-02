@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
 
+from backend.api.ws_auth import authenticate_ws
+
 # ---------- Optional Redis ----------
 USE_REDIS = True
 try:
@@ -204,6 +206,9 @@ async def ws_orderbook(
     symbol: str = Query(...),
     depth: int = Query(25, ge=1, le=200),
 ):
+    if not await authenticate_ws(ws):
+        return
+
     symbol = symbol.upper()
     await _HUB.connect(ws, symbol, depth)
 

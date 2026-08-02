@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
+from backend.api.ws_auth import authenticate_ws
+
 # ---------- Optional deps ----------
 USE_REDIS = True
 try:
@@ -212,6 +214,9 @@ async def ws_candles(
     symbol: str = Query(...),
     tf: str = Query("1m")
 ):
+    if not await authenticate_ws(ws):
+        return
+
     symbol = symbol.upper()
     if tf not in TF_SEC:
         await ws.close(code=1003)

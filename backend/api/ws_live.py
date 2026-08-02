@@ -12,7 +12,9 @@ import os
 import time
 from typing import Any, Dict, Optional, Set
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
+from backend.api.ws_auth import authenticate_ws, is_authorized_message
 
 log = logging.getLogger(__name__)
 
@@ -25,8 +27,6 @@ try:
 except ImportError:
     AsyncRedis = None  # type: ignore
     _HAVE_REDIS = False
-
-_ENGINE_API_KEY = os.getenv("ENGINE_API_KEY", "")
 
 _REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 _REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
@@ -295,8 +295,8 @@ _broadcast_task: Optional[asyncio.Task] = None
 async def ws_live(ws: WebSocket, token: str = ""):
     global _broadcast_task
 
-    if _ENGINE_API_KEY and token != _ENGINE_API_KEY:
-        await ws.close(code=status.WS_1008_POLICY_VIOLATION)
+    # Fail-closed: an unset ENGINE_API_KEY refuses the connection, never bypasses it.
+    if not await authenticate_ws(ws, token):
         return
 
     await _manager.connect(ws)
@@ -317,6 +317,14 @@ async def ws_live(ws: WebSocket, token: str = ""):
             op = msg.get("op")
             if op == "ping":
                 await ws.send_text(json.dumps({"type": "pong", "payload": {"t": time.time()}}))
+            elif op:
+                # Any state-mutating op must re-present a valid token: tokens
+                # expire mid-session, so handshake-only auth is fail-open.
+                if not is_authorized_message(msg.get("token")):
+                    await ws.close(code=1008)
+                    _manager.disconnect(ws)
+                    return
+                log.warning("ws_live: unhandled op %r", op)
 
     except WebSocketDisconnect:
         _manager.disconnect(ws)

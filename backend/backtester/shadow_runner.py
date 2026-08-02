@@ -36,23 +36,64 @@ def now_ms() -> int: return int(time.time() * 1000)
 # ---------- Minimal cost & broker sim ---------------------------------------
 @dataclass
 class CostModel:
+    """
+    Shadow-fill cost model.
+
+    `instrument` selects the fee basis:
+      "generic" — flat `fee_bps` of notional (non-India venues).
+      "nse_option" / "nse_future" — the statutory NSE F&O stack from
+      backend.costs.nse_fo (STT sell-side, stamp buy-side, GST on fees, flat
+      brokerage). Use these for anything that will trade on NSE: a flat
+      0.3 bps understates a real 1-lot NIFTY option round trip by >100x,
+      which is enough to make a losing short-premium strategy look profitable.
+
+    `lot_size` is required for the NSE modes; `qty` is then interpreted as lots.
+    """
+
     fee_bps: float = 0.3
     half_spread_bps: float = 0.8
     impact_bps: float = 0.0  # per 1% ADV (toy)
+    instrument: str = "generic"
+    lot_size: int = 1
+
+    def __post_init__(self) -> None:
+        if self.instrument not in ("generic", "nse_option", "nse_future"):
+            raise ValueError(f"unknown instrument {self.instrument!r}")
+        if self.instrument != "generic" and self.lot_size <= 1:
+            raise ValueError(
+                f"{self.instrument} requires an explicit lot_size (e.g. 75 for NIFTY)"
+            )
+
+    def fee(self, side: str, price: float, qty: float) -> float:
+        """All-in statutory cost for one leg, in account currency."""
+        if qty <= 0 or price <= 0:
+            return 0.0
+        if self.instrument == "generic":
+            return abs(price * qty) * (self.fee_bps / 1e4)
+
+        from backend.costs import nse_fo
+
+        is_sell = side.lower() == "sell"
+        fn = nse_fo.option_costs if self.instrument == "nse_option" else nse_fo.future_costs
+        return fn(price, int(qty), self.lot_size, "SELL" if is_sell else "BUY").total
 
     def market_fill(self, side: str, mark: float, qty: float) -> Tuple[float, float]:
         slip = (self.half_spread_bps / 1e4) * mark
         px = mark + (slip if side == "buy" else -slip)
-        fee = abs(px * qty) * (self.fee_bps / 1e4)
-        return float(px), float(fee)
+        return float(px), float(self.fee(side, px, qty))
 
-    def limit_fill(self, side: str, mark: float, limit_px: float) -> Optional[Tuple[float,float]]:
+    def limit_fill(
+        self, side: str, mark: float, limit_px: float, qty: float
+    ) -> Optional[Tuple[float, float]]:
         # fill if crossing best
         sp = (self.half_spread_bps / 1e4) * mark
         bid, ask = mark - sp, mark + sp
-        if side == "buy" and limit_px >= ask:  return float(limit_px), abs(limit_px * self.fee_bps / 1e4)
-        if side == "sell" and limit_px <= bid: return float(limit_px), abs(limit_px * self.fee_bps / 1e4)
-        return None
+        crossed = (side == "buy" and limit_px >= ask) or (side == "sell" and limit_px <= bid)
+        if not crossed:
+            return None
+        # qty is not optional: charging a single unit's fee regardless of size
+        # made every limit fill effectively free at scale.
+        return float(limit_px), float(self.fee(side, limit_px, qty))
 
 @dataclass
 class Position:
@@ -140,7 +181,7 @@ class StrategyHarness:
         oid = self._next_id()
         # simulate fill
         if order_type == "limit" and limit_price is not None:
-            got = self.cost.limit_fill(side, mark, float(limit_price))
+            got = self.cost.limit_fill(side, mark, float(limit_price), q)
             if not got:
                 self.pub(S_SHADOW_EVT, {"ts_ms": now_ms(), "level": "info", "msg": "limit not marketable", "symbol": sym, "limit": limit_price, "mark": mark, "order_id": oid})
                 return

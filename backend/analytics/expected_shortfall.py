@@ -92,10 +92,16 @@ def es_parametric_t(mu: float, s: float, nu: float, alpha: float = 0.975) -> flo
         c = ((nu + t_alpha**2) / (nu - 1.0)) * (pdf / (1.0 - alpha))
         return float(mu + s * c)
     except Exception:
-        # numeric fallback via Monte Carlo
+        # Numeric fallback via Monte Carlo.
+        # ES is the MEAN OF THE TAIL beyond the quantile, not the quantile
+        # itself. The previous form added `mean(tail) * 0.0`, cancelling the
+        # tail term and returning VaR — which understates tail risk on every
+        # short-vol book that relies on this number.
         rng = np.random.default_rng(42)
-        x = mu + s * rng.standard_t(df=nu, size=2_00000)
-        return float(np.quantile(x, alpha) + np.mean(x[x >= np.quantile(x, alpha)]) * 0.0)  # degrade gracefully
+        x = mu + s * rng.standard_t(df=nu, size=200_000)
+        q = float(np.quantile(x, alpha))
+        tail = x[x >= q]
+        return float(np.mean(tail)) if tail.size else q
 
 def es_cornish_fisher(mean: float, std: float, skew: float, kurt: float, alpha: float = 0.975) -> float:
     """

@@ -23,6 +23,9 @@ _REDIS_PASSWORD = os.getenv("REDIS_PASSWORD") or None
 _ENGINE_API_KEY = os.environ.get("ENGINE_API_KEY", "")
 _key_header = APIKeyHeader(name="X-Engine-Key", auto_error=False)
 
+# Minimum overlapping observations before a stress scenario is meaningful.
+_MIN_STRESS_OBS = int(os.getenv("RISK_MIN_OBSERVATIONS", "20"))
+
 
 def _require_key(key: str = Security(_key_header)) -> None:
     if not _ENGINE_API_KEY:
@@ -198,18 +201,24 @@ def portfolio_var(confidence: float = 0.99, horizon_days: int = 1):
     try:
         import numpy as np
 
-        from backend.risk.institutional_risk_engine import VaREngine
+        from backend.risk.institutional_risk_engine import (
+            InsufficientDataError,
+            VaREngine,
+        )
 
         r = _r()
         raw = r.lrange("portfolio:daily_returns", 0, -1)
-        if len(raw) < 30:
-            return {"error": "Insufficient return history (need ≥ 30 days)"}
-
         returns = np.array([float(x) for x in raw])
         engine = VaREngine()
-        hist_var = engine.historical_var(returns, confidence, horizon_days)
-        param_var = engine.parametric_var(returns, confidence, horizon_days)
-        cvar = engine.historical_cvar(returns, confidence)
+
+        try:
+            hist_var = engine.historical_var(returns, confidence, horizon_days)
+            param_var = engine.parametric_var(returns, confidence, horizon_days)
+            cvar = engine.historical_cvar(returns, confidence)
+        except InsufficientDataError as exc:
+            # 422, not a zero-filled 200. A caller must not be able to mistake
+            # "we don't know" for "the risk is zero".
+            raise HTTPException(422, str(exc))
 
         return {
             "confidence": confidence,
@@ -219,6 +228,8 @@ def portfolio_var(confidence: float = 0.99, horizon_days: int = 1):
             "cvar": round(cvar, 6),
             "n_observations": len(returns),
         }
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(500, str(exc))
 
@@ -240,25 +251,34 @@ def run_stress_test(req: StressTestRequest):
         symbols = list(req.weights.keys())
         weights = np.array([req.weights[s] for s in symbols])
 
-        # Try to get real return history from Redis
+        # Real return history only. There is no "fallback data" in a stress
+        # test — fabricated Gaussian noise produces a worst_scenario/worst_pnl
+        # indistinguishable from a real one, which is how you size a position
+        # off a number the system invented.
         returns_dict = {}
+        missing = []
         for sym in symbols:
             raw = r.lrange(f"returns:{sym}", -252, -1)
             if raw:
                 returns_dict[sym] = [float(x) for x in raw]
+            else:
+                missing.append(sym)
 
-        if len(returns_dict) < len(symbols) // 2:
-            # Use synthetic
-            rng = np.random.default_rng(42)
-            returns_df = pd.DataFrame(
-                rng.normal(0.0003, 0.015, (252, len(symbols))),
-                columns=symbols,
+        if missing:
+            raise HTTPException(
+                422,
+                "Stress test requires real return history for every symbol; "
+                f"missing: {sorted(missing)}",
             )
-        else:
-            n = min(len(v) for v in returns_dict.values())
-            returns_df = pd.DataFrame(
-                {s: returns_dict[s][-n:] for s in symbols}
+
+        n = min(len(v) for v in returns_dict.values())
+        if n < _MIN_STRESS_OBS:
+            raise HTTPException(
+                422,
+                f"Stress test needs >= {_MIN_STRESS_OBS} overlapping observations "
+                f"per symbol, shortest series has {n}",
             )
+        returns_df = pd.DataFrame({s: returns_dict[s][-n:] for s in symbols})
 
         stress_engine = StressTestEngine()
         results = stress_engine.historical_scenarios(returns_df, weights)
@@ -272,6 +292,8 @@ def run_stress_test(req: StressTestRequest):
             "worst_scenario": min(results, key=results.get),
             "worst_pnl": round(float(min(results.values())), 6),
         }
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(500, str(exc))
 

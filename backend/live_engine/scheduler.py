@@ -175,6 +175,20 @@ class LiveEngineScheduler:
             max_instances=1,
         )
 
+        # ── Validation gauntlet: 11:00 PM Mon-Fri (after nightly data) ────────
+        # Re-scores every registered strategy on real history and demotes
+        # anything whose DSR/PBO has decayed. Runs after nightly_pipeline so it
+        # sees the day's data.
+        from backend.live_engine.jobs.gauntlet_job import run as gauntlet_run
+        self._scheduler.add_job(
+            self._safe_run("validation_gauntlet", gauntlet_run),
+            CronTrigger(hour=23, minute=0, day_of_week="mon-fri", timezone=tz),
+            id="validation_gauntlet",
+            name="Validation Gauntlet (DSR/PBO re-score + auto-demote)",
+            replace_existing=True,
+            max_instances=1,
+        )
+
         # ── Early morning pass: 6:00 AM Tue-Sat ───────────────────────────────
         from backend.live_engine.jobs.nightly_pipeline import run_lite
         self._scheduler.add_job(
@@ -222,37 +236,49 @@ class LiveEngineScheduler:
                 port=int(os.getenv("REDIS_PORT", "6379")),
                 decode_responses=True,
             )
-            raw_returns = r.lrange("portfolio:daily_returns", 0, -1)
-            if len(raw_returns) < 30:
-                log.debug("Insufficient return history for risk recalc")
-                return
-
-            returns = np.array([float(x) for x in raw_returns])
-
             from backend.risk.institutional_risk_engine import (
+                InsufficientDataError,
                 PortfolioRiskEngine,
                 VaREngine,
                 get_risk_config_from_redis,
             )
+
+            raw_returns = r.lrange("portfolio:daily_returns", 0, -1)
+            returns = np.array([float(x) for x in raw_returns])
             var_engine = VaREngine()
             port_engine = PortfolioRiskEngine()
 
-            hist_var = var_engine.historical_var(returns, 0.99, 1)
-            cvar = var_engine.historical_cvar(returns, 0.975)
-            sharpe = port_engine.sharpe_ratio(returns)
-            max_dd = port_engine.max_drawdown(np.cumprod(1 + returns))
-
-            snapshot = {
-                "ts": str(int(time.time())),
-                "var_99_1d": str(round(hist_var, 6)),
-                "cvar_975": str(round(cvar, 6)),
-                "sharpe_rolling": str(round(sharpe, 4)),
-                "max_drawdown": str(round(max_dd, 4)),
-                "n_obs": str(len(returns)),
-            }
-            r.hset("risk:hourly_metrics", mapping=snapshot)
-            log.info("Risk recalc: VaR=%.4f, CVaR=%.4f, Sharpe=%.3f, MDD=%.3f",
-                     hist_var, cvar, sharpe, max_dd)
+            # Risk metrics are best-effort; the kill-switch check below is NOT.
+            # An unavailable metric is published as "unavailable", never as 0.0 —
+            # a zero VaR renders green on the dashboard and is divided into an
+            # equity budget by CVaR sizing.
+            try:
+                hist_var = var_engine.historical_var(returns, 0.99, 1)
+                cvar = var_engine.historical_cvar(returns, 0.975)
+                sharpe = port_engine.sharpe_ratio(returns)
+                max_dd = port_engine.max_drawdown(np.cumprod(1 + returns))
+                snapshot = {
+                    "ts": str(int(time.time())),
+                    "status": "ok",
+                    "var_99_1d": str(round(hist_var, 6)),
+                    "cvar_975": str(round(cvar, 6)),
+                    "sharpe_rolling": str(round(sharpe, 4)),
+                    "max_drawdown": str(round(max_dd, 4)),
+                    "n_obs": str(len(returns)),
+                }
+                r.hset("risk:hourly_metrics", mapping=snapshot)
+                log.info("Risk recalc: VaR=%.4f, CVaR=%.4f, Sharpe=%.3f, MDD=%.3f",
+                         hist_var, cvar, sharpe, max_dd)
+            except InsufficientDataError as exc:
+                r.hset("risk:hourly_metrics", mapping={
+                    "ts": str(int(time.time())),
+                    "status": "insufficient_data",
+                    "reason": str(exc),
+                    "n_obs": str(len(returns)),
+                })
+                r.hdel("risk:hourly_metrics", "var_99_1d", "cvar_975",
+                       "sharpe_rolling", "max_drawdown")
+                log.warning("Risk metrics unavailable: %s", exc)
 
             # Kill switch check
             config = get_risk_config_from_redis(r)

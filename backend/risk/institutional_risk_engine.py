@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 import time
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
@@ -150,6 +151,42 @@ class RiskConfig:
 # Part 2a — VaR Engine
 # =========================================================================
 
+class InsufficientDataError(ValueError):
+    """
+    Raised when a risk statistic is requested but the sample cannot support it.
+
+    This exists because the alternative — returning 0.0 — is a capital-loss bug,
+    not a convenience. A VaR of 0.0 reads as "this book has no risk", is published
+    to the risk dashboard as green, and is divided into an equity budget by
+    CVaR-based position sizing. Missing data must HALT, never fabricate.
+    """
+
+
+# A quantile at confidence c is not supported by data until the sample has at
+# least 1/(1-c) points; below that np.percentile is pure interpolation off the
+# extreme observation. Floor of 20 for any statistic at all.
+_ABSOLUTE_MIN_OBS = int(os.getenv("RISK_MIN_OBSERVATIONS", "20"))
+
+
+def _min_obs_for(confidence: float) -> int:
+    if not (0.0 < confidence < 1.0):
+        raise ValueError(f"confidence must be in (0,1), got {confidence}")
+    return max(_ABSOLUTE_MIN_OBS, int(math.ceil(1.0 / (1.0 - confidence))))
+
+
+def _require_sample(returns: np.ndarray, confidence: float, what: str) -> np.ndarray:
+    """Validate a return sample or raise. Never returns a fabricated value."""
+    arr = np.asarray(returns, dtype=float)
+    arr = arr[np.isfinite(arr)]
+    need = _min_obs_for(confidence)
+    if arr.size < need:
+        raise InsufficientDataError(
+            f"{what}: need >= {need} finite observations at confidence "
+            f"{confidence:.4g}, got {arr.size} — HALT, do not fabricate"
+        )
+    return arr
+
+
 class VaREngine:
     """Pure NumPy implementation of multiple VaR / CVaR methods."""
 
@@ -160,9 +197,8 @@ class VaREngine:
         horizon_days: int = 1,
     ) -> float:
         """Historical VaR: percentile(returns, 1-confidence) × √horizon."""
-        if len(returns) == 0:
-            return 0.0
-        q = np.percentile(returns, (1.0 - confidence) * 100)
+        r = _require_sample(returns, confidence, "historical_var")
+        q = np.percentile(r, (1.0 - confidence) * 100)
         return float(-q * math.sqrt(horizon_days))
 
     @staticmethod
@@ -172,10 +208,9 @@ class VaREngine:
         horizon_days: int = 1,
     ) -> float:
         """Parametric (Gaussian) VaR: -(μ - z_α × σ) × √horizon."""
-        if len(returns) == 0:
-            return 0.0
-        mu = float(np.mean(returns))
-        sigma = float(np.std(returns, ddof=1))
+        r = _require_sample(returns, confidence, "parametric_var")
+        mu = float(np.mean(r))
+        sigma = float(np.std(r, ddof=1))
         z = _norm_ppf(confidence)
         return float((z * sigma - mu) * math.sqrt(horizon_days))
 
@@ -190,11 +225,10 @@ class VaREngine:
         MC VaR over multi-asset paths using Cholesky decomposition.
         For single-asset: simulate horizon_days paths, compound, take percentile.
         """
-        if len(returns) == 0:
-            return 0.0
+        r = _require_sample(returns, confidence, "monte_carlo_var")
         rng = np.random.default_rng(seed=42)
-        mu = float(np.mean(returns))
-        sigma = float(np.std(returns, ddof=1))
+        mu = float(np.mean(r))
+        sigma = float(np.std(r, ddof=1))
         # simulate portfolio returns over horizon
         sim_daily = rng.normal(mu, sigma, size=(n_sims, horizon_days))
         sim_horizon = sim_daily.sum(axis=1)
@@ -207,10 +241,9 @@ class VaREngine:
         confidence: float = 0.975,
     ) -> float:
         """Expected Shortfall (CVaR): mean of returns below VaR threshold."""
-        if len(returns) == 0:
-            return 0.0
-        threshold = np.percentile(returns, (1.0 - confidence) * 100)
-        tail = returns[returns <= threshold]
+        r = _require_sample(returns, confidence, "historical_cvar")
+        threshold = np.percentile(r, (1.0 - confidence) * 100)
+        tail = r[r <= threshold]
         if len(tail) == 0:
             return float(-threshold)
         return float(-np.mean(tail))
@@ -1562,8 +1595,10 @@ class InstitutionalRiskEngine:
 @dataclass
 class RiskSnapshot:
     """Point-in-time portfolio risk metrics cached in Redis."""
-    var_99: float = 0.0
-    cvar_975: float = 0.0
+    # None == "not computable from available data". Never 0.0: a zero VaR
+    # passes every limit check and renders green on the dashboard.
+    var_99: Optional[float] = None
+    cvar_975: Optional[float] = None
     portfolio_vol: float = 0.0
     portfolio_beta: float = 1.0
     max_drawdown: float = 0.0
@@ -1641,8 +1676,16 @@ class PortfolioRiskMonitor:
 
                 port_returns = (returns_df.values * weights_norm).sum(axis=1)
 
-                snap.var_99 = VaREngine.historical_var(port_returns, confidence=0.99)
-                snap.cvar_975 = VaREngine.historical_cvar(port_returns, confidence=0.975)
+                try:
+                    snap.var_99 = VaREngine.historical_var(port_returns, confidence=0.99)
+                except InsufficientDataError as exc:
+                    snap.var_99 = None
+                    logger.warning("var_99 unavailable: %s", exc)
+                try:
+                    snap.cvar_975 = VaREngine.historical_cvar(port_returns, confidence=0.975)
+                except InsufficientDataError as exc:
+                    snap.cvar_975 = None
+                    logger.warning("cvar_975 unavailable: %s", exc)
 
                 if len(port_returns) >= 2:
                     snap.portfolio_vol = float(
@@ -1676,8 +1719,10 @@ class PortfolioRiskMonitor:
             if self.redis is None:
                 return
             flat: Dict[str, str] = {
-                "var_99": str(snapshot.var_99),
-                "cvar_975": str(snapshot.cvar_975),
+                # "unavailable" (not "0.0") so a consumer cannot read a missing
+                # metric as a benign one.
+                "var_99": "unavailable" if snapshot.var_99 is None else str(snapshot.var_99),
+                "cvar_975": "unavailable" if snapshot.cvar_975 is None else str(snapshot.cvar_975),
                 "portfolio_vol": str(snapshot.portfolio_vol),
                 "portfolio_beta": str(snapshot.portfolio_beta),
                 "max_drawdown": str(snapshot.max_drawdown),
@@ -1738,7 +1783,13 @@ class PortfolioRiskMonitor:
         alerts: List[str] = []
         cfg = self.config
 
-        if snapshot.var_99 > cfg.max_portfolio_var_pct:
+        # Fail-closed: an uncomputable VaR is an alert, not a silent pass.
+        if snapshot.var_99 is None:
+            alerts.append(
+                "VaR unavailable: cannot verify the 1-day 99% VaR limit "
+                f"({cfg.max_portfolio_var_pct:.2%}) — treat as breached until data is restored"
+            )
+        elif snapshot.var_99 > cfg.max_portfolio_var_pct:
             alerts.append(
                 f"VaR breach: 1-day 99% VaR = {snapshot.var_99:.2%} > limit {cfg.max_portfolio_var_pct:.2%}"
             )

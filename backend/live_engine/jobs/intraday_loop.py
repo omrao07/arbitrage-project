@@ -368,21 +368,37 @@ def _async_var_snapshot(state) -> None:
             if not state.redis:
                 return
             raw = state.redis.lrange("portfolio:daily_returns", -252, -1)
-            if len(raw) < 30:
-                return
             rets = np.array([float(x) for x in raw])
-            from backend.risk.institutional_risk_engine import PortfolioRiskEngine, VaREngine
+            from backend.risk.institutional_risk_engine import (
+                InsufficientDataError,
+                PortfolioRiskEngine,
+                VaREngine,
+            )
             var_e = VaREngine()
             port_e = PortfolioRiskEngine()
-            snap = {
-                "ts":             str(int(time.time())),
-                "var_99":         str(round(var_e.historical_var(rets, 0.99, 1), 6)),
-                "cvar_975":       str(round(var_e.historical_cvar(rets, 0.975), 6)),
-                "sharpe_rolling": str(round(port_e.sharpe_ratio(rets), 4)),
-                "max_drawdown":   str(round(port_e.max_drawdown(np.cumprod(1 + rets)), 4)),
-                "n_obs":          str(len(rets)),
-            }
-            state.redis.hset("risk:intraday_snapshot", mapping=snap)
+            try:
+                snap = {
+                    "ts":             str(int(time.time())),
+                    "status":         "ok",
+                    "var_99":         str(round(var_e.historical_var(rets, 0.99, 1), 6)),
+                    "cvar_975":       str(round(var_e.historical_cvar(rets, 0.975), 6)),
+                    "sharpe_rolling": str(round(port_e.sharpe_ratio(rets), 4)),
+                    "max_drawdown":   str(round(port_e.max_drawdown(np.cumprod(1 + rets)), 4)),
+                    "n_obs":          str(len(rets)),
+                }
+                state.redis.hset("risk:intraday_snapshot", mapping=snap)
+            except InsufficientDataError as exc:
+                # Publish the absence explicitly; stale/absent numbers must not
+                # be mistaken for a live reading.
+                state.redis.hset("risk:intraday_snapshot", mapping={
+                    "ts": str(int(time.time())),
+                    "status": "insufficient_data",
+                    "reason": str(exc),
+                    "n_obs": str(len(rets)),
+                })
+                state.redis.hdel("risk:intraday_snapshot", "var_99", "cvar_975",
+                                 "sharpe_rolling", "max_drawdown")
+                log.warning("Intraday VaR snapshot unavailable: %s", exc)
         except Exception as exc:
-            log.debug("VaR snapshot error: %s", exc)
+            log.warning("VaR snapshot error: %s", exc)
     threading.Thread(target=_compute, daemon=True).start()
